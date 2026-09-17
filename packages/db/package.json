@@ -8,7 +8,7 @@
   },
   "scripts": {
     "type-check": "tsc --noEmit",
-    "generate": "drizzle-kit generate --config drizzle.config.ts",
+    "generate": "bun --env-file=../../.env x drizzle-kit generate --config drizzle.config.ts",
     "migrate": "bun --env-file=../../.env src/migrate.ts"
   },
   "dependencies": {
