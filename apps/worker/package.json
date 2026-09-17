@@ -1,0 +1,20 @@
+{
+  "name": "@axentra/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --env-file=../../.env --watch src/index.ts",
+    "start": "bun --env-file=../../.env src/index.ts",
+    "build": "bun build src/index.ts --outdir dist --target bun",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@axentra/config": "workspace:*",
+    "@axentra/db": "workspace:*",
+    "@axentra/observability": "workspace:*",
+    "@axentra/queue": "workspace:*",
+    "@axentra/shared": "workspace:*",
+    "@axentra/storage": "workspace:*"
+  }
+}

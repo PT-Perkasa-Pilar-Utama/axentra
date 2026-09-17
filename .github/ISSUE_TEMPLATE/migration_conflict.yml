@@ -1,0 +1,49 @@
+name: Migration Conflict
+description: Two pull requests generated conflicting Drizzle migration files
+labels: ["bug", "database", "blocking"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Migration conflicts block the team. Fill this out immediately and notify Arya Isnaidi (Tech Lead).
+
+        **Root cause:** two branches generated migrations without rebasing on the current target branch first. Follow the migration protocol in [`docs/CODING_STANDARD.md`](../../blob/main/docs/CODING_STANDARD.md).
+
+  - type: input
+    id: pr_1
+    attributes:
+      label: PR #1 (first migration)
+      placeholder: "#42 - feat(documents): add document tables"
+    validations:
+      required: true
+
+  - type: input
+    id: pr_2
+    attributes:
+      label: PR #2 (conflicting migration)
+      placeholder: "#45 - feat(tags): add smart tags tables"
+    validations:
+      required: true
+
+  - type: textarea
+    id: conflicting_files
+    attributes:
+      label: Conflicting migration files
+      description: List the filenames that collide under `packages/db/drizzle/`.
+      placeholder: |
+        packages/db/drizzle/0001_document_core.sql
+        packages/db/drizzle/0001_smart_tags.sql
+    validations:
+      required: true
+
+  - type: textarea
+    id: resolution
+    attributes:
+      label: Resolution plan
+      description: Identify which PR merges first and how the other branch will regenerate its migration.
+      placeholder: |
+        1. Merge PR #42 first after review.
+        2. The PR #45 author rebases on `dev`, removes only their unmerged generated migration, and runs `bun run db:generate` again.
+        3. The PR #45 author runs `bun run db:migrate` on a clean local database, updates the PR, and requests review again.
+    validations:
+      required: false

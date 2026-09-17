@@ -1,0 +1,106 @@
+name: Sprint Task
+description: Work not already represented in docs/TASK_BREAKDOWN.md
+labels: ["task"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this only for scope changes, discovered work, or technical debt **not already tracked** in `docs/TASK_BREAKDOWN.md`.
+
+        For planned sprint work, reference the existing Task ID in the pull request instead. Arya assigns the final Task ID and PIC during sprint planning.
+
+  - type: input
+    id: proposed_task_id
+    attributes:
+      label: Proposed Task ID
+      description: Use `<BE|FE|TL|DB|QA>-S<sprint>-<NN>` for sprint work, for example `BE-S2-07`. Arya assigns the final ID.
+      placeholder: "BE-S2-07"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: sprint
+    attributes:
+      label: Target sprint
+      options:
+        - Sprint 1 (Upload, duplicate detection, metadata)
+        - Sprint 2 (Smart Tags, categories, search, related documents)
+        - Sprint 3 (Preview, single download, bulk download)
+        - Sprint 4 (Analytics, audit trail, category permissions)
+        - Foundation / internal improvement
+        - Backlog (outside the approved phase)
+    validations:
+      required: true
+
+  - type: input
+    id: user_story
+    attributes:
+      label: Related User Story
+      description: Reference the User Story ID when applicable.
+      placeholder: "US-01"
+    validations:
+      required: false
+
+  - type: input
+    id: acceptance_criteria
+    attributes:
+      label: Related Acceptance Criteria
+      description: List the AC IDs this task contributes to, separated by commas.
+      placeholder: "AC-01.01, AC-01.04"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: layer
+    attributes:
+      label: Layer
+      options:
+        - Backend (apps/api)
+        - Frontend (apps/web)
+        - Worker (apps/worker)
+        - Database / schema (packages/db)
+        - Shared contract or configuration (packages)
+        - Infrastructure / DevOps
+        - Documentation
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What needs to be done?
+      description: Give a clear scope and the evidence that proves the task is complete.
+      placeholder: |
+        Add pagination to `GET /documents`.
+        Acceptance: return `meta.page`, `meta.total`, and `meta.limit`; default page size is 20 and maximum is 100.
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: Why is this needed?
+      description: Provide the business reason, discovered dependency, risk, or technical-debt rationale.
+    validations:
+      required: true
+
+  - type: input
+    id: estimate_days
+    attributes:
+      label: Estimate (developer-days)
+      placeholder: "0.5"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: proposed_pic
+    attributes:
+      label: Proposed PIC
+      options:
+        - Arya
+        - Sami
+        - Azis
+        - Aiman
+        - To be assigned by Arya
+    validations:
+      required: false

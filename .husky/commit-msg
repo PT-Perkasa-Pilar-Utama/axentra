@@ -1,0 +1,18 @@
+#!/usr/bin/env sh
+
+subject=$(head -1 "$1")
+
+if ! echo "$subject" | grep -qE "^(feat|fix|refactor|test|docs|chore|perf)(\([a-z0-9-]+\))?!?: .+$"; then
+  echo "Error: expected Conventional Commit format type(scope): subject" >&2
+  exit 1
+fi
+
+if [ "${#subject}" -gt 80 ]; then
+  echo "Error: commit subject exceeds 80 characters" >&2
+  exit 1
+fi
+
+if grep -q "^Co-Authored-By:" "$1"; then
+  echo "Error: Co-Authored-By trailers are not allowed" >&2
+  exit 1
+fi

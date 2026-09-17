@@ -1,0 +1,63 @@
+{
+  "name": "axentra",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Axentra Document Management System engineering foundation",
+  "packageManager": "bun@1.3.12",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "bun run --cwd apps/web dev",
+    "dev:api": "bun run --cwd apps/api dev",
+    "dev:worker": "bun run --cwd apps/worker dev",
+    "build": "bun run --cwd apps/web build && bun run --cwd apps/api build && bun run --cwd apps/worker build",
+    "type-check": "bun run type-check:packages && bun run type-check:apps",
+    "type-check:packages": "bun run --cwd packages/config type-check && bun run --cwd packages/shared type-check && bun run --cwd packages/observability type-check && bun run --cwd packages/db type-check && bun run --cwd packages/storage type-check && bun run --cwd packages/queue type-check",
+    "type-check:apps": "bun run --cwd apps/web type-check && bun run --cwd apps/api type-check && bun run --cwd apps/worker type-check",
+    "lint": "oxlint .",
+    "lint:fix": "oxlint --fix .",
+    "fmt": "oxfmt --check .",
+    "fmt:fix": "oxfmt .",
+    "test": "bun test",
+    "test:integration": "cross-env RUN_INTEGRATION_TESTS=1 bun test test/infrastructure.integration.test.ts",
+    "db:generate": "bun run --cwd packages/db generate",
+    "db:migrate": "bun run --cwd packages/db migrate",
+    "infra:up": "docker compose -f infra/local/docker-compose.yml up -d --wait",
+    "infra:down": "docker compose -f infra/local/docker-compose.yml down",
+    "complete-check": "bun run type-check && bun run lint && bun run fmt && bun run test && bun run build",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@axentra/config": "workspace:*",
+    "@axentra/db": "workspace:*",
+    "@axentra/observability": "workspace:*",
+    "@axentra/queue": "workspace:*",
+    "@axentra/shared": "workspace:*",
+    "@axentra/storage": "workspace:*",
+    "@types/bun": "^1.3.0",
+    "bullmq": "^5.0.0",
+    "cross-env": "^10.0.0",
+    "drizzle-orm": "^0.45.0",
+    "hono": "^4.0.0",
+    "husky": "^9.1.0",
+    "lint-staged": "^16.0.0",
+    "oxfmt": "^0.48.0",
+    "oxlint": "^1.63.0",
+    "postgres": "^3.4.0",
+    "typescript": "^5.9.0"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx}": [
+      "oxfmt",
+      "oxlint --fix"
+    ],
+    "*.{json,md,css,html,yaml,yml,toml}": [
+      "oxfmt"
+    ]
+  },
+  "resolutions": {
+    "esbuild": "^0.28.2"
+  }
+}

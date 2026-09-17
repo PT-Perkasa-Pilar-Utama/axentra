@@ -1,0 +1,70 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Build output and tool caches
+dist/
+**/dist/
+.vite/
+.turbo/
+.cache/
+.eslintcache
+*.tsbuildinfo
+
+# Test and browser-test artifacts
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+blob-report/
+maestro-results/
+
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Local database, backup, and runtime artifacts
+.data/
+tmp/
+temp/
+*.pid
+*.seed
+*.sqlite
+*.sqlite3
+*.db
+*.dump
+*.bak
+
+# Logs
+logs/
+*.log
+*.log.*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+bun-debug.log*
+
+# Local IDE and operating-system files
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/
+.fleet/
+.history/
+
+# Local Kilo worktree metadata
+.kilo/
+
+# Keep project-shared agent configuration and Drizzle migrations tracked:
+# .claude/
+# .codex/
+# .mcp.json
+# packages/db/drizzle/

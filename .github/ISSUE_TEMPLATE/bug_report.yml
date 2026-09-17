@@ -1,0 +1,93 @@
+name: Bug Report
+description: Something is broken in Production, Test, Development, or local development
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Fill in as much as you can. Vague reports slow down fixes.
+
+        Before filing, review [`docs/TROUBLESHOOTING_GUIDE.md`](../../blob/main/docs/TROUBLESHOOTING_GUIDE.md) for a known cause and resolution.
+
+  - type: input
+    id: task_ref
+    attributes:
+      label: Related Task / Module / User Story
+      description: Task ID, module, or User Story reference (for example `BE-S1-03`, `documents`, or `US-01`).
+      placeholder: "e.g. documents"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Environment
+      options:
+        - Production (`main`)
+        - Test (`dev` branch)
+        - Local (developer machine)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: role
+    attributes:
+      label: Affected persona
+      options:
+        - Member Team
+        - Head of Team
+        - All personas
+        - N/A (backend, worker, database, or infrastructure)
+    validations:
+      required: true
+
+  - type: textarea
+    id: what_happened
+    attributes:
+      label: What happened?
+      description: Describe the bug and include the exact error message when available. Do not include credentials, document contents, signed URLs, or object keys.
+      placeholder: "POST /api/v1/documents/upload returns 500 after a valid PDF is selected"
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What was expected?
+      placeholder: "The document is accepted for processing and the UI shows the processing state"
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Sign in as a permitted Member Team test account.
+        2. Open the document upload area.
+        3. Select a valid PDF.
+        4. Submit the upload.
+        5. Observe the response and UI state.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or stack trace
+      description: Redact secrets and sensitive document data before pasting logs.
+      render: shell
+    validations:
+      required: false
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - Critical (data loss, security issue, or system unavailable)
+        - High (feature broken with no workaround)
+        - Medium (feature broken but a workaround exists)
+        - Low (cosmetic or minor)
+    validations:
+      required: true
