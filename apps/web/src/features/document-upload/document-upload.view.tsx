@@ -1,6 +1,9 @@
 import type React from "react";
 import { useRef, useState } from "react";
-import type { DocumentUploadPresenter } from "./document-upload.presenter";
+import {
+  useDocumentUploadPresenter,
+  type DocumentUploadPresenter,
+} from "./document-upload.presenter";
 
 export type DocumentUploadNotificationViewProps = {
   presenter: DocumentUploadPresenter;
@@ -187,5 +190,23 @@ export function DocumentUploadAreaView({
   );
 }
 
-// Alias for convenience
+// Full page / container component wiring presenter to upload area (F4)
+export function DocumentUploadPage(): React.JSX.Element {
+  const presenter = useDocumentUploadPresenter();
+
+  return (
+    <main className="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-900">Unggah Dokumen</h1>
+        <p className="text-sm text-gray-500 mt-1">
+          Unggah file PDF atau batch file DOCX untuk diproses ke dalam sistem manajemen dokumen.
+        </p>
+      </div>
+      <DocumentUploadAreaView presenter={presenter} />
+    </main>
+  );
+}
+
+export const DocumentUploadFeature = DocumentUploadPage;
+export const DocumentUploadContainer = DocumentUploadPage;
 export const DocumentUploadView = DocumentUploadAreaView;

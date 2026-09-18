@@ -13,6 +13,7 @@ export const DOCUMENT_TYPES = ["pdf", "docx"] as const;
 export type DocumentType = (typeof DOCUMENT_TYPES)[number];
 
 export const MAX_DOCUMENT_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB
+export const MAX_AGGREGATE_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB
 export const MAX_DOCX_BATCH_COUNT = 10;
 
 export const DOCUMENT_ERROR_CODES = {
@@ -39,11 +40,7 @@ export const DOCUMENT_COPY = {
 
 export const DOCUMENT_MIME_ALLOWLIST_BY_TYPE: Record<DocumentType, ReadonlyArray<string>> = {
   pdf: ["application/pdf", "application/x-pdf"],
-  docx: [
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "application/zip",
-    "application/x-zip-compressed",
-  ],
+  docx: ["application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
 };
 
 export function getDocumentExtension(filename: string): string {

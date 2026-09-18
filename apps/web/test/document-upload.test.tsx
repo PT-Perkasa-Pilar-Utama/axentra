@@ -1,7 +1,14 @@
 import { describe, expect, spyOn, test } from "bun:test";
+import { createElement } from "react";
 import { renderToString } from "react-dom/server";
+import { MemoryRouter, Route, Routes } from "react-router";
 import type { DocumentUploadAcceptedData } from "@axentra/shared";
-import { DOCUMENT_COPY, DOCUMENT_ERROR_CODES } from "@axentra/shared";
+import {
+  DOCUMENT_COPY,
+  DOCUMENT_ERROR_CODES,
+  DOCUMENT_MIME_ALLOWLIST_BY_TYPE,
+  isSupportedDocumentMimeType,
+} from "@axentra/shared";
 import {
   uploadDocument,
   uploadDocuments,
@@ -14,6 +21,7 @@ import {
 import {
   DocumentUploadAreaView,
   DocumentUploadNotificationView,
+  DocumentUploadPage,
 } from "../src/features/document-upload/document-upload.view";
 import { ApiClientError } from "../src/lib/api-client";
 
@@ -27,6 +35,22 @@ function createMockFetch(
     ): void => {},
   });
 }
+
+describe("document-upload shared contracts & MIME allowlist (F5)", () => {
+  test("maps document types to strict allowed MIME types without generic zip", () => {
+    expect(DOCUMENT_MIME_ALLOWLIST_BY_TYPE.pdf).toContain("application/pdf");
+    expect(DOCUMENT_MIME_ALLOWLIST_BY_TYPE.docx).toContain(
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    );
+    expect(DOCUMENT_MIME_ALLOWLIST_BY_TYPE.docx).not.toContain("application/zip");
+    expect(DOCUMENT_MIME_ALLOWLIST_BY_TYPE.docx).not.toContain("application/x-zip-compressed");
+  });
+
+  test("rejects generic zip MIME types", () => {
+    expect(isSupportedDocumentMimeType("application/zip")).toBe(false);
+    expect(isSupportedDocumentMimeType("application/x-zip-compressed")).toBe(false);
+  });
+});
 
 describe("document-upload validation (F3)", () => {
   test("AC-01.01: accepts single valid PDF file", () => {
@@ -249,7 +273,7 @@ describe("document-upload presenter state handling", () => {
   });
 });
 
-describe("document-upload view integration (F4)", () => {
+describe("document-upload view & route integration (F4)", () => {
   test("renders empty prompt and dropzone in idle state", () => {
     const presenterMock = {
       status: "idle" as const,
@@ -387,5 +411,29 @@ describe("document-upload view integration (F4)", () => {
     const html = renderToString(<DocumentUploadNotificationView presenter={presenterMock} />);
 
     expect(html).toBe("");
+  });
+
+  test("AC-01.01 to AC-01.04: renders DocumentUploadPage connected to presenter and route /upload", () => {
+    const element = createElement(
+      MemoryRouter,
+      { initialEntries: ["/upload"] },
+      createElement(
+        Routes,
+        null,
+        createElement(Route, {
+          path: "/upload",
+          element: createElement(DocumentUploadPage),
+        }),
+      ),
+    );
+
+    const html = renderToString(element);
+
+    expect(html).toContain("Unggah Dokumen");
+    expect(html).toContain("Area Unggah Dokumen");
+    expect(html).toContain("Pilih atau seret file PDF atau DOCX ke sini");
+    expect(html).toContain("Pilih File");
+    expect(html).toContain('type="file"');
+    expect(html).toContain('accept=".pdf,.docx');
   });
 });
