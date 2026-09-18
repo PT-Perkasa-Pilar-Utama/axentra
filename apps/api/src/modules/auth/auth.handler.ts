@@ -1,14 +1,15 @@
 import type { Context } from "hono";
 import { loginRequestSchema } from "@axentra/shared";
 import type { ApiEnvironment } from "../../environment";
+import { UnauthorizedError } from "../../http/errors";
 import { jsonError, jsonSuccess } from "../../http/responses";
 import { getAuthenticatedUser } from "../../middleware/auth";
 import type { AuthService } from "./auth.service";
 
 export function createMeHandler() {
   return async (context: Context<ApiEnvironment>): Promise<Response> => {
-    const currentUser = getAuthenticatedUser(context);
-    return jsonSuccess(context, currentUser, 200);
+    const user = getAuthenticatedUser(context);
+    return jsonSuccess(context, user, 200);
   };
 }
 
@@ -31,16 +32,34 @@ export function createLoginHandler(authService: AuthService) {
 
 export function createRefreshHandler(authService: AuthService) {
   return async (context: Context<ApiEnvironment>): Promise<Response> => {
-    const currentUser = getAuthenticatedUser(context);
-    const result = await authService.refresh(currentUser);
+    const rawBody: unknown = await context.req.json().catch(() => null);
+    let refreshToken: string | undefined;
+
+    if (typeof rawBody === "object" && rawBody !== null && "refreshToken" in rawBody) {
+      refreshToken = String((rawBody as { refreshToken: unknown }).refreshToken);
+    }
+
+    if (!refreshToken) {
+      const authHeader = context.req.header("authorization")?.trim();
+      if (authHeader?.toLowerCase().startsWith("bearer ")) {
+        refreshToken = authHeader.slice(7).trim();
+      }
+    }
+
+    if (!refreshToken) {
+      throw new UnauthorizedError("Autentikasi diperlukan");
+    }
+
+    const result = await authService.refresh(refreshToken);
     return jsonSuccess(context, result, 200);
   };
 }
 
 export function createLogoutHandler(authService: AuthService) {
   return async (context: Context<ApiEnvironment>): Promise<Response> => {
-    const currentUser = getAuthenticatedUser(context);
-    const result = await authService.logout(currentUser);
+    const authHeader = context.req.header("authorization")?.trim();
+    const token = authHeader?.toLowerCase().startsWith("bearer ") ? authHeader.slice(7).trim() : "";
+    const result = await authService.logout(token);
     return jsonSuccess(context, result, 200);
   };
 }

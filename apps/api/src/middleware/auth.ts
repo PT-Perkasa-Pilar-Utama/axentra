@@ -1,90 +1,64 @@
 import { createMiddleware } from "hono/factory";
 import type { Context, MiddlewareHandler } from "hono";
 import type { AuthUser, UserRole } from "@axentra/shared";
-import { authUserSchema } from "@axentra/shared";
 import type { ApiEnvironment } from "../environment";
 import { ForbiddenError, UnauthorizedError } from "../http/errors";
 
-// TODO(BE-S1-01): Sebelum ke production, dev-auth HARUS diganti dengan JWT atau session-based auth yang proper.
-
-export type DevUserAccount = AuthUser & {
-  email: string;
-  token: string;
+export type TokenVerifier = {
+  verifyToken: (token: string) => Promise<AuthUser | null> | AuthUser | null;
 };
 
-export const DEV_USERS: ReadonlyArray<DevUserAccount> = [
-  {
-    id: "11111111-1111-4111-8111-111111111111",
-    role: "member_team",
-    name: "Sami",
-    email: "sami@axentra.internal",
-    token: "dev-token-member",
+export const defaultTokenVerifier: TokenVerifier = {
+  verifyToken(_token: string): AuthUser | null {
+    // Production token verifier: server-side signed token and session verification
+    // is specified in BE-S1-01. Unsigned, forged, or arbitrary tokens are rejected.
+    return null;
   },
-  {
-    id: "22222222-2222-4222-8222-222222222222",
-    role: "head_of_team",
-    name: "Arya Isnaidi",
-    email: "arya@axentra.internal",
-    token: "dev-token-head",
-  },
-];
+};
 
 export function getAuthenticatedUser(context: Context<ApiEnvironment>): AuthUser {
-  const user = context.get("currentUser");
-  if (user === undefined) {
+  const user = context.get("user");
+  if (!user) {
     throw new UnauthorizedError("Autentikasi diperlukan");
   }
   return user;
 }
 
-export function authMiddleware(): MiddlewareHandler<ApiEnvironment> {
+export function requireAuth(
+  verifier: TokenVerifier = defaultTokenVerifier,
+): MiddlewareHandler<ApiEnvironment> {
   return createMiddleware<ApiEnvironment>(async (context, next) => {
-    // TODO(BE-S1-01): Sebelum ke production, dev-auth header-based HARUS diganti dengan JWT atau session-based auth yang proper.
-    const authHeader = context.req.header("authorization");
-    if (authHeader !== undefined && authHeader.startsWith("Bearer ")) {
-      const token = authHeader.slice(7).trim();
-      const matchedUser = DEV_USERS.find((user) => user.token === token);
-      if (matchedUser !== undefined) {
-        context.set("currentUser", {
-          id: matchedUser.id,
-          role: matchedUser.role,
-          name: matchedUser.name,
-        });
-        await next();
-        return;
-      }
+    const authHeader = context.req.header("authorization")?.trim();
+    if (!authHeader || !authHeader.toLowerCase().startsWith("bearer ")) {
+      throw new UnauthorizedError("Autentikasi diperlukan");
     }
 
-    const userId = context.req.header("x-user-id")?.trim();
-    const userRole = context.req.header("x-user-role")?.trim();
-    const userName = context.req.header("x-user-name")?.trim();
-
-    if (userId !== undefined && userRole !== undefined) {
-      const parsed = authUserSchema.safeParse({
-        id: userId,
-        role: userRole,
-        name: userName !== undefined && userName.length > 0 ? userName : "Pengguna",
-      });
-
-      if (parsed.success) {
-        context.set("currentUser", parsed.data);
-        await next();
-        return;
-      }
+    const token = authHeader.slice(7).trim();
+    if (!token) {
+      throw new UnauthorizedError("Autentikasi diperlukan");
     }
 
-    throw new UnauthorizedError("Autentikasi diperlukan");
+    const user = await verifier.verifyToken(token);
+    if (!user) {
+      throw new UnauthorizedError("Token tidak valid atau telah kedaluwarsa");
+    }
+
+    context.set("user", user);
+    await next();
   });
 }
 
-export function requireRole(
-  ...allowedRoles: ReadonlyArray<UserRole>
-): MiddlewareHandler<ApiEnvironment> {
+export function requireRole(allowedRole: UserRole): MiddlewareHandler<ApiEnvironment> {
   return createMiddleware<ApiEnvironment>(async (context, next) => {
-    const user = getAuthenticatedUser(context);
-    if (!allowedRoles.includes(user.role)) {
+    const user = context.get("user");
+    if (!user) {
+      throw new UnauthorizedError("Autentikasi diperlukan");
+    }
+
+    if (user.role !== allowedRole) {
       throw new ForbiddenError("Anda tidak memiliki akses untuk tindakan ini");
     }
+
     await next();
   });
 }

@@ -1,56 +1,136 @@
+import { randomBytes, randomUUID } from "node:crypto";
 import type { AuthUser, LoginRequest, LoginResponse } from "@axentra/shared";
-import { DEV_USERS } from "../../middleware/auth";
+import type { TokenVerifier } from "../../middleware/auth";
 import { UnauthorizedError } from "../../http/errors";
 
-// TODO(BE-S1-01): Ganti dev auth service dengan implementasi database/JWT sebelum production.
-
-const DEV_PASSWORD = "password123";
+export type SessionRecord = {
+  id: string;
+  token: string;
+  refreshToken: string;
+  user: AuthUser;
+  expiresAt: number;
+  refreshExpiresAt: number;
+  revoked: boolean;
+};
 
 export type RefreshResult = {
   token: string;
+  refreshToken: string;
 };
 
 export type LogoutResult = {
   message: string;
 };
 
+export type UserAuthenticator = (
+  credentials: LoginRequest,
+) => Promise<AuthUser | null> | AuthUser | null;
+
 export type AuthService = {
   login(input: LoginRequest): Promise<LoginResponse>;
-  refresh(currentUser: AuthUser): Promise<RefreshResult>;
-  logout(currentUser: AuthUser): Promise<LogoutResult>;
+  refresh(refreshToken: string): Promise<RefreshResult>;
+  logout(token: string): Promise<LogoutResult>;
+  tokenVerifier: TokenVerifier;
 };
 
-export function createAuthService(): AuthService {
-  return {
-    async login(input: LoginRequest): Promise<LoginResponse> {
-      // TODO(BE-S1-01): Implementasi verifikasi kredensial asli sebelum production.
-      const matched = DEV_USERS.find(
-        (user) => user.email.toLowerCase() === input.email.toLowerCase(),
-      );
+export type AuthServiceOptions = {
+  authenticator?: UserAuthenticator;
+  accessTokenTtlMs?: number;
+  refreshTokenTtlMs?: number;
+  clock?: () => number;
+};
 
-      if (matched === undefined || input.password !== DEV_PASSWORD) {
+const DEFAULT_ACCESS_TOKEN_TTL_MS = 15 * 60 * 1000; // 15 minutes
+const DEFAULT_REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+export function createAuthService(options: AuthServiceOptions = {}): AuthService {
+  const {
+    authenticator = () => null,
+    accessTokenTtlMs = DEFAULT_ACCESS_TOKEN_TTL_MS,
+    refreshTokenTtlMs = DEFAULT_REFRESH_TOKEN_TTL_MS,
+    clock = () => Date.now(),
+  } = options;
+
+  const sessionsByToken = new Map<string, SessionRecord>();
+  const sessionsByRefreshToken = new Map<string, SessionRecord>();
+
+  function createSession(user: AuthUser): SessionRecord {
+    const now = clock();
+    const session: SessionRecord = {
+      id: randomUUID(),
+      token: `ax_${randomUUID().replace(/-/g, "")}_${randomBytes(16).toString("hex")}`,
+      refreshToken: `ax_rt_${randomUUID().replace(/-/g, "")}_${randomBytes(16).toString("hex")}`,
+      user,
+      expiresAt: now + accessTokenTtlMs,
+      refreshExpiresAt: now + refreshTokenTtlMs,
+      revoked: false,
+    };
+
+    sessionsByToken.set(session.token, session);
+    sessionsByRefreshToken.set(session.refreshToken, session);
+    return session;
+  }
+
+  const tokenVerifier: TokenVerifier = {
+    verifyToken(token: string): AuthUser | null {
+      const session = sessionsByToken.get(token);
+      if (!session || session.revoked) {
+        return null;
+      }
+      if (clock() >= session.expiresAt) {
+        return null;
+      }
+      return session.user;
+    },
+  };
+
+  return {
+    tokenVerifier,
+
+    async login(input: LoginRequest): Promise<LoginResponse> {
+      const user = await authenticator(input);
+      if (!user) {
         throw new UnauthorizedError("Email atau kata sandi salah");
       }
 
+      const session = createSession(user);
       return {
-        user: {
-          id: matched.id,
-          role: matched.role,
-          name: matched.name,
-        },
-        token: matched.token,
+        user: session.user,
+        token: session.token,
+        refreshToken: session.refreshToken,
       };
     },
 
-    async refresh(currentUser: AuthUser): Promise<RefreshResult> {
-      // TODO(BE-S1-01): Implementasi token refresh asli sebelum production.
-      const matched = DEV_USERS.find((user) => user.id === currentUser.id);
-      const token = matched !== undefined ? matched.token : `dev-token-${currentUser.id}`;
-      return { token };
+    async refresh(refreshToken: string): Promise<RefreshResult> {
+      const session = sessionsByRefreshToken.get(refreshToken);
+      if (!session || session.revoked) {
+        throw new UnauthorizedError("Token tidak valid atau telah kedaluwarsa");
+      }
+
+      if (clock() >= session.refreshExpiresAt) {
+        throw new UnauthorizedError("Token tidak valid atau telah kedaluwarsa");
+      }
+
+      // Revoke current session (refresh token rotation)
+      session.revoked = true;
+      sessionsByToken.delete(session.token);
+      sessionsByRefreshToken.delete(session.refreshToken);
+
+      // Issue new session
+      const newSession = createSession(session.user);
+      return {
+        token: newSession.token,
+        refreshToken: newSession.refreshToken,
+      };
     },
 
-    async logout(_currentUser: AuthUser): Promise<LogoutResult> {
-      // TODO(BE-S1-01): Implementasi invalidasi sesi asli sebelum production.
+    async logout(token: string): Promise<LogoutResult> {
+      const session = sessionsByToken.get(token);
+      if (session) {
+        session.revoked = true;
+        sessionsByToken.delete(session.token);
+        sessionsByRefreshToken.delete(session.refreshToken);
+      }
       return { message: "Logout berhasil" };
     },
   };

@@ -5,6 +5,6 @@ export type ApiEnvironment = {
   Variables: {
     requestId: string;
     logger: Logger;
-    currentUser?: AuthUser;
+    user?: AuthUser;
   };
 };
