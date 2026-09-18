@@ -6,6 +6,8 @@ export type {
   PaginationMeta,
 } from "./api";
 export { apiErrorSchema, errorDetailSchema } from "./api";
+export type { AuthUser, LoginRequest, LoginResponse, UserRole } from "./auth";
+export { authUserSchema, loginRequestSchema, loginResponseSchema, userRoleSchema } from "./auth";
 export type {
   CategorySummary,
   DocumentDetail,
