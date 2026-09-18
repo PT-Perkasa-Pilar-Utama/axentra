@@ -15,13 +15,13 @@ describe("document shared schemas", () => {
     it("accepts valid processing statuses", () => {
       expect(processingStatusSchema.parse("queued")).toBe("queued");
       expect(processingStatusSchema.parse("processing")).toBe("processing");
-      expect(processingStatusSchema.parse("processed")).toBe("processed");
+      expect(processingStatusSchema.parse("completed")).toBe("completed");
       expect(processingStatusSchema.parse("failed")).toBe("failed");
     });
 
     it("rejects unknown statuses", () => {
       expect(() => processingStatusSchema.parse("pending")).toThrow();
-      expect(() => processingStatusSchema.parse("completed")).toThrow();
+      expect(() => processingStatusSchema.parse("processed")).toThrow();
       expect(() => processingStatusSchema.parse(123)).toThrow();
     });
   });

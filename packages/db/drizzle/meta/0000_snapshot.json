@@ -1,5 +1,5 @@
 {
-  "id": "839515ff-109e-4045-8a7a-984140d4b113",
+  "id": "b16907a8-8083-40bc-b784-eca3ae61a2f0",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -318,8 +318,8 @@
         }
       },
       "indexes": {
-        "document_files_document_id_idx": {
-          "name": "document_files_document_id_idx",
+        "document_files_document_id_unique_idx": {
+          "name": "document_files_document_id_unique_idx",
           "columns": [
             {
               "expression": "document_id",
@@ -328,7 +328,7 @@
               "nulls": "last"
             }
           ],
-          "isUnique": false,
+          "isUnique": true,
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -774,7 +774,7 @@
       "values": [
         "queued",
         "processing",
-        "processed",
+        "completed",
         "failed"
       ]
     }

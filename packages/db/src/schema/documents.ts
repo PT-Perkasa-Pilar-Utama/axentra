@@ -48,7 +48,7 @@ export const documentFiles = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => [
-    index("document_files_document_id_idx").on(table.documentId),
+    uniqueIndex("document_files_document_id_unique_idx").on(table.documentId),
     index("document_files_storage_key_idx").on(table.storageKey),
   ],
 );
@@ -97,7 +97,10 @@ export const documentsRelations = relations(documents, ({ one, many }) => ({
     fields: [documents.categoryId],
     references: [categories.id],
   }),
-  files: many(documentFiles),
+  file: one(documentFiles, {
+    fields: [documents.id],
+    references: [documentFiles.documentId],
+  }),
   contentHashes: many(documentContentHashes),
   metadata: one(documentMetadata, {
     fields: [documents.id],

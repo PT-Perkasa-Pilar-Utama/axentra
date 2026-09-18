@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const processingStatusSchema = z.enum(["queued", "processing", "processed", "failed"]);
+export const processingStatusSchema = z.enum(["queued", "processing", "completed", "failed"]);
 export type ProcessingStatus = z.infer<typeof processingStatusSchema>;
 
 export const categorySummarySchema = z.object({

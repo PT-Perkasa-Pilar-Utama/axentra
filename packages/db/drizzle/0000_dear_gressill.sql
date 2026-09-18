@@ -1,4 +1,4 @@
-CREATE TYPE "public"."processing_status" AS ENUM('queued', 'processing', 'processed', 'failed');--> statement-breakpoint
+CREATE TYPE "public"."processing_status" AS ENUM('queued', 'processing', 'completed', 'failed');--> statement-breakpoint
 CREATE TABLE "categories" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"name" text NOT NULL,
@@ -81,7 +81,7 @@ CREATE UNIQUE INDEX "categories_slug_unique_idx" ON "categories" USING btree ("s
 CREATE UNIQUE INDEX "category_download_permissions_category_id_unique_idx" ON "category_download_permissions" USING btree ("category_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "document_content_hashes_hash_algo_unique_idx" ON "document_content_hashes" USING btree ("content_hash","hash_algorithm");--> statement-breakpoint
 CREATE INDEX "document_content_hashes_document_id_idx" ON "document_content_hashes" USING btree ("document_id");--> statement-breakpoint
-CREATE INDEX "document_files_document_id_idx" ON "document_files" USING btree ("document_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "document_files_document_id_unique_idx" ON "document_files" USING btree ("document_id");--> statement-breakpoint
 CREATE INDEX "document_files_storage_key_idx" ON "document_files" USING btree ("storage_key");--> statement-breakpoint
 CREATE UNIQUE INDEX "document_metadata_document_id_unique_idx" ON "document_metadata" USING btree ("document_id");--> statement-breakpoint
 CREATE INDEX "document_metadata_author_idx" ON "document_metadata" USING btree ("author");--> statement-breakpoint

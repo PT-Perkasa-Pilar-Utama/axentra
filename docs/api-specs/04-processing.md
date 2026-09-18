@@ -39,9 +39,9 @@ Planned behavior:
 
 ## Processing State
 
-Implementation must decide explicit processing states before coding, for example:
+Canonical processing states across database, queue, API, and Web:
 
 - `queued`
 - `processing`
-- `processed`
+- `completed`
 - `failed`

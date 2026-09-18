@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { getTableColumns } from "drizzle-orm";
+import { getTableConfig } from "drizzle-orm/pg-core";
 
 import {
   categories,
@@ -18,7 +19,7 @@ describe("database schema definitions", () => {
     expect(processingStatusEnum.enumValues).toEqual([
       "queued",
       "processing",
-      "processed",
+      "completed",
       "failed",
     ]);
   });
@@ -53,7 +54,7 @@ describe("database schema definitions", () => {
     expect(cols.deletedAt).toBeDefined();
   });
 
-  it("defines document_files table columns", () => {
+  it("defines document_files table columns and unique document_id constraint", () => {
     const cols = getTableColumns(documentFiles);
     expect(cols.id).toBeDefined();
     expect(cols.documentId).toBeDefined();
@@ -64,6 +65,13 @@ describe("database schema definitions", () => {
     expect(cols.fileExtension).toBeDefined();
     expect(cols.createdAt).toBeDefined();
     expect(cols.updatedAt).toBeDefined();
+
+    const config = getTableConfig(documentFiles);
+    const docIdIndex = config.indexes.find(
+      (idx) => idx.config.name === "document_files_document_id_unique_idx",
+    );
+    expect(docIdIndex).toBeDefined();
+    expect(docIdIndex?.config.unique).toBe(true);
   });
 
   it("defines document_content_hashes table columns", () => {
