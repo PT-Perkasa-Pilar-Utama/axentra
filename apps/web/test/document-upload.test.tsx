@@ -17,6 +17,17 @@ import {
 } from "../src/features/document-upload/document-upload.view";
 import { ApiClientError } from "../src/lib/api-client";
 
+function createMockFetch(
+  handler: (input: RequestInfo | URL, init?: RequestInit | undefined) => Promise<Response>,
+) {
+  return Object.assign(handler, {
+    preconnect: (
+      _url: string | URL,
+      _options?: { dns?: boolean; tcp?: boolean; http?: boolean; https?: boolean } | undefined,
+    ): void => {},
+  });
+}
+
 describe("document-upload validation (F3)", () => {
   test("AC-01.01: accepts single valid PDF file", () => {
     const pdfFile = { name: "laporan.pdf", type: "application/pdf" };
@@ -107,7 +118,9 @@ describe("document-upload validation (F3)", () => {
 
 describe("document-upload API batch request (F2)", () => {
   test("sends multiple DOCX files as a single batch multipart request", async () => {
-    let capturedRequest: { url: string; method?: string; body?: unknown } | null = null;
+    let capturedUrl = "";
+    let capturedMethod: string | undefined;
+    let capturedBody: unknown;
 
     const mockResponse: DocumentUploadAcceptedData = {
       message: DOCUMENT_COPY.UPLOAD_ACCEPTED,
@@ -120,17 +133,15 @@ describe("document-upload API batch request (F2)", () => {
     };
 
     const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
-      async (input: RequestInfo | URL, init?: RequestInit) => {
-        capturedRequest = {
-          url: typeof input === "string" ? input : input.toString(),
-          method: init?.method,
-          body: init?.body,
-        };
+      createMockFetch(async (input: RequestInfo | URL, init?: RequestInit) => {
+        capturedUrl = typeof input === "string" ? input : input.toString();
+        capturedMethod = init?.method;
+        capturedBody = init?.body;
         return new Response(JSON.stringify({ success: true, data: mockResponse }), {
           status: 200,
           headers: { "content-type": "application/json" },
         });
-      },
+      }),
     );
 
     try {
@@ -149,11 +160,11 @@ describe("document-upload API batch request (F2)", () => {
       const result = await uploadDocuments(files);
 
       expect(fetchSpy).toHaveBeenCalledTimes(1);
-      expect(capturedRequest?.url).toBe("/api/v1/documents/upload");
-      expect(capturedRequest?.method).toBe("POST");
-      expect(capturedRequest?.body instanceof FormData).toBe(true);
+      expect(capturedUrl).toBe("/api/v1/documents/upload");
+      expect(capturedMethod).toBe("POST");
+      expect(capturedBody instanceof FormData).toBe(true);
 
-      const formData = capturedRequest?.body as FormData;
+      const formData = capturedBody as FormData;
       const uploadedEntries = formData.getAll("files");
       expect(uploadedEntries.length).toBe(3);
 
@@ -173,13 +184,15 @@ describe("document-upload API batch request (F2)", () => {
       files: [{ filename: "laporan.pdf", size: 2048, documentType: "pdf" }],
     };
 
-    const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(async () => {
-      callCount++;
-      return new Response(JSON.stringify({ success: true, data: mockResponse }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
-    });
+    const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
+      createMockFetch(async () => {
+        callCount++;
+        return new Response(JSON.stringify({ success: true, data: mockResponse }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
 
     try {
       const file = new File(["pdf data"], "laporan.pdf", { type: "application/pdf" });
@@ -187,7 +200,7 @@ describe("document-upload API batch request (F2)", () => {
 
       expect(callCount).toBe(1);
       expect(result.count).toBe(1);
-      expect(result.files[0].filename).toBe("laporan.pdf");
+      expect(result.files[0]?.filename).toBe("laporan.pdf");
     } finally {
       fetchSpy.mockRestore();
     }
