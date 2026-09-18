@@ -204,31 +204,38 @@ describe("infrastructure integration", () => {
     const { documents, documentFiles } = await import("@axentra/db");
     const documentId = crypto.randomUUID();
 
-    await database.insert(documents).values({
+    await database.db.insert(documents).values({
       id: documentId,
       title: "Test Invariant Document",
     });
 
-    await database.insert(documentFiles).values({
-      documentId,
-      storageKey: `docs/${documentId}/primary.pdf`,
-      originalName: "primary.pdf",
-      mimeType: "application/pdf",
-      fileSize: 1024,
-      fileExtension: "pdf",
-    });
-
-    await expect(
-      database.insert(documentFiles).values({
+    try {
+      await database.db.insert(documentFiles).values({
         documentId,
-        storageKey: `docs/${documentId}/duplicate.pdf`,
-        originalName: "duplicate.pdf",
+        storageKey: `docs/${documentId}/primary.pdf`,
+        originalName: "primary.pdf",
         mimeType: "application/pdf",
-        fileSize: 2048,
+        fileSize: 1024,
         fileExtension: "pdf",
-      }),
-    ).rejects.toThrow();
+      });
 
-    await database.delete(documents).where(eq(documents.id, documentId));
+      let duplicateError: unknown;
+      try {
+        await database.db.insert(documentFiles).values({
+          documentId,
+          storageKey: `docs/${documentId}/duplicate.pdf`,
+          originalName: "duplicate.pdf",
+          mimeType: "application/pdf",
+          fileSize: 2048,
+          fileExtension: "pdf",
+        });
+      } catch (error) {
+        duplicateError = error;
+      }
+
+      expect(duplicateError).toBeDefined();
+    } finally {
+      await database.db.delete(documents).where(eq(documents.id, documentId));
+    }
   });
 });
