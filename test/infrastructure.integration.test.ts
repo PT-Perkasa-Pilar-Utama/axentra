@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { eq } from "drizzle-orm";
 import type {
   checkDatabase as CheckDatabase,
   closeDatabase as CloseDatabase,
@@ -193,6 +194,48 @@ describe("infrastructure integration", () => {
       await expect(probe.checkHealth()).rejects.toThrow();
     } finally {
       await probe.close();
+    }
+  });
+
+  integrationTest("enforces one file per document database constraint", async () => {
+    if (database === undefined) {
+      throw new Error("Integration infrastructure was not initialized");
+    }
+    const { documents, documentFiles } = await import("@axentra/db");
+    const documentId = crypto.randomUUID();
+
+    await database.db.insert(documents).values({
+      id: documentId,
+      title: "Test Invariant Document",
+    });
+
+    try {
+      await database.db.insert(documentFiles).values({
+        documentId,
+        storageKey: `docs/${documentId}/primary.pdf`,
+        originalName: "primary.pdf",
+        mimeType: "application/pdf",
+        fileSize: 1024,
+        fileExtension: "pdf",
+      });
+
+      let duplicateError: unknown;
+      try {
+        await database.db.insert(documentFiles).values({
+          documentId,
+          storageKey: `docs/${documentId}/duplicate.pdf`,
+          originalName: "duplicate.pdf",
+          mimeType: "application/pdf",
+          fileSize: 2048,
+          fileExtension: "pdf",
+        });
+      } catch (error) {
+        duplicateError = error;
+      }
+
+      expect(duplicateError).toBeDefined();
+    } finally {
+      await database.db.delete(documents).where(eq(documents.id, documentId));
     }
   });
 });
