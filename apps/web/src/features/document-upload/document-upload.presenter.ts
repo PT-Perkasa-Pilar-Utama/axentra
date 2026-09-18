@@ -1,5 +1,14 @@
 import { useState, useCallback } from "react";
-import type { UploadDocumentResponse } from "@axentra/shared";
+import type { DocumentUploadAcceptedData } from "@axentra/shared";
+import {
+  DOCUMENT_COPY,
+  DOCUMENT_ERROR_CODES,
+  MAX_DOCX_BATCH_COUNT,
+  getDocumentExtension,
+  getDocumentTypeFromFilename,
+  isSupportedDocumentExtension,
+  isSupportedDocumentMimeType,
+} from "@axentra/shared";
 import { uploadDocuments as defaultUploadFn } from "./document-upload.api";
 import { ApiClientError } from "../../lib/api-client";
 
@@ -17,26 +26,26 @@ export type UploadNotification = {
 };
 
 export const UPLOAD_MESSAGES = {
-  SUCCESS: "File diterima untuk diproses",
-  DUPLICATE: "File ini sudah ada",
-  UNSUPPORTED: "Tipe file tidak didukung",
+  SUCCESS: DOCUMENT_COPY.UPLOAD_ACCEPTED,
+  DUPLICATE: DOCUMENT_COPY.DUPLICATE_WARNING,
+  UNSUPPORTED: DOCUMENT_COPY.UNSUPPORTED_TYPE,
+  SINGLE_PDF_ONLY: DOCUMENT_COPY.SINGLE_PDF_ONLY,
+  MIXED_TYPES: DOCUMENT_COPY.MIXED_TYPES_NOT_ALLOWED,
+  EXCEEDS_BATCH_LIMIT: DOCUMENT_COPY.EXCEEDS_DOCX_BATCH_LIMIT,
+  EMPTY_FILES: "Tidak ada file yang dipilih",
   GENERIC_ERROR: "Gagal mengunggah file",
 } as const;
 
-const SUPPORTED_EXTENSIONS = [".pdf", ".docx"];
-const SUPPORTED_MIME_TYPES = [
-  "application/pdf",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-];
-
 export function isSupportedFile(file: { name: string; type?: string }): boolean {
-  const lowerName = file.name.toLowerCase();
-  const hasValidExt = SUPPORTED_EXTENSIONS.some((ext) => lowerName.endsWith(ext));
-  if (!hasValidExt) return false;
+  const ext = getDocumentExtension(file.name);
+  if (!isSupportedDocumentExtension(ext)) {
+    return false;
+  }
 
   if (file.type && file.type.length > 0) {
-    return SUPPORTED_MIME_TYPES.includes(file.type);
+    return isSupportedDocumentMimeType(file.type);
   }
+
   return true;
 }
 
@@ -45,12 +54,27 @@ export function validateUploadFiles(files: { name: string; type?: string }[]): {
   errorMessage?: string;
 } {
   if (files.length === 0) {
-    return { valid: false, errorMessage: "Tidak ada file yang dipilih" };
+    return { valid: false, errorMessage: UPLOAD_MESSAGES.EMPTY_FILES };
   }
 
   const hasUnsupported = files.some((f) => !isSupportedFile(f));
   if (hasUnsupported) {
     return { valid: false, errorMessage: UPLOAD_MESSAGES.UNSUPPORTED };
+  }
+
+  const hasPdf = files.some((f) => getDocumentTypeFromFilename(f.name) === "pdf");
+  const hasDocx = files.some((f) => getDocumentTypeFromFilename(f.name) === "docx");
+
+  if (hasPdf && hasDocx) {
+    return { valid: false, errorMessage: UPLOAD_MESSAGES.MIXED_TYPES };
+  }
+
+  if (hasPdf && files.length > 1) {
+    return { valid: false, errorMessage: UPLOAD_MESSAGES.SINGLE_PDF_ONLY };
+  }
+
+  if (hasDocx && files.length > MAX_DOCX_BATCH_COUNT) {
+    return { valid: false, errorMessage: UPLOAD_MESSAGES.EXCEEDS_BATCH_LIMIT };
   }
 
   return { valid: true };
@@ -60,15 +84,15 @@ export type DocumentUploadPresenter = {
   status: UploadStatus;
   isUploading: boolean;
   notification: UploadNotification | null;
-  uploadedDocuments: UploadDocumentResponse[];
+  uploadedResult: DocumentUploadAcceptedData | null;
   uploadFiles: (files: File[]) => Promise<void>;
   dismissNotification: () => void;
   reset: () => void;
 };
 
 export type DocumentUploadPresenterOptions = {
-  uploadFn?: (files: File[]) => Promise<UploadDocumentResponse[]>;
-  onSuccess?: (results: UploadDocumentResponse[]) => void;
+  uploadFn?: (files: File[]) => Promise<DocumentUploadAcceptedData>;
+  onSuccess?: (result: DocumentUploadAcceptedData) => void;
 };
 
 export function useDocumentUploadPresenter(
@@ -79,7 +103,7 @@ export function useDocumentUploadPresenter(
 
   const [status, setStatus] = useState<UploadStatus>("idle");
   const [notification, setNotification] = useState<UploadNotification | null>(null);
-  const [uploadedDocuments, setUploadedDocuments] = useState<UploadDocumentResponse[]>([]);
+  const [uploadedResult, setUploadedResult] = useState<DocumentUploadAcceptedData | null>(null);
 
   const dismissNotification = useCallback((): void => {
     setNotification(null);
@@ -88,7 +112,7 @@ export function useDocumentUploadPresenter(
   const reset = useCallback((): void => {
     setStatus("idle");
     setNotification(null);
-    setUploadedDocuments([]);
+    setUploadedResult(null);
   }, []);
 
   const uploadFiles = useCallback(
@@ -107,19 +131,21 @@ export function useDocumentUploadPresenter(
       setNotification(null);
 
       try {
-        const results = await uploadFn(files);
-        setUploadedDocuments(results);
+        const result = await uploadFn(files);
+        setUploadedResult(result);
         setStatus("success");
         setNotification({
           type: "success",
-          message: UPLOAD_MESSAGES.SUCCESS,
+          message: result.message ?? UPLOAD_MESSAGES.SUCCESS,
         });
-        onSuccess?.(results);
+        onSuccess?.(result);
       } catch (error) {
         if (
           error instanceof ApiClientError &&
-          (error.code === "DUPLICATE_FILE" ||
+          (error.code === DOCUMENT_ERROR_CODES.DUPLICATE_DOCUMENT ||
+            error.code === "DUPLICATE_FILE" ||
             error.code === "CONFLICT" ||
+            error.status === 409 ||
             error.message.toLowerCase().includes("sudah ada") ||
             error.message.toLowerCase().includes("already exists"))
         ) {
@@ -127,6 +153,18 @@ export function useDocumentUploadPresenter(
           setNotification({
             type: "error",
             message: UPLOAD_MESSAGES.DUPLICATE,
+          });
+          return;
+        }
+
+        if (
+          error instanceof ApiClientError &&
+          (error.code === DOCUMENT_ERROR_CODES.UNSUPPORTED_FILE_TYPE || error.status === 415)
+        ) {
+          setStatus("unsupported_error");
+          setNotification({
+            type: "error",
+            message: error.message || UPLOAD_MESSAGES.UNSUPPORTED,
           });
           return;
         }
@@ -148,7 +186,7 @@ export function useDocumentUploadPresenter(
     status,
     isUploading: status === "uploading",
     notification,
-    uploadedDocuments,
+    uploadedResult,
     uploadFiles,
     dismissNotification,
     reset,
