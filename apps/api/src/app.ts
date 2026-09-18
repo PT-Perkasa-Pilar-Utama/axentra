@@ -6,6 +6,7 @@ import { isAppError } from "./http/errors";
 import { jsonError } from "./http/responses";
 import { requestContextMiddleware } from "./middleware/request-context";
 import { createHealthRoutes } from "./modules/health/health.routes";
+import { createAuthRoutes } from "./modules/auth/auth.routes";
 
 export type AppDependencies = {
   logger: Logger;
@@ -25,6 +26,8 @@ export function createApp(dependencies: AppDependencies): Hono<ApiEnvironment> {
       readinessChecks: dependencies.readinessChecks,
     }),
   );
+
+  app.route("/api/v1/auth", createAuthRoutes());
 
   app.notFound((context) => jsonError(context, "NOT_FOUND", "Endpoint tidak ditemukan", 404));
 
