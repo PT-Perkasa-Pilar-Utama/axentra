@@ -51,6 +51,7 @@ export {
 export type {
   CheckDuplicateResponse,
   DocumentErrorCode,
+  DocumentProcessingStatus,
   DocumentType,
   DocumentUploadAcceptedData,
   DocumentUploadFileMeta,
@@ -69,6 +70,7 @@ export {
   SUPPORTED_DOCUMENT_EXTENSIONS,
   SUPPORTED_DOCUMENT_MIME_TYPES,
   checkDuplicateResponseSchema,
+  documentProcessingStatusSchema,
   documentUploadAcceptedDataSchema,
   documentUploadFileMetaSchema,
   getDocumentExtension,
