@@ -3,6 +3,7 @@ import { useDocumentDetailPresenter } from "./document-detail.presenter";
 
 function formatStatus(status: string): string {
   switch (status) {
+    case "completed":
     case "processed":
       return "Selesai Diproses";
     case "processing":
@@ -18,6 +19,7 @@ function formatStatus(status: string): string {
 
 function getStatusBadgeClass(status: string): string {
   switch (status) {
+    case "completed":
     case "processed":
       return "bg-emerald-100 text-emerald-800 border-emerald-200";
     case "processing":

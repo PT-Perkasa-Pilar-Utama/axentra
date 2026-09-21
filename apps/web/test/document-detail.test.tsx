@@ -3,28 +3,66 @@ import { createElement } from "react";
 import { renderToString } from "react-dom/server";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { documentMetadataSchema, type DocumentMetadata } from "@axentra/shared";
+import { documentDetailSchema, type DocumentDetail } from "@axentra/shared";
 import { DocumentDetailView } from "../src/features/document-detail/document-detail.view";
 
 describe("Document Detail Feature (FE-S1-03 / AC-03.01)", () => {
-  const sampleProcessedDoc: DocumentMetadata = {
-    id: "doc-123",
-    filename: "laporan-keuangan.pdf",
-    author: "Bessie Cooper",
-    format: "PDF",
-    sizeBytes: 2048000,
-    tags: ["Strategy", "AI", "Data Science", "ExtraTagIgnored"],
-    category: "Report",
-    uploadDate: "16/12/2025",
-    processingStatus: "processed",
+  const sampleProcessedDoc: DocumentDetail = {
+    id: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+    title: "laporan-keuangan.pdf",
+    processingStatus: "completed",
+    file: {
+      id: "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22",
+      originalName: "laporan-keuangan.pdf",
+      mimeType: "application/pdf",
+      fileSize: 2048000,
+      fileExtension: "pdf",
+      createdAt: "2025-12-16T10:00:00.000Z",
+    },
+    category: {
+      id: "c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33",
+      name: "Report",
+      slug: "report",
+      downloadEnabled: true,
+      createdAt: "2025-12-16T10:00:00.000Z",
+      updatedAt: "2025-12-16T10:00:00.000Z",
+    },
+    tags: [
+      {
+        id: "d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44",
+        name: "Strategy",
+        createdAt: "2025-12-16T10:00:00.000Z",
+      },
+      {
+        id: "e0eebc99-9c0b-4ef8-bb6d-6bb9bd380a55",
+        name: "AI",
+        createdAt: "2025-12-16T10:00:00.000Z",
+      },
+      {
+        id: "f0eebc99-9c0b-4ef8-bb6d-6bb9bd380a66",
+        name: "Data Science",
+        createdAt: "2025-12-16T10:00:00.000Z",
+      },
+      {
+        id: "10eebc99-9c0b-4ef8-bb6d-6bb9bd380a77",
+        name: "ExtraTagIgnored",
+        createdAt: "2025-12-16T10:00:00.000Z",
+      },
+    ],
+    metadata: {
+      author: "Bessie Cooper",
+      extractedAt: "2025-12-16T10:05:00.000Z",
+    },
+    createdAt: "2025-12-16T10:00:00.000Z",
+    updatedAt: "2025-12-16T10:05:00.000Z",
   };
 
   test("AC-03.01: parses and validates author metadata from processed document", () => {
-    const parsed = documentMetadataSchema.safeParse(sampleProcessedDoc);
+    const parsed = documentDetailSchema.safeParse(sampleProcessedDoc);
     expect(parsed.success).toBe(true);
     if (parsed.success) {
-      expect(parsed.data.author).toBe("Bessie Cooper");
-      expect(parsed.data.processingStatus).toBe("processed");
+      expect(parsed.data.metadata?.author).toBe("Bessie Cooper");
+      expect(parsed.data.processingStatus).toBe("completed");
     }
   });
 
@@ -38,14 +76,17 @@ describe("Document Detail Feature (FE-S1-03 / AC-03.01)", () => {
     });
 
     // Seed query data to simulate ready state with processed author metadata
-    queryClient.setQueryData(["document-detail", "doc-123"], sampleProcessedDoc);
+    queryClient.setQueryData(
+      ["document-detail", "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"],
+      sampleProcessedDoc,
+    );
 
     const element = createElement(
       QueryClientProvider,
       { client: queryClient },
       createElement(
         MemoryRouter,
-        { initialEntries: ["/documents/doc-123"] },
+        { initialEntries: ["/documents/a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"] },
         createElement(
           Routes,
           null,

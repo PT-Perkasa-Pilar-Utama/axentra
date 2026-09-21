@@ -1,10 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
-import type { DocumentMetadata } from "@axentra/shared";
+import type { DocumentDetail } from "@axentra/shared";
 import { getDocumentDetail } from "./document-detail.api";
 
 export type DocumentDetailPresenter = {
   status: "loading" | "ready" | "error";
-  document: DocumentMetadata | undefined;
+  document: DocumentDetail | undefined;
   author: string | null;
   filename: string;
   category: string | null;
@@ -15,7 +15,7 @@ export type DocumentDetailPresenter = {
 };
 
 export type DocumentDetailPresenterOptions = {
-  fetchFn?: (id: string) => Promise<DocumentMetadata>;
+  fetchFn?: (id: string) => Promise<DocumentDetail>;
 };
 
 export function useDocumentDetailPresenter(
@@ -45,12 +45,12 @@ export function useDocumentDetailPresenter(
   return {
     status,
     document: doc,
-    author: doc?.author ?? null,
-    filename: doc?.filename ?? "",
-    category: doc?.category ?? null,
-    tags: doc?.tags ?? [],
-    uploadDate: doc?.uploadDate,
-    isProcessed: doc?.processingStatus === "processed",
+    author: doc?.metadata?.author ?? null,
+    filename: doc?.file?.originalName ?? doc?.title ?? "",
+    category: doc?.category?.name ?? null,
+    tags: doc?.tags?.map((tag) => tag.name) ?? [],
+    uploadDate: doc?.createdAt,
+    isProcessed: doc?.processingStatus === "completed",
     retry: () => void query.refetch(),
   };
 }
