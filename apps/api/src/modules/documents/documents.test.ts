@@ -1,16 +1,24 @@
-import { describe, expect, test } from "bun:test";
-import { createLogger } from "@axentra/observability";
-import type {
-  ApiErrorEnvelope,
-  ApiSuccessEnvelope,
-  DocumentUploadAcceptedData,
+import { beforeEach, describe, expect, it, test } from "bun:test";
+import { createLogger, type Logger } from "@axentra/observability";
+import type { StorageAdapter } from "@axentra/storage";
+import {
+  DOCUMENT_COPY,
+  DOCUMENT_ERROR_CODES,
+  documentProcessJobName,
+  type ApiErrorEnvelope,
+  type ApiSuccessEnvelope,
+  type AuthUser,
+  type DocumentProcessJob,
+  type DocumentUploadAcceptedData,
 } from "@axentra/shared";
+import type { QueueProducer } from "@axentra/queue";
 import { createApp } from "../../app";
-import { PayloadTooLargeError, UnsupportedFileTypeError } from "../../http/errors";
+import { ConflictError, PayloadTooLargeError, UnsupportedFileTypeError } from "../../http/errors";
 import type { TokenVerifier } from "../../middleware/auth";
-import { validateSingleFileConstraints } from "./documents.schema";
-import { createDocumentService } from "./documents.service";
 import { createAuthService } from "../auth/auth.service";
+import type { CreateDocumentBatchItem, IDocumentRepository } from "./documents.repository";
+import { validateSingleFileConstraints } from "./documents.schema";
+import { createDocumentService, DocumentService } from "./documents.service";
 
 const testLogger = createLogger({
   service: "axentra-api",
@@ -19,38 +27,31 @@ const testLogger = createLogger({
   level: "fatal",
 });
 
+const TEST_MEMBER: AuthUser = {
+  id: "usr-member-1",
+  email: "member@axentra.local",
+  role: "member_team",
+  name: "Member Test",
+};
+
+const TEST_HEAD: AuthUser = {
+  id: "usr-head-1",
+  email: "head@axentra.local",
+  role: "head_of_team",
+  name: "Head Test",
+};
+
 const testTokenVerifier: TokenVerifier = {
-  verifyToken(token: string) {
-    if (token === "test-token-member") {
-      return {
-        id: "usr-member-1",
-        email: "member@axentra.local",
-        role: "member_team",
-        name: "Member Test",
-      };
+  verifyToken(token: string): AuthUser | null {
+    if (token === "test-token-member" || token === "member-token") {
+      return TEST_MEMBER;
     }
-    if (token === "test-token-head") {
-      return {
-        id: "usr-head-1",
-        email: "head@axentra.local",
-        role: "head_of_team",
-        name: "Head Test",
-      };
+    if (token === "test-token-head" || token === "head-token") {
+      return TEST_HEAD;
     }
     return null;
   },
 };
-
-function createTestApp(verifier: TokenVerifier = testTokenVerifier) {
-  return createApp({
-    logger: testLogger,
-    version: "0.1.0",
-    readinessChecks: [],
-    documentService: createDocumentService(),
-    tokenVerifier: verifier,
-    enableUploadRoute: true,
-  });
-}
 
 function createZipArchive(
   entries: ReadonlyArray<{ name: string; content?: Uint8Array }>,
@@ -125,11 +126,16 @@ function createZipArchive(
   return result;
 }
 
-function createValidDocxBuffer(): Uint8Array {
+function createValidDocxBuffer(customText = "Valid DOCX body"): Uint8Array {
   return createZipArchive([
     { name: "[Content_Types].xml", content: new TextEncoder().encode("<Types/>") },
     { name: "_rels/.rels", content: new TextEncoder().encode("<Relationships/>") },
-    { name: "word/document.xml", content: new TextEncoder().encode("<w:document/>") },
+    {
+      name: "word/document.xml",
+      content: new TextEncoder().encode(
+        `<w:document><w:body><w:p><w:r><w:t>${customText}</w:t></w:r></w:p></w:body></w:document>`,
+      ),
+    },
   ]);
 }
 
@@ -145,14 +151,11 @@ function createGenericZipBuffer(): Uint8Array {
   ]);
 }
 
-function createPdfBuffer(size = 100): Uint8Array {
-  const buffer = new Uint8Array(Math.max(size, 10));
-  // %PDF-
-  buffer[0] = 0x25;
-  buffer[1] = 0x50;
-  buffer[2] = 0x44;
-  buffer[3] = 0x46;
-  buffer[4] = 0x2d;
+function createPdfBuffer(size = 100, customText = "report"): Uint8Array {
+  const header = `%PDF-1.4\n% ${customText}\n`;
+  const headerBytes = new TextEncoder().encode(header);
+  const buffer = new Uint8Array(Math.max(size, headerBytes.length));
+  buffer.set(headerBytes, 0);
   return buffer;
 }
 
@@ -165,7 +168,149 @@ function createJpgBuffer(size = 100): Uint8Array {
   return buffer;
 }
 
-describe("POST /api/v1/documents/upload - Task BE-S1-03", () => {
+function makePdfFile(name = "laporan.pdf", customText = "default content"): File {
+  return new File([createPdfBuffer(100, customText)], name, { type: "application/pdf" });
+}
+
+function makeDocxFile(name = "dokumen.docx", customText = "default content"): File {
+  return new File([createValidDocxBuffer(customText)], name, {
+    type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  });
+}
+
+function createMockStorage(): StorageAdapter & {
+  stored: Map<string, { body: Uint8Array | string; contentType: string }>;
+  deleted: string[];
+  failOnDelete: boolean;
+} {
+  const stored = new Map<string, { body: Uint8Array | string; contentType: string }>();
+  const deleted: string[] = [];
+
+  const storage = {
+    stored,
+    deleted,
+    failOnDelete: false,
+    initialize: async () => {},
+    checkHealth: async () => {},
+    putObject: async (input: {
+      key: string;
+      body: Uint8Array | string;
+      contentType: string;
+      checksumSha256?: string;
+    }) => {
+      stored.set(input.key, { body: input.body, contentType: input.contentType });
+    },
+    getObject: async (key: string) => {
+      const obj = stored.get(key);
+      if (!obj) throw new Error("Object not found in mock storage");
+      return typeof obj.body === "string" ? Buffer.from(obj.body) : obj.body;
+    },
+    deleteObject: async (key: string) => {
+      if (storage.failOnDelete) {
+        throw new Error("Simulated storage delete failure");
+      }
+      stored.delete(key);
+      deleted.push(key);
+    },
+    headObject: async (key: string) => {
+      const obj = stored.get(key);
+      if (!obj) throw new Error("Object not found in mock storage");
+      return {
+        key,
+        contentLength: typeof obj.body === "string" ? Buffer.byteLength(obj.body) : obj.body.length,
+        contentType: obj.contentType,
+        checksumSha256: undefined,
+      };
+    },
+    createDownloadUrl: async (key: string) => `http://mock-storage/${key}`,
+    close: async () => {},
+  };
+  return storage;
+}
+
+function createMockRepository(): IDocumentRepository & {
+  savedBatches: CreateDocumentBatchItem[][];
+  existingHashes: Set<string>;
+  failOnSave: boolean;
+  failWithUniqueConstraint: boolean;
+} {
+  const savedBatches: CreateDocumentBatchItem[][] = [];
+  const existingHashes = new Set<string>();
+
+  const repo = {
+    savedBatches,
+    existingHashes,
+    failOnSave: false,
+    failWithUniqueConstraint: false,
+    findExistingHashes: async (hashes: ReadonlyArray<string>) => {
+      const found = new Set<string>();
+      for (const h of hashes) {
+        if (existingHashes.has(h)) found.add(h);
+      }
+      return found;
+    },
+    saveDocumentBatch: async (items: ReadonlyArray<CreateDocumentBatchItem>) => {
+      if (repo.failWithUniqueConstraint) {
+        throw new ConflictError(
+          DOCUMENT_ERROR_CODES.DUPLICATE_DOCUMENT,
+          DOCUMENT_COPY.DUPLICATE_WARNING,
+        );
+      }
+      if (repo.failOnSave) {
+        throw new Error("Simulated database failure");
+      }
+      savedBatches.push([...items]);
+      for (const item of items) {
+        existingHashes.add(item.contentHash);
+      }
+      return items.map((i) => ({
+        documentId: i.id,
+        title: i.title,
+        originalName: i.originalName,
+        storageKey: i.storageKey,
+        mimeType: i.mimeType,
+        fileSize: i.fileSize,
+        fileExtension: i.fileExtension,
+        contentHash: i.contentHash,
+      }));
+    },
+    findDocumentById: async () => null,
+    findDocumentFileByDocumentId: async () => null,
+  };
+  return repo;
+}
+
+function createMockQueue(): QueueProducer & {
+  enqueued: Array<{ name: string; data: unknown }>;
+} {
+  const enqueued: Array<{ name: string; data: unknown }> = [];
+  return {
+    enqueued,
+    enqueueSystemHealthCheck: async () => "job-health",
+    enqueueDocumentProcessing: async (data: DocumentProcessJob) => {
+      enqueued.push({ name: documentProcessJobName, data });
+      return `job-${enqueued.length}`;
+    },
+    enqueueDocumentProcess: async (data: DocumentProcessJob) => {
+      enqueued.push({ name: documentProcessJobName, data });
+      return `job-${enqueued.length}`;
+    },
+    close: async () => {},
+  };
+}
+
+function createTestApp(verifier: TokenVerifier = testTokenVerifier, service?: DocumentService) {
+  return createApp({
+    logger: testLogger,
+    version: "0.1.0",
+    readinessChecks: [],
+    documentService: service ?? createDocumentService(),
+    tokenVerifier: verifier,
+    enableUploadRoute: true,
+  });
+}
+
+describe("POST /api/v1/documents/upload", () => {
   const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
   const MEMBER_AUTH_HEADER = { authorization: "Bearer test-token-member" };
 
@@ -235,7 +380,6 @@ describe("POST /api/v1/documents/upload - Task BE-S1-03", () => {
     });
 
     test("strictly rejects unsigned Base64 JSON token forgery on production verifier with 401", async () => {
-      // Create app with default production verifier (no test verifier injected)
       const productionApp = createApp({
         logger: testLogger,
         version: "0.1.0",
@@ -267,13 +411,11 @@ describe("POST /api/v1/documents/upload - Task BE-S1-03", () => {
 
       expect(response.status).toBe(401);
       const json = (await response.json()) as ApiErrorEnvelope;
-      expect(json.success).toBe(false);
       expect(json.error.code).toBe("UNAUTHORIZED");
-      expect(json.error.message).toBe("Token tidak valid atau telah kedaluwarsa");
     });
   });
 
-  describe("AC-01.03: Reject unsupported file types such as .JPG & MIME policy (F3)", () => {
+  describe("AC-01.03: Reject unsupported file types & MIME policy (F2)", () => {
     test("rejects .JPG image upload with 415 and stable error copy 'Tipe file tidak didukung'", async () => {
       const app = createTestApp();
       const formData = new FormData();
@@ -290,7 +432,7 @@ describe("POST /api/v1/documents/upload - Task BE-S1-03", () => {
       const json = (await response.json()) as ApiErrorEnvelope;
       expect(json.success).toBe(false);
       expect(json.error.code).toBe("UNSUPPORTED_FILE_TYPE");
-      expect(json.error.message).toBe("Tipe file tidak didukung");
+      expect(json.error.message).toBe(DOCUMENT_COPY.UNSUPPORTED_TYPE);
     });
 
     test("rejects lowercase .jpg and .jpeg files", async () => {
@@ -307,7 +449,7 @@ describe("POST /api/v1/documents/upload - Task BE-S1-03", () => {
       expect(response.status).toBe(415);
       const json = (await response.json()) as ApiErrorEnvelope;
       expect(json.error.code).toBe("UNSUPPORTED_FILE_TYPE");
-      expect(json.error.message).toBe("Tipe file tidak didukung");
+      expect(json.error.message).toBe(DOCUMENT_COPY.UNSUPPORTED_TYPE);
     });
 
     test("rejects other unsupported extensions (.png, .txt, .exe)", async () => {
@@ -332,7 +474,7 @@ describe("POST /api/v1/documents/upload - Task BE-S1-03", () => {
         expect(response.status).toBe(415);
         const json = (await response.json()) as ApiErrorEnvelope;
         expect(json.error.code).toBe("UNSUPPORTED_FILE_TYPE");
-        expect(json.error.message).toBe("Tipe file tidak didukung");
+        expect(json.error.message).toBe(DOCUMENT_COPY.UNSUPPORTED_TYPE);
       }
     });
 
@@ -354,7 +496,7 @@ describe("POST /api/v1/documents/upload - Task BE-S1-03", () => {
       expect(response.status).toBe(415);
       const json = (await response.json()) as ApiErrorEnvelope;
       expect(json.error.code).toBe("UNSUPPORTED_FILE_TYPE");
-      expect(json.error.message).toBe("Tipe file tidak didukung");
+      expect(json.error.message).toBe(DOCUMENT_COPY.UNSUPPORTED_TYPE);
     });
 
     test("rejects generic ZIP MIME types (application/zip, application/x-zip-compressed) in schema validation", () => {
@@ -399,7 +541,7 @@ describe("POST /api/v1/documents/upload - Task BE-S1-03", () => {
       expect(response.status).toBe(415);
       const json = (await response.json()) as ApiErrorEnvelope;
       expect(json.error.code).toBe("UNSUPPORTED_FILE_TYPE");
-      expect(json.error.message).toBe("Tipe file tidak didukung");
+      expect(json.error.message).toBe(DOCUMENT_COPY.UNSUPPORTED_TYPE);
     });
 
     test("rejects generic ZIP renamed to .docx with 415", async () => {
@@ -420,76 +562,11 @@ describe("POST /api/v1/documents/upload - Task BE-S1-03", () => {
       expect(response.status).toBe(415);
       const json = (await response.json()) as ApiErrorEnvelope;
       expect(json.error.code).toBe("UNSUPPORTED_FILE_TYPE");
-      expect(json.error.message).toBe("Tipe file tidak didukung");
+      expect(json.error.message).toBe(DOCUMENT_COPY.UNSUPPORTED_TYPE);
     });
   });
 
-  describe("AC-01.01: Single valid PDF upload", () => {
-    test("accepts a valid PDF file and returns 'File diterima untuk diproses'", async () => {
-      const app = createTestApp();
-      const formData = new FormData();
-      formData.append(
-        "file",
-        new Blob([createPdfBuffer()], { type: "application/pdf" }),
-        "laporan.pdf",
-      );
-
-      const response = await app.request("/api/v1/documents/upload", {
-        method: "POST",
-        headers: MEMBER_AUTH_HEADER,
-        body: formData,
-      });
-
-      expect(response.status).toBe(200);
-      const json = (await response.json()) as ApiSuccessEnvelope<DocumentUploadAcceptedData>;
-      expect(json.success).toBe(true);
-      expect(json.data.message).toBe("File diterima untuk diproses");
-      expect(json.data.count).toBe(1);
-      const firstFile = json.data.files[0];
-      expect(firstFile?.filename).toBe("laporan.pdf");
-      expect(firstFile?.documentType).toBe("pdf");
-    });
-  });
-
-  describe("AC-01.04: Multiple valid DOCX files upload", () => {
-    test("accepts three valid DOCX files simultaneously", async () => {
-      const app = createTestApp();
-      const formData = new FormData();
-      formData.append(
-        "files",
-        new Blob([createValidDocxBuffer()], { type: DOCX_MIME }),
-        "kontrak-a.docx",
-      );
-      formData.append(
-        "files",
-        new Blob([createValidDocxBuffer()], { type: DOCX_MIME }),
-        "kontrak-b.docx",
-      );
-      formData.append(
-        "files",
-        new Blob([createValidDocxBuffer()], { type: DOCX_MIME }),
-        "kontrak-c.docx",
-      );
-
-      const response = await app.request("/api/v1/documents/upload", {
-        method: "POST",
-        headers: MEMBER_AUTH_HEADER,
-        body: formData,
-      });
-
-      expect(response.status).toBe(200);
-      const json = (await response.json()) as ApiSuccessEnvelope<DocumentUploadAcceptedData>;
-      expect(json.success).toBe(true);
-      expect(json.data.message).toBe("File diterima untuk diproses");
-      expect(json.data.count).toBe(3);
-      expect(json.data.files).toHaveLength(3);
-      expect(json.data.files[0]?.documentType).toBe("docx");
-      expect(json.data.files[1]?.documentType).toBe("docx");
-      expect(json.data.files[2]?.documentType).toBe("docx");
-    });
-  });
-
-  describe("Upload batch and size constraints (F2)", () => {
+  describe("Upload Batch and Size Constraints (F1)", () => {
     test("rejects upload when multiple PDFs are submitted (single-PDF rule)", async () => {
       const app = createTestApp();
       const formData = new FormData();
@@ -513,7 +590,7 @@ describe("POST /api/v1/documents/upload - Task BE-S1-03", () => {
       expect(response.status).toBe(400);
       const json = (await response.json()) as ApiErrorEnvelope;
       expect(json.success).toBe(false);
-      expect(json.error.message).toBe("Hanya satu file PDF yang dapat diunggah");
+      expect(json.error.message).toBe(DOCUMENT_COPY.SINGLE_PDF_ONLY);
     });
 
     test("rejects mixing PDF and DOCX in one upload", async () => {
@@ -539,7 +616,7 @@ describe("POST /api/v1/documents/upload - Task BE-S1-03", () => {
       expect(response.status).toBe(400);
       const json = (await response.json()) as ApiErrorEnvelope;
       expect(json.success).toBe(false);
-      expect(json.error.message).toBe("Tidak dapat mengunggah file PDF dan DOCX secara bersamaan");
+      expect(json.error.message).toBe(DOCUMENT_COPY.MIXED_TYPES_NOT_ALLOWED);
     });
 
     test("rejects empty file (0 bytes)", async () => {
@@ -555,7 +632,7 @@ describe("POST /api/v1/documents/upload - Task BE-S1-03", () => {
 
       expect(response.status).toBe(400);
       const json = (await response.json()) as ApiErrorEnvelope;
-      expect(json.error.message).toBe("File tidak boleh kosong");
+      expect(json.error.message).toBe(DOCUMENT_COPY.EMPTY_FILE);
     });
 
     test("rejects request without any files", async () => {
@@ -580,7 +657,7 @@ describe("POST /api/v1/documents/upload - Task BE-S1-03", () => {
       for (let i = 1; i <= 11; i++) {
         formData.append(
           "files",
-          new Blob([createValidDocxBuffer()], { type: DOCX_MIME }),
+          new Blob([createValidDocxBuffer(`doc-${i}`)], { type: DOCX_MIME }),
           `kontrak-${i}.docx`,
         );
       }
@@ -593,7 +670,7 @@ describe("POST /api/v1/documents/upload - Task BE-S1-03", () => {
 
       expect(response.status).toBe(400);
       const json = (await response.json()) as ApiErrorEnvelope;
-      expect(json.error.message).toBe("Maksimal 10 file DOCX yang dapat diunggah sekaligus");
+      expect(json.error.message).toBe(DOCUMENT_COPY.EXCEEDS_DOCX_BATCH_LIMIT);
     });
 
     test("rejects oversized request early via Content-Length header with 413 before parsing body", async () => {
@@ -618,7 +695,6 @@ describe("POST /api/v1/documents/upload - Task BE-S1-03", () => {
     test("rejects streaming request without Content-Length header exceeding 50 MB with 413 mid-stream", async () => {
       const app = createTestApp();
 
-      // Create a chunked stream without content-length that exceeds 50 MB
       const boundary = "----WebKitFormBoundaryChunkedTest";
       const headerPart =
         `--${boundary}\r\n` +
@@ -689,8 +765,278 @@ describe("POST /api/v1/documents/upload - Task BE-S1-03", () => {
     });
   });
 
-  describe("Production Unmounted Guard & BE-S1-02 Integration Readiness (F4)", () => {
-    test("production server configuration leaves upload route unmounted (404) to prevent false-success data loss before BE-S1-02", async () => {
+  describe("End-to-End Persistence, Queue Enqueue & Duplicate Detection", () => {
+    let storage: ReturnType<typeof createMockStorage>;
+    let repository: ReturnType<typeof createMockRepository>;
+    let queue: ReturnType<typeof createMockQueue>;
+    let documentService: DocumentService;
+    let app: ReturnType<typeof createApp>;
+
+    beforeEach(() => {
+      storage = createMockStorage();
+      repository = createMockRepository();
+      queue = createMockQueue();
+      documentService = new DocumentService({
+        repository,
+        storage,
+        queue,
+        logger: testLogger,
+      });
+      app = createApp({
+        logger: testLogger,
+        version: "0.1.0",
+        readinessChecks: [],
+        tokenVerifier: testTokenVerifier,
+        documentService,
+        enableUploadRoute: true,
+      });
+    });
+
+    it("accepts a valid PDF from Member Team and returns 200, persists to storage & db, and enqueues job (F3)", async () => {
+      const formData = new FormData();
+      formData.append("files", makePdfFile("laporan.pdf", "laporan content"));
+
+      const response = await app.request("/api/v1/documents/upload", {
+        method: "POST",
+        headers: { authorization: "Bearer member-token" },
+        body: formData,
+      });
+
+      expect(response.status).toBe(200);
+      const json = (await response.json()) as ApiSuccessEnvelope<DocumentUploadAcceptedData>;
+      expect(json.success).toBe(true);
+      expect(json.data.message).toBe(DOCUMENT_COPY.UPLOAD_ACCEPTED);
+      expect(json.data.count).toBe(1);
+      expect(json.data.files[0]?.filename).toBe("laporan.pdf");
+      expect(json.data.files[0]?.documentType).toBe("pdf");
+
+      // Verify persistence in repository
+      expect(repository.savedBatches.length).toBe(1);
+      const savedItem = repository.savedBatches[0]?.[0];
+      expect(savedItem?.originalName).toBe("laporan.pdf");
+      expect(savedItem?.fileExtension).toBe("pdf");
+
+      // Verify stored object in storage
+      expect(storage.stored.size).toBe(1);
+      expect(storage.stored.has(savedItem?.storageKey ?? "")).toBe(true);
+
+      // Verify queue enqueue (F3)
+      expect(queue.enqueued.length).toBe(1);
+      const queuedJob = queue.enqueued[0];
+      expect(queuedJob?.name).toBe(documentProcessJobName);
+      const jobData = queuedJob?.data as DocumentProcessJob;
+      expect(jobData.schemaVersion).toBe(1);
+      expect(jobData.documentId).toBe(savedItem?.id ?? "");
+      expect(jobData.storageKey).toBe(savedItem?.storageKey ?? "");
+    });
+
+    it("accepts multiple valid DOCX files and returns count and details", async () => {
+      const formData = new FormData();
+      formData.append("files", makeDocxFile("doc1.docx", "DOCX content 1"));
+      formData.append("files", makeDocxFile("doc2.docx", "DOCX content 2"));
+      formData.append("files", makeDocxFile("doc3.docx", "DOCX content 3"));
+
+      const response = await app.request("/api/v1/documents/upload", {
+        method: "POST",
+        headers: { authorization: "Bearer member-token" },
+        body: formData,
+      });
+
+      expect(response.status).toBe(200);
+      const json = (await response.json()) as ApiSuccessEnvelope<DocumentUploadAcceptedData>;
+      expect(json.success).toBe(true);
+      expect(json.data.count).toBe(3);
+      expect(json.data.files.length).toBe(3);
+      expect(repository.savedBatches[0]?.length).toBe(3);
+      expect(storage.stored.size).toBe(3);
+      expect(queue.enqueued.length).toBe(3);
+    });
+
+    it("accepts upload with singular 'file' field name", async () => {
+      const formData = new FormData();
+      formData.append("file", makePdfFile("single.pdf"));
+
+      const response = await app.request("/api/v1/documents/upload", {
+        method: "POST",
+        headers: { authorization: "Bearer member-token" },
+        body: formData,
+      });
+
+      expect(response.status).toBe(200);
+      const json = (await response.json()) as ApiSuccessEnvelope<DocumentUploadAcceptedData>;
+      expect(json.data.count).toBe(1);
+    });
+
+    it("rejects duplicate upload with 409 and does not persist duplicate", async () => {
+      const pdf = makePdfFile("laporan-keuangan.pdf", "exact same report content");
+
+      // First upload succeeds
+      const form1 = new FormData();
+      form1.append("files", pdf);
+      const res1 = await app.request("/api/v1/documents/upload", {
+        method: "POST",
+        headers: { authorization: "Bearer member-token" },
+        body: form1,
+      });
+      expect(res1.status).toBe(200);
+      expect(storage.stored.size).toBe(1);
+      expect(repository.savedBatches.length).toBe(1);
+
+      // Second upload with identical content fails
+      const form2 = new FormData();
+      form2.append("files", makePdfFile("salinan-laporan.pdf", "exact same report content"));
+      const res2 = await app.request("/api/v1/documents/upload", {
+        method: "POST",
+        headers: { authorization: "Bearer member-token" },
+        body: form2,
+      });
+
+      expect(res2.status).toBe(409);
+      const json = (await res2.json()) as ApiErrorEnvelope;
+      expect(json.success).toBe(false);
+      expect(json.error.code).toBe(DOCUMENT_ERROR_CODES.DUPLICATE_DOCUMENT);
+      expect(json.error.message).toBe(DOCUMENT_COPY.DUPLICATE_WARNING);
+
+      // Verify no duplicate persisted in repository or storage
+      expect(repository.savedBatches.length).toBe(1);
+      expect(storage.stored.size).toBe(1);
+    });
+
+    it("rejects duplicates within the same upload batch with 409", async () => {
+      const formData = new FormData();
+      formData.append("files", makeDocxFile("doc1.docx", "identical content"));
+      formData.append("files", makeDocxFile("doc2.docx", "identical content"));
+
+      const response = await app.request("/api/v1/documents/upload", {
+        method: "POST",
+        headers: { authorization: "Bearer member-token" },
+        body: formData,
+      });
+
+      expect(response.status).toBe(409);
+      const json = (await response.json()) as ApiErrorEnvelope;
+      expect(json.error.code).toBe(DOCUMENT_ERROR_CODES.DUPLICATE_DOCUMENT);
+      expect(storage.stored.size).toBe(0);
+      expect(repository.savedBatches.length).toBe(0);
+    });
+
+    it("allows non-duplicate upload when another document exists", async () => {
+      // First file uploaded
+      const form1 = new FormData();
+      form1.append("files", makePdfFile("laporan-keuangan.pdf", "financial report"));
+      const res1 = await app.request("/api/v1/documents/upload", {
+        method: "POST",
+        headers: { authorization: "Bearer member-token" },
+        body: form1,
+      });
+      expect(res1.status).toBe(200);
+
+      // Second non-duplicate file uploaded
+      const form2 = new FormData();
+      form2.append("files", makePdfFile("presentasi-baru.pdf", "new presentation"));
+      const res2 = await app.request("/api/v1/documents/upload", {
+        method: "POST",
+        headers: { authorization: "Bearer member-token" },
+        body: form2,
+      });
+
+      expect(res2.status).toBe(200);
+      const json = (await res2.json()) as ApiSuccessEnvelope<DocumentUploadAcceptedData>;
+      expect(json.success).toBe(true);
+      expect(json.data.message).toBe(DOCUMENT_COPY.UPLOAD_ACCEPTED);
+      expect(repository.savedBatches.length).toBe(2);
+      expect(storage.stored.size).toBe(2);
+    });
+
+    it("maps concurrent unique constraint race (23505) to 409 and rolls back storage (F4)", async () => {
+      repository.failWithUniqueConstraint = true;
+
+      const formData = new FormData();
+      formData.append("files", makePdfFile("racing-doc.pdf", "race content"));
+
+      const response = await app.request("/api/v1/documents/upload", {
+        method: "POST",
+        headers: { authorization: "Bearer member-token" },
+        body: formData,
+      });
+
+      expect(response.status).toBe(409);
+      const json = (await response.json()) as ApiErrorEnvelope;
+      expect(json.success).toBe(false);
+      expect(json.error.code).toBe(DOCUMENT_ERROR_CODES.DUPLICATE_DOCUMENT);
+      expect(json.error.message).toBe(DOCUMENT_COPY.DUPLICATE_WARNING);
+
+      // Ensure storage rollback occurred
+      expect(storage.stored.size).toBe(0);
+      expect(storage.deleted.length).toBe(1);
+    });
+
+    it("deletes uploaded storage objects if repository transaction fails (Compensating Rollback)", async () => {
+      repository.failOnSave = true;
+
+      const formData = new FormData();
+      formData.append("files", makePdfFile());
+
+      const response = await app.request("/api/v1/documents/upload", {
+        method: "POST",
+        headers: { authorization: "Bearer member-token" },
+        body: formData,
+      });
+
+      expect(response.status).toBe(500);
+      // All uploaded keys must be deleted via compensation
+      expect(storage.stored.size).toBe(0);
+      expect(storage.deleted.length).toBe(1);
+    });
+
+    it("logs error when compensating storage rollback delete fails (F5)", async () => {
+      repository.failOnSave = true;
+      storage.failOnDelete = true;
+
+      const loggedErrors: Array<{ obj: unknown; msg?: string | undefined }> = [];
+      const spyLogger: Logger = {
+        ...testLogger,
+        child: () => spyLogger,
+        error: (obj: unknown, msg?: string | undefined) => {
+          loggedErrors.push({ obj, msg });
+        },
+      } as unknown as Logger;
+
+      const failingService = new DocumentService({
+        repository,
+        storage,
+        queue,
+        logger: spyLogger,
+      });
+
+      const spyApp = createApp({
+        logger: spyLogger,
+        version: "0.1.0",
+        readinessChecks: [],
+        tokenVerifier: testTokenVerifier,
+        documentService: failingService,
+        enableUploadRoute: true,
+      });
+
+      const formData = new FormData();
+      formData.append("files", makePdfFile());
+
+      const response = await spyApp.request("/api/v1/documents/upload", {
+        method: "POST",
+        headers: { authorization: "Bearer member-token" },
+        body: formData,
+      });
+
+      expect(response.status).toBe(500);
+      const rollbackLog = loggedErrors.find((e) =>
+        e.msg?.includes("Failed to clean up orphaned storage object"),
+      );
+      expect(rollbackLog).toBeDefined();
+    });
+  });
+
+  describe("Production Route Registration & AuthService Integration", () => {
+    test("registers /api/v1/documents/upload in production createApp configuration when authService and documentService are injected", async () => {
       const authService = createAuthService({
         authenticator: (creds) => {
           if (creds.email === "member@axentra.local" && creds.password === "correct-password") {

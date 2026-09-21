@@ -1,9 +1,11 @@
 export type { RedisProbe } from "./connection";
 export { createRedisProbe, redisConnectionOptions } from "./connection";
 export type {
+  DocumentProcessJobHandler,
   DocumentProcessingJobHandler,
   QueueJobHandlers,
   QueueProducer,
+  QueueWorkerHandlers,
   SystemHealthJobHandler,
 } from "./queue";
 export { createQueueProducer, createQueueWorker, createSystemHealthWorker } from "./queue";

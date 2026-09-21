@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import type {
@@ -59,16 +60,27 @@ describe("infrastructure integration", () => {
 
   beforeAll(async () => {
     if (!runIntegrationTests) return;
-    const [{ loadApiConfigFromRuntime }, db, observability, queue, storageAdapter, api, lifecycle] =
-      await Promise.all([
-        import("@axentra/config"),
-        import("@axentra/db"),
-        import("@axentra/observability"),
-        import("@axentra/queue"),
-        import("@axentra/storage"),
-        import("../apps/api/src/app"),
-        import("../apps/worker/src/lifecycle"),
-      ]);
+    const [
+      { loadApiConfigFromRuntime },
+      db,
+      observability,
+      queue,
+      storageAdapter,
+      api,
+      lifecycle,
+      docRepo,
+      docService,
+    ] = await Promise.all([
+      import("@axentra/config"),
+      import("@axentra/db"),
+      import("@axentra/observability"),
+      import("@axentra/queue"),
+      import("@axentra/storage"),
+      import("../apps/api/src/app"),
+      import("../apps/worker/src/lifecycle"),
+      import("../apps/api/src/modules/documents/documents.repository"),
+      import("../apps/api/src/modules/documents/documents.service"),
+    ]);
     checkDatabase = db.checkDatabase;
     closeDatabase = db.closeDatabase;
     createDatabaseClient = db.createDatabaseClient;
@@ -84,6 +96,39 @@ describe("infrastructure integration", () => {
     storage = createS3StorageAdapter(config);
     await Promise.all([checkDatabase(database), redis.checkHealth(), storage.initialize()]);
 
+    const queueName = `axentra-integration-${crypto.randomUUID()}`;
+    producer = createQueueProducer(queueName, config.REDIS_URL);
+    worker = createSystemHealthWorker(queueName, config.REDIS_URL, 1, async (payload) => {
+      onJobProcessed?.(payload);
+    });
+    await worker.waitUntilReady();
+
+    const integrationTokenVerifier = {
+      verifyToken(token: string) {
+        if (token === "integration-member-token") {
+          return {
+            id: "11111111-1111-4111-8111-111111111111",
+            email: "member@axentra.local",
+            role: "member_team" as const,
+            name: "Integration Member",
+          };
+        }
+        return null;
+      },
+    };
+
+    const documentService = docService.createDocumentService({
+      repository: new docRepo.DocumentRepository(database.db),
+      storage,
+      queue: producer,
+      logger: createLogger({
+        service: "axentra-api",
+        environment: config.APP_ENV,
+        version: config.APP_VERSION,
+        level: "fatal",
+      }),
+    });
+
     app = api.createApp({
       logger: createLogger({
         service: "axentra-api",
@@ -92,6 +137,9 @@ describe("infrastructure integration", () => {
         level: config.LOG_LEVEL,
       }),
       version: config.APP_VERSION,
+      tokenVerifier: integrationTokenVerifier,
+      documentService,
+      enableUploadRoute: true,
       readinessChecks: [
         {
           name: "database",
@@ -116,13 +164,6 @@ describe("infrastructure integration", () => {
         },
       ],
     });
-
-    const queueName = `axentra-integration-${crypto.randomUUID()}`;
-    producer = createQueueProducer(queueName, config.REDIS_URL);
-    worker = createSystemHealthWorker(queueName, config.REDIS_URL, 1, async (payload) => {
-      onJobProcessed?.(payload);
-    });
-    await worker.waitUntilReady();
   });
 
   afterAll(async () => {
@@ -238,4 +279,138 @@ describe("infrastructure integration", () => {
       await database.db.delete(documents).where(eq(documents.id, documentId));
     }
   });
+
+  integrationTest("uploads valid PDF and persists to real PostgreSQL and MinIO (F7)", async () => {
+    if (app === undefined || database === undefined || storage === undefined) {
+      throw new Error("Integration infrastructure was not initialized");
+    }
+    const { documents, documentFiles, documentContentHashes } = await import("@axentra/db");
+
+    const pdfContent = `%PDF-1.4\n% integration-test-${crypto.randomUUID()}\n`;
+    const pdfBytes = new TextEncoder().encode(pdfContent);
+    const expectedHash = crypto.createHash("sha256").update(pdfBytes).digest("hex");
+
+    const formData = new FormData();
+    formData.append(
+      "file",
+      new File([pdfBytes], "laporan-integrasi.pdf", { type: "application/pdf" }),
+    );
+
+    const response = await app.request("/api/v1/documents/upload", {
+      method: "POST",
+      headers: { authorization: "Bearer integration-member-token" },
+      body: formData,
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      success: boolean;
+      data: {
+        message: string;
+        count: number;
+        files: Array<{ filename: string; documentType: string; size: number }>;
+      };
+    };
+    expect(body.success).toBe(true);
+    expect(body.data.message).toBe("File diterima untuk diproses");
+    expect(body.data.count).toBe(1);
+    expect(body.data.files[0]?.filename).toBe("laporan-integrasi.pdf");
+    expect(body.data.files[0]?.documentType).toBe("pdf");
+
+    // 1. Verify PostgreSQL document_content_hashes record
+    const hashRows = await database.db
+      .select()
+      .from(documentContentHashes)
+      .where(eq(documentContentHashes.contentHash, expectedHash));
+    expect(hashRows.length).toBe(1);
+    expect(hashRows[0]?.contentHash).toBe(expectedHash);
+    expect(hashRows[0]?.hashAlgorithm).toBe("sha256");
+
+    const docId = hashRows[0]?.documentId;
+    expect(docId).toBeDefined();
+
+    if (docId !== undefined) {
+      try {
+        // 2. Verify PostgreSQL documents record
+        const docRows = await database.db.select().from(documents).where(eq(documents.id, docId));
+        expect(docRows.length).toBe(1);
+        expect(docRows[0]?.processingStatus).toBe("queued");
+        expect(docRows[0]?.title).toBe("laporan-integrasi.pdf");
+
+        // 3. Verify PostgreSQL document_files record
+        const fileRows = await database.db
+          .select()
+          .from(documentFiles)
+          .where(eq(documentFiles.documentId, docId));
+        expect(fileRows.length).toBe(1);
+        expect(fileRows[0]?.mimeType).toBe("application/pdf");
+        expect(fileRows[0]?.fileExtension).toBe("pdf");
+
+        // 4. Verify MinIO object
+        const storageKey = fileRows[0]?.storageKey;
+        if (storageKey !== undefined) {
+          const storedBytes = await storage.getObject(storageKey);
+          expect(Buffer.from(storedBytes)).toEqual(Buffer.from(pdfBytes));
+          await storage.deleteObject(storageKey);
+        }
+      } finally {
+        await database.db.delete(documents).where(eq(documents.id, docId));
+      }
+    }
+  });
+
+  integrationTest(
+    "handles concurrent same-content uploads via PostgreSQL unique constraint (F4)",
+    async () => {
+      if (app === undefined || database === undefined) {
+        throw new Error("Integration infrastructure was not initialized");
+      }
+      const { documents, documentContentHashes } = await import("@axentra/db");
+
+      const pdfContent = `%PDF-1.4\n% concurrent-race-${crypto.randomUUID()}\n`;
+      const pdfBytes = new TextEncoder().encode(pdfContent);
+      const raceHash = crypto.createHash("sha256").update(pdfBytes).digest("hex");
+
+      const form1 = new FormData();
+      form1.append("file", new File([pdfBytes], "race1.pdf", { type: "application/pdf" }));
+
+      const form2 = new FormData();
+      form2.append("file", new File([pdfBytes], "race2.pdf", { type: "application/pdf" }));
+
+      const [res1, res2] = await Promise.all([
+        app.request("/api/v1/documents/upload", {
+          method: "POST",
+          headers: { authorization: "Bearer integration-member-token" },
+          body: form1,
+        }),
+        app.request("/api/v1/documents/upload", {
+          method: "POST",
+          headers: { authorization: "Bearer integration-member-token" },
+          body: form2,
+        }),
+      ]);
+
+      const statuses = [res1.status, res2.status].sort();
+      expect(statuses).toEqual([200, 409]);
+
+      const conflictRes = res1.status === 409 ? res1 : res2;
+      const conflictBody = (await conflictRes.json()) as {
+        success: boolean;
+        error: { code: string; message: string };
+      };
+      expect(conflictBody.success).toBe(false);
+      expect(conflictBody.error.code).toBe("DUPLICATE_DOCUMENT");
+      expect(conflictBody.error.message).toBe("File ini sudah ada");
+
+      // Clean up successfully created document
+      const hashRows = await database.db
+        .select()
+        .from(documentContentHashes)
+        .where(eq(documentContentHashes.contentHash, raceHash));
+      const docId = hashRows[0]?.documentId;
+      if (docId !== undefined) {
+        await database.db.delete(documents).where(eq(documents.id, docId));
+      }
+    },
+  );
 });

@@ -131,7 +131,13 @@ export function createDocumentUploadHandler(
       throw new ValidationError(DOCUMENT_COPY.NO_FILES);
     }
 
-    const result = await dependencies.documentService.validateUpload(rawFiles);
+    const result = await dependencies.documentService.uploadDocuments(rawFiles);
     return jsonSuccess(context, result, 200);
   };
+}
+
+export function createUploadHandler(
+  documentService: DocumentService,
+): (context: Context<ApiEnvironment>) => Promise<Response> {
+  return createDocumentUploadHandler({ documentService });
 }

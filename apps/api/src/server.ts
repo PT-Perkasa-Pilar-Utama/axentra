@@ -1,10 +1,11 @@
 import { loadApiConfigFromRuntime } from "@axentra/config";
 import { checkDatabase, closeDatabase, createDatabaseClient } from "@axentra/db";
 import { createLogger, summarizeError } from "@axentra/observability";
-import { createRedisProbe } from "@axentra/queue";
+import { createQueueProducer, createRedisProbe } from "@axentra/queue";
 import { createS3StorageAdapter } from "@axentra/storage";
 import { createApp } from "./app";
 import { createAuthService } from "./modules/auth/auth.service";
+import { DocumentRepository } from "./modules/documents/documents.repository";
 import { createDocumentService } from "./modules/documents/documents.service";
 import { DrizzleDocumentMetadataRepository } from "./modules/documents/metadata.repository";
 
@@ -41,13 +42,19 @@ async function start(): Promise<void> {
   });
   const database = createDatabaseClient(config.DATABASE_URL);
   const redis = createRedisProbe(config.REDIS_URL, config.REDIS_HEALTH_TIMEOUT_MS);
+  const queue = createQueueProducer(config.QUEUE_NAME, config.REDIS_URL);
   const storage = createS3StorageAdapter(config);
 
   try {
     await storage.initialize();
   } catch (error) {
     await closeResourcesWithinDeadline(
-      [() => closeDatabase(database), () => redis.close(), () => storage.close()],
+      [
+        () => closeDatabase(database),
+        () => redis.close(),
+        () => queue.close(),
+        () => storage.close(),
+      ],
       config.API_SHUTDOWN_TIMEOUT_MS,
       (cleanupError) => logger.warn({ error: summarizeError(cleanupError) }, "API cleanup failed"),
     );
@@ -55,7 +62,12 @@ async function start(): Promise<void> {
   }
 
   const authService = createAuthService();
+  const documentRepository = new DocumentRepository(database.db);
   const documentService = createDocumentService({
+    repository: documentRepository,
+    storage,
+    queue,
+    logger,
     metadataRepository: new DrizzleDocumentMetadataRepository(database.db),
   });
 
@@ -69,6 +81,7 @@ async function start(): Promise<void> {
     ],
     authService,
     documentService,
+    enableUploadRoute: true,
   });
 
   const server = Bun.serve({
@@ -84,7 +97,12 @@ async function start(): Promise<void> {
     logger.info({ signal }, "API shutdown started");
     server.stop(false);
     const resourcesClosed = await closeResourcesWithinDeadline(
-      [() => closeDatabase(database), () => redis.close(), () => storage.close()],
+      [
+        () => closeDatabase(database),
+        () => redis.close(),
+        () => queue.close(),
+        () => storage.close(),
+      ],
       config.API_SHUTDOWN_TIMEOUT_MS,
       (cleanupError) => logger.warn({ error: summarizeError(cleanupError) }, "API cleanup failed"),
     );
