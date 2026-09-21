@@ -51,6 +51,18 @@ export class ConflictError extends AppError {
   }
 }
 
+export class UnsupportedFileTypeError extends AppError {
+  public constructor(message = "Tipe file tidak didukung", details?: ReadonlyArray<ErrorDetail>) {
+    super("UNSUPPORTED_FILE_TYPE", message, 415, details);
+  }
+}
+
+export class PayloadTooLargeError extends AppError {
+  public constructor(message = "Ukuran file melebihi batas maksimum") {
+    super("PAYLOAD_TOO_LARGE", message, 413);
+  }
+}
+
 export function isAppError(error: unknown): error is AppError {
   return error instanceof AppError;
 }
