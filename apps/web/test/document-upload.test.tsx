@@ -288,8 +288,8 @@ describe("document-upload view & route integration (F4)", () => {
     const html = renderToString(<DocumentUploadAreaView presenter={presenterMock} />);
 
     expect(html).toContain("Area Unggah Dokumen");
-    expect(html).toContain("Pilih atau seret file PDF atau DOCX ke sini");
-    expect(html).toContain("Pilih File");
+    expect(html).toContain("Klik di sini");
+    expect(html).toContain("untuk mengunggah file Anda");
     expect(html).toContain('type="file"');
     expect(html).toContain('accept=".pdf,.docx');
   });
@@ -332,8 +332,8 @@ describe("document-upload view & route integration (F4)", () => {
     const html = renderToString(<DocumentUploadNotificationView presenter={presenterMock} />);
 
     expect(html).toContain("File diterima untuk diproses");
-    expect(html).toContain("bg-emerald-50");
-    expect(html).toContain("✓");
+    expect(html).toContain("bg-[#c9f0dc]/90");
+    expect(html).toContain("Upload berhasil.");
   });
 
   test("renders duplicate error notification view", () => {
@@ -353,8 +353,8 @@ describe("document-upload view & route integration (F4)", () => {
     const html = renderToString(<DocumentUploadNotificationView presenter={presenterMock} />);
 
     expect(html).toContain("File ini sudah ada");
-    expect(html).toContain("bg-rose-50");
-    expect(html).toContain("✕");
+    expect(html).toContain("bg-[#f0a7a7]/90");
+    expect(html).toContain("Upload gagal.");
   });
 
   test("renders unsupported error notification view", () => {
@@ -374,7 +374,8 @@ describe("document-upload view & route integration (F4)", () => {
     const html = renderToString(<DocumentUploadNotificationView presenter={presenterMock} />);
 
     expect(html).toContain("Tipe file tidak didukung");
-    expect(html).toContain("bg-rose-50");
+    expect(html).toContain("bg-[#f0a7a7]/90");
+    expect(html).toContain("Upload gagal.");
   });
 
   test("renders generic error notification view", () => {
@@ -394,7 +395,8 @@ describe("document-upload view & route integration (F4)", () => {
     const html = renderToString(<DocumentUploadNotificationView presenter={presenterMock} />);
 
     expect(html).toContain("Gagal mengunggah file");
-    expect(html).toContain("bg-rose-50");
+    expect(html).toContain("bg-[#f0a7a7]/90");
+    expect(html).toContain("Upload gagal.");
   });
 
   test("returns empty output when notification is null", () => {
@@ -431,8 +433,7 @@ describe("document-upload view & route integration (F4)", () => {
 
     expect(html).toContain("Unggah Dokumen");
     expect(html).toContain("Area Unggah Dokumen");
-    expect(html).toContain("Pilih atau seret file PDF atau DOCX ke sini");
-    expect(html).toContain("Pilih File");
+    expect(html).toContain("Klik di sini");
     expect(html).toContain('type="file"');
     expect(html).toContain('accept=".pdf,.docx');
   });
