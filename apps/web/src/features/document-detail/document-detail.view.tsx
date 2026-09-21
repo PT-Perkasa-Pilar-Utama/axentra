@@ -85,7 +85,7 @@ export function DocumentDetailView(): React.JSX.Element {
     );
   }
 
-  const { filename, author, tags, category, uploadDate, document } = presenter;
+  const { filename, author, tags, category, uploadDate, processingStatus } = presenter;
   const visibleTags = tags.slice(0, 3);
 
   return (
@@ -115,10 +115,10 @@ export function DocumentDetailView(): React.JSX.Element {
             </h2>
             <span
               className={`text-xs px-3 py-1 rounded-full font-medium border ${getStatusBadgeClass(
-                document.processingStatus,
+                processingStatus,
               )}`}
             >
-              {formatStatus(document.processingStatus)}
+              {formatStatus(processingStatus)}
             </span>
           </div>
 

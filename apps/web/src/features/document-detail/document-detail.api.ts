@@ -1,7 +1,9 @@
-import type { DocumentDetail } from "@axentra/shared";
-import { documentDetailSchema } from "@axentra/shared";
+import type { DocumentMetadataResult } from "@axentra/shared";
+import { documentMetadataResultSchema } from "@axentra/shared";
 import { apiRequest } from "../../lib/api-client";
 
-export function getDocumentDetail(documentId: string): Promise<DocumentDetail> {
-  return apiRequest(`/documents/${documentId}`, documentDetailSchema);
+export function getDocumentMetadata(documentId: string): Promise<DocumentMetadataResult> {
+  return apiRequest(`/documents/${documentId}/metadata`, documentMetadataResultSchema);
 }
+
+export const getDocumentDetail = getDocumentMetadata;

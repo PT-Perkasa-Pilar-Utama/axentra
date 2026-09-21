@@ -1,21 +1,22 @@
 import { useQuery } from "@tanstack/react-query";
-import type { DocumentDetail } from "@axentra/shared";
+import type { DocumentMetadataResult } from "@axentra/shared";
 import { getDocumentDetail } from "./document-detail.api";
 
 export type DocumentDetailPresenter = {
   status: "loading" | "ready" | "error";
-  document: DocumentDetail | undefined;
+  document: DocumentMetadataResult | undefined;
   author: string | null;
   filename: string;
   category: string | null;
   tags: string[];
   uploadDate: string | undefined;
+  processingStatus: "completed" | "processing" | "queued" | "failed";
   isProcessed: boolean;
   retry: () => void;
 };
 
 export type DocumentDetailPresenterOptions = {
-  fetchFn?: (id: string) => Promise<DocumentDetail>;
+  fetchFn?: (id: string) => Promise<DocumentMetadataResult>;
 };
 
 export function useDocumentDetailPresenter(
@@ -41,16 +42,18 @@ export function useDocumentDetailPresenter(
   }
 
   const doc = query.data;
+  const processingStatus = doc?.extractedAt ? "completed" : "processing";
 
   return {
     status,
     document: doc,
-    author: doc?.metadata?.author ?? null,
-    filename: doc?.file?.originalName ?? doc?.title ?? "",
-    category: doc?.category?.name ?? null,
-    tags: doc?.tags?.map((tag) => tag.name) ?? [],
-    uploadDate: doc?.createdAt,
-    isProcessed: doc?.processingStatus === "completed",
+    author: doc?.author ?? null,
+    filename: (doc?.rawMetadata?.filename as string) ?? "Dokumen",
+    category: (doc?.rawMetadata?.category as string) ?? null,
+    tags: Array.isArray(doc?.rawMetadata?.tags) ? (doc.rawMetadata.tags as string[]) : [],
+    uploadDate: doc?.extractedAt ?? doc?.createdAt,
+    processingStatus,
+    isProcessed: Boolean(doc?.extractedAt || doc?.author),
     retry: () => void query.refetch(),
   };
 }
