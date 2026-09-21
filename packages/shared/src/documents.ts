@@ -39,7 +39,7 @@ export const DOCUMENT_COPY = {
 } as const;
 
 export const DOCUMENT_MIME_ALLOWLIST_BY_TYPE: Record<DocumentType, ReadonlyArray<string>> = {
-  pdf: ["application/pdf", "application/x-pdf"],
+  pdf: ["application/pdf"],
   docx: ["application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
 };
 

@@ -62,6 +62,7 @@ describe("document shared contracts", () => {
 
   test("maps document types to allowed MIME types correctly", () => {
     expect(DOCUMENT_MIME_ALLOWLIST_BY_TYPE.pdf).toContain("application/pdf");
+    expect(DOCUMENT_MIME_ALLOWLIST_BY_TYPE.pdf).not.toContain("application/x-pdf");
     expect(DOCUMENT_MIME_ALLOWLIST_BY_TYPE.docx).toContain(
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     );

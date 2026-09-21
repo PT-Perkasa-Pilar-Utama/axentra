@@ -368,6 +368,17 @@ describe("POST /api/v1/documents/upload - Task BE-S1-03", () => {
       }
     });
 
+    test("rejects non-canonical application/x-pdf in schema validation (F5)", () => {
+      expect(() =>
+        validateSingleFileConstraints({
+          filename: "laporan.pdf",
+          size: 100,
+          mimeType: "application/x-pdf",
+          bytes: createPdfBuffer(100),
+        }),
+      ).toThrow(UnsupportedFileTypeError);
+    });
+
     test("rejects fake DOCX ZIP containing only [Content_Types].xml (missing _rels/.rels and word/document.xml)", async () => {
       const app = createTestApp();
       const formData = new FormData();
@@ -676,8 +687,8 @@ describe("POST /api/v1/documents/upload - Task BE-S1-03", () => {
     });
   });
 
-  describe("Production Route Registration & AuthService Integration (F4)", () => {
-    test("registers /api/v1/documents/upload in production createApp configuration when authService and documentService are injected", async () => {
+  describe("Production Unmounted Guard & BE-S1-02 Integration Readiness (F4)", () => {
+    test("production server configuration leaves upload route unmounted (404) to prevent false-success data loss before BE-S1-02", async () => {
       const authService = createAuthService({
         authenticator: (creds) => {
           if (creds.email === "member@axentra.local" && creds.password === "correct-password") {
@@ -686,6 +697,57 @@ describe("POST /api/v1/documents/upload - Task BE-S1-03", () => {
               email: "member@axentra.local",
               role: "member_team",
               name: "Production Member",
+            };
+          }
+          return null;
+        },
+      });
+
+      // Production server.ts configuration does NOT inject documentService until BE-S1-02 is ready
+      const app = createApp({
+        logger: testLogger,
+        version: "0.1.0",
+        readinessChecks: [],
+        authService,
+      });
+
+      // Unauthenticated call returns 404 (route is not exposed at all in production)
+      const unauthResponse = await app.request("/api/v1/documents/upload", {
+        method: "POST",
+      });
+      expect(unauthResponse.status).toBe(404);
+
+      // Authenticated call also returns 404 (prevents false-success/data-loss path)
+      const loginResult = await authService.login({
+        email: "member@axentra.local",
+        password: "correct-password",
+      });
+      const authResponse = await app.request("/api/v1/documents/upload", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${loginResult.token}`,
+        },
+      });
+      expect(authResponse.status).toBe(404);
+    });
+
+    test("mounts upload route and applies authentication/RBAC when documentService is injected for BE-S1-02", async () => {
+      const authService = createAuthService({
+        authenticator: (creds) => {
+          if (creds.email === "member@axentra.local") {
+            return {
+              id: "usr-member",
+              email: "member@axentra.local",
+              role: "member_team",
+              name: "Member Team",
+            };
+          }
+          if (creds.email === "head@axentra.local") {
+            return {
+              id: "usr-head",
+              email: "head@axentra.local",
+              role: "head_of_team",
+              name: "Head of Team",
             };
           }
           return null;
@@ -707,58 +769,31 @@ describe("POST /api/v1/documents/upload - Task BE-S1-03", () => {
       });
       expect(unauthResponse.status).toBe(401);
 
-      // 2. Obtain real session token via authService.login
-      const loginResult = await authService.login({
+      // 2. With head_of_team token: returns 403 Forbidden
+      const headLogin = await authService.login({
+        email: "head@axentra.local",
+        password: "any",
+      });
+      const headResponse = await app.request("/api/v1/documents/upload", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${headLogin.token}`,
+        },
+      });
+      expect(headResponse.status).toBe(403);
+
+      // 3. With member_team token but missing multipart body: reaches handler and returns 400
+      const memberLogin = await authService.login({
         email: "member@axentra.local",
-        password: "correct-password",
+        password: "any",
       });
-      expect(loginResult.token).toBeDefined();
-
-      // 3. With valid session token but missing body: returns 400 (not 401 and not 404)
-      const missingBodyResponse = await app.request("/api/v1/documents/upload", {
+      const memberResponse = await app.request("/api/v1/documents/upload", {
         method: "POST",
         headers: {
-          authorization: `Bearer ${loginResult.token}`,
+          authorization: `Bearer ${memberLogin.token}`,
         },
       });
-      expect(missingBodyResponse.status).toBe(400);
-
-      // 4. With valid session token and valid PDF upload: returns 200 accepted
-      const formData = new FormData();
-      formData.append(
-        "file",
-        new File([createPdfBuffer(100)], "laporan-tahunan.pdf", { type: "application/pdf" }),
-      );
-      const successResponse = await app.request("/api/v1/documents/upload", {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${loginResult.token}`,
-        },
-        body: formData,
-      });
-
-      expect(successResponse.status).toBe(200);
-      const successJson =
-        (await successResponse.json()) as ApiSuccessEnvelope<DocumentUploadAcceptedData>;
-      expect(successJson.success).toBe(true);
-      expect(successJson.data.message).toBe("File diterima untuk diproses");
-      expect(successJson.data.count).toBe(1);
-      expect(successJson.data.files[0]?.filename).toBe("laporan-tahunan.pdf");
-
-      // 5. When documentService is omitted: route returns 404 (prevents unbacked endpoint exposure)
-      const appWithoutDocService = createApp({
-        logger: testLogger,
-        version: "0.1.0",
-        readinessChecks: [],
-        authService,
-      });
-      const unmountedResponse = await appWithoutDocService.request("/api/v1/documents/upload", {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${loginResult.token}`,
-        },
-      });
-      expect(unmountedResponse.status).toBe(404);
+      expect(memberResponse.status).toBe(400);
     });
   });
 });
