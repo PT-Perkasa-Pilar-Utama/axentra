@@ -49,8 +49,8 @@ export function createApp(dependencies: AppDependencies): Hono<ApiEnvironment> {
     app.route(
       "/api/v1/documents",
       createDocumentRoutes({
-        documentService: dependencies.documentService,
         tokenVerifier,
+        documentService: dependencies.documentService,
       }),
     );
   }
@@ -61,7 +61,8 @@ export function createApp(dependencies: AppDependencies): Hono<ApiEnvironment> {
     if (isAppError(error)) {
       return jsonError(context, error.code, error.message, error.status, error.details);
     }
-    context.get("logger").error({ error }, "unhandled API error");
+    const reqLogger = context.get("logger") ?? dependencies.logger;
+    reqLogger.error({ error }, "unhandled API error");
     return jsonError(context, "INTERNAL_ERROR", "Terjadi kesalahan pada server", 500);
   });
 

@@ -21,14 +21,54 @@ GET  /api/v1/documents/:id/related
 
 ### `POST /api/v1/documents/upload`
 
-Planned behavior:
+Status: Implemented (BE-S1-02).
 
-- Accept drag-and-drop upload from Member Team.
-- Accept one PDF file.
-- Accept multiple DOCX files.
-- Reject unsupported files such as `.JPG`.
-- Return `File diterima untuk diproses` when accepted.
-- Trigger duplicate detection and processing workflow.
+**Authorization:**
+
+- Requires authenticated session (`Bearer <token>`).
+- Enforces role `member_team`. Head of Team is rejected with `403 FORBIDDEN`.
+
+**Request:**
+
+- `Content-Type: multipart/form-data`
+- Body field: `files` (one or more binary file parts). Also accepts `file`.
+
+**Constraints:**
+
+- Supported formats: PDF (`.pdf`), DOCX (`.docx`).
+- Single PDF only per upload batch.
+- Up to 10 DOCX files per upload batch.
+- Mixing PDF and DOCX in a single batch is rejected (`400 VALIDATION_ERROR`).
+- Maximum file size: 50 MB per file, 50 MB aggregate per request (`413 PAYLOAD_TOO_LARGE`).
+- Non-empty files only (`400 VALIDATION_ERROR`).
+- Content hash duplicate check: rejects duplicate content with `409 DUPLICATE_DOCUMENT` (`"File ini sudah ada"`).
+
+**Success Response (`200 OK`):**
+
+```json
+{
+  "success": true,
+  "data": {
+    "message": "File diterima untuk diproses",
+    "count": 1,
+    "files": [
+      {
+        "filename": "laporan.pdf",
+        "size": 1048576,
+        "documentType": "pdf"
+      }
+    ]
+  }
+}
+```
+
+**Error Responses:**
+
+- `400 VALIDATION_ERROR` / `UNSUPPORTED_FILE_TYPE`: Invalid request, unsupported extension/MIME, mixed types, or exceeded batch limit.
+- `401 UNAUTHORIZED`: Missing, forged, or expired bearer token.
+- `403 FORBIDDEN`: Non-member role (e.g. `head_of_team`).
+- `409 DUPLICATE_DOCUMENT`: Content identical to existing document or intra-batch duplicate.
+- `413 PAYLOAD_TOO_LARGE`: Individual or aggregate size exceeds 50 MB.
 
 #### Constraints and Limits
 

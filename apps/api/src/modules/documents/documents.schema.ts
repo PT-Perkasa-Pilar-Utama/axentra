@@ -1,10 +1,22 @@
-import type { DocumentType } from "@axentra/shared";
+import type {
+  DocumentType,
+  DocumentUploadAcceptedData,
+  DocumentUploadFileMeta,
+  SupportedDocumentExtension,
+  SupportedDocumentMimeType,
+} from "@axentra/shared";
 import {
   DOCUMENT_COPY,
+  DOCUMENT_ERROR_CODES,
   DOCUMENT_MIME_ALLOWLIST_BY_TYPE,
+  DOCUMENT_TYPES,
   MAX_AGGREGATE_UPLOAD_SIZE_BYTES,
   MAX_DOCUMENT_FILE_SIZE_BYTES,
   MAX_DOCX_BATCH_COUNT,
+  SUPPORTED_DOCUMENT_EXTENSIONS,
+  SUPPORTED_DOCUMENT_MIME_TYPES,
+  documentUploadAcceptedDataSchema,
+  documentUploadFileMetaSchema,
   getDocumentExtension,
   getDocumentTypeFromFilename,
   isSupportedDocumentExtension,
@@ -12,6 +24,13 @@ import {
 import { PayloadTooLargeError, UnsupportedFileTypeError, ValidationError } from "../../http/errors";
 
 export type RawUploadFile = {
+  filename: string;
+  size: number;
+  mimeType: string;
+  bytes: Uint8Array;
+};
+
+export type UploadedFileItem = {
   filename: string;
   size: number;
   mimeType: string;
@@ -188,3 +207,24 @@ export function validateUploadBatchConstraints(
 
   return validatedFiles;
 }
+
+export {
+  DOCUMENT_COPY,
+  DOCUMENT_ERROR_CODES,
+  DOCUMENT_TYPES,
+  MAX_DOCUMENT_FILE_SIZE_BYTES,
+  MAX_DOCX_BATCH_COUNT,
+  MAX_AGGREGATE_UPLOAD_SIZE_BYTES,
+  SUPPORTED_DOCUMENT_EXTENSIONS,
+  SUPPORTED_DOCUMENT_MIME_TYPES,
+  documentUploadAcceptedDataSchema,
+  documentUploadFileMetaSchema,
+};
+
+export type {
+  DocumentType,
+  DocumentUploadAcceptedData,
+  DocumentUploadFileMeta,
+  SupportedDocumentExtension,
+  SupportedDocumentMimeType,
+};
