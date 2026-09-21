@@ -56,8 +56,7 @@ Authenticates credentials and establishes a server-side session.
     }
   }
   ```
-- **Response 401 (Error Envelope):** Invalid email or password.
-- **Production Guard:** Default production startup uses a fail-closed authenticator until the dedicated user database store is provisioned. Static/hardcoded credentials in code are strictly prohibited.
+- **Production Guard:** Production credential authentication remains unavailable until the dedicated user database store card is delivered. In production startup (`apps/api/src/server.ts`), `createApp` wires the runtime `authService` session store with a fail-closed authenticator (`() => null`), rejecting credential logins with 401 until the user database is provisioned. Static/hardcoded credentials in tracked code are strictly prohibited.
 
 ### 3. `POST /api/v1/auth/refresh`
 
@@ -96,5 +95,6 @@ Invalidates the active session.
 
 - **Server-Owned Verification:** Client-controlled identity headers (such as `x-user-id` or `x-user-role`) are never accepted or parsed in production. All authentication relies on cryptographically verified bearer tokens or signed sessions.
 - **Fail-Closed Default:** Unconfigured or production startup defaults to `defaultTokenVerifier`, rejecting all tokens until an approved verifier/session adapter is wired.
+- **App & Service Composition:** When `authService` is provided to `createApp({ authService })` without an explicit `tokenVerifier`, `createApp` automatically selects `dependencies.authService.tokenVerifier`. This guarantees that `/api/v1/auth/login` and `/api/v1/auth/me` share the exact same session registry.
 - **Redaction:** Passwords, bearer tokens, and `Authorization` headers must never be logged.
 - **Web Storage Contract:** The Web application must never store raw credentials in browser local storage. Tokens should be retained in memory or secure HTTP-only cookies.

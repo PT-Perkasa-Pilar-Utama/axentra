@@ -125,7 +125,6 @@ describe("Auth API Module", () => {
       logger,
       version: "0.1.0",
       readinessChecks: [],
-      tokenVerifier: authService.tokenVerifier,
       authService,
     });
 
@@ -414,6 +413,80 @@ describe("Auth API Module", () => {
         headers: { authorization: `Bearer ${loginRes.token}` },
       });
       expect(response.status).toBe(403);
+    });
+  });
+
+  describe("App and AuthService Composition (F6)", () => {
+    it("selects authService.tokenVerifier when only authService is injected in createApp", async () => {
+      const authService = createAuthService({
+        authenticator: (credentials) => {
+          if (
+            credentials.email === TEST_MEMBER.email &&
+            credentials.password === "correct-password"
+          ) {
+            return TEST_MEMBER;
+          }
+          return null;
+        },
+      });
+
+      // Inject ONLY authService without passing tokenVerifier
+      const app = createApp({
+        logger,
+        version: "0.1.0",
+        readinessChecks: [],
+        authService,
+      });
+
+      // 1. Login via /login
+      const loginRes = await app.request("/api/v1/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: TEST_MEMBER.email,
+          password: "correct-password",
+        }),
+      });
+      expect(loginRes.status).toBe(200);
+
+      const loginData = (await loginRes.json()) as ApiSuccessEnvelope<LoginResponse>;
+      const token = loginData.data.token;
+
+      // 2. Access /api/v1/auth/me with issued token -> MUST return 200 with user
+      const meRes = await app.request("/api/v1/auth/me", {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(meRes.status).toBe(200);
+
+      const meData = (await meRes.json()) as ApiSuccessEnvelope<AuthUser>;
+      expect(meData.success).toBe(true);
+      expect(meData.data.id).toBe(TEST_MEMBER.id);
+      expect(meData.data.email).toBe(TEST_MEMBER.email);
+      expect(meData.data.role).toBe("member_team");
+    });
+
+    it("wires runtime authService from server.ts and fails closed for unconfigured logins", async () => {
+      const serverApp = createApp({
+        logger,
+        version: "0.1.0",
+        readinessChecks: [],
+        authService: createAuthService(),
+      });
+
+      // Credential logins fail closed with 401
+      const loginRes = await serverApp.request("/api/v1/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: "sami@axentra.internal",
+          password: "password123",
+        }),
+      });
+      expect(loginRes.status).toBe(401);
+
+      // Unauthenticated /me fails closed with 401
+      const meRes = await serverApp.request("/api/v1/auth/me");
+      expect(meRes.status).toBe(401);
     });
   });
 });

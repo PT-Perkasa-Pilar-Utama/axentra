@@ -4,6 +4,7 @@ import { createLogger, summarizeError } from "@axentra/observability";
 import { createRedisProbe } from "@axentra/queue";
 import { createS3StorageAdapter } from "@axentra/storage";
 import { createApp } from "./app";
+import { createAuthService } from "./modules/auth/auth.service";
 
 const closeResourcesWithinDeadline = async (
   operations: Array<() => Promise<unknown>>,
@@ -51,6 +52,8 @@ async function start(): Promise<void> {
     throw error;
   }
 
+  const authService = createAuthService();
+
   const app = createApp({
     logger,
     version: config.APP_VERSION,
@@ -59,6 +62,7 @@ async function start(): Promise<void> {
       { name: "redis", check: redis.checkHealth },
       { name: "storage", check: storage.checkHealth },
     ],
+    authService,
   });
 
   const server = Bun.serve({

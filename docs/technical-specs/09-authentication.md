@@ -58,3 +58,8 @@ Route middleware evaluates:
 - The Web client must keep tokens in memory or secure HTTP-only cookies.
 - Raw passwords and static tokens must never be hardcoded in tracked repository code or logged.
 - The API redaction boundary redacts `Authorization` headers, cookies, and tokens from all structured logs.
+
+### 5. App and Service Composition
+
+- When `authService` is provided to `createApp({ authService })` without an explicit `tokenVerifier`, `createApp` automatically selects `dependencies.authService.tokenVerifier`. This guarantees that `/api/v1/auth/login`, `/api/v1/auth/me`, and all protected routes share the identical session registry.
+- Production startup in `apps/api/src/server.ts` injects `authService: createAuthService()`, establishing the runtime session store while failing closed for unconfigured credential logins until the dedicated user database store card is delivered.

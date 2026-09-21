@@ -31,10 +31,13 @@ export function createApp(dependencies: AppDependencies): Hono<ApiEnvironment> {
     }),
   );
 
+  const tokenVerifier =
+    dependencies.tokenVerifier ?? dependencies.authService?.tokenVerifier ?? defaultTokenVerifier;
+
   app.route(
     "/api/v1/auth",
     createAuthRoutes({
-      tokenVerifier: dependencies.tokenVerifier ?? defaultTokenVerifier,
+      tokenVerifier,
       authService: dependencies.authService,
     }),
   );
