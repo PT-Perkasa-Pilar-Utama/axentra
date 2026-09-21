@@ -7,6 +7,7 @@ import { createApp } from "./app";
 import { createAuthService } from "./modules/auth/auth.service";
 import { DocumentRepository } from "./modules/documents/documents.repository";
 import { createDocumentService } from "./modules/documents/documents.service";
+import { DrizzleDocumentContentHashRepository } from "./modules/documents/duplicate.repository";
 import { DrizzleDocumentMetadataRepository } from "./modules/documents/metadata.repository";
 
 const closeResourcesWithinDeadline = async (
@@ -69,6 +70,7 @@ async function start(): Promise<void> {
     queue,
     logger,
     metadataRepository: new DrizzleDocumentMetadataRepository(database.db),
+    contentHashRepository: new DrizzleDocumentContentHashRepository(database.db),
   });
 
   const app = createApp({

@@ -49,6 +49,7 @@ export {
   systemHealthCheckJobSchema,
 } from "./queue";
 export type {
+  CheckDuplicateRequest,
   CheckDuplicateResponse,
   DocumentErrorCode,
   DocumentType,
@@ -68,6 +69,7 @@ export {
   MAX_DOCX_BATCH_COUNT,
   SUPPORTED_DOCUMENT_EXTENSIONS,
   SUPPORTED_DOCUMENT_MIME_TYPES,
+  checkDuplicateRequestSchema,
   checkDuplicateResponseSchema,
   documentUploadAcceptedDataSchema,
   documentUploadFileMetaSchema,

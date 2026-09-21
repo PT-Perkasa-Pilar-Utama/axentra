@@ -6,14 +6,16 @@ import { validateObjectKey, type StorageAdapter } from "@axentra/storage";
 import {
   DOCUMENT_COPY,
   DOCUMENT_ERROR_CODES,
+  type CheckDuplicateResponse,
   type DocumentMetadataResult,
   type DocumentType,
   type DocumentUploadAcceptedData,
 } from "@axentra/shared";
-import { ConflictError, NotFoundError } from "../../http/errors";
+import { ConflictError, NotFoundError, ValidationError } from "../../http/errors";
 import type { RawUploadFile } from "./documents.schema";
 import { validateUploadBatchConstraints } from "./documents.schema";
 import type { CreateDocumentBatchItem, IDocumentRepository } from "./documents.repository";
+import type { IDocumentContentHashRepository } from "./duplicate.repository";
 import type { IMetadataExtractor } from "./metadata.extractor";
 import { DeterministicMetadataExtractor } from "./metadata.extractor";
 import type { IDocumentMetadataRepository, SaveMetadataInput } from "./metadata.repository";
@@ -32,6 +34,12 @@ export type ExtractMetadataOptions = {
   rawText?: string | undefined;
 };
 
+export type CheckDuplicateInput = {
+  contentHash?: string | undefined;
+  buffer?: Uint8Array | undefined;
+  algorithm?: string | undefined;
+};
+
 export type DocumentServiceDependencies = {
   repository?: IDocumentRepository | undefined;
   storage?: StorageAdapter | undefined;
@@ -40,11 +48,13 @@ export type DocumentServiceDependencies = {
   metadataRepository?: IDocumentMetadataRepository | undefined;
   metadataExtractor?: IMetadataExtractor | undefined;
   queueProducer?: QueueProducer | undefined;
+  contentHashRepository?: IDocumentContentHashRepository | undefined;
 };
 
 export type IDocumentService = {
   uploadDocuments(files: ReadonlyArray<RawUploadFile>): Promise<DocumentUploadAcceptedData>;
   validateUpload(files: ReadonlyArray<RawUploadFile>): Promise<DocumentUploadAcceptedData>;
+  checkDuplicate(input: CheckDuplicateInput): Promise<CheckDuplicateResponse>;
   getDocumentMetadata(documentId: string): Promise<DocumentMetadataResult>;
   extractAndStoreMetadata(
     documentId: string,
@@ -62,6 +72,7 @@ export class DocumentService implements IDocumentService {
   private readonly metadataRepository: IDocumentMetadataRepository;
   private readonly metadataExtractor: IMetadataExtractor;
   private readonly queueProducer?: QueueProducer | undefined;
+  private readonly contentHashRepository?: IDocumentContentHashRepository | undefined;
 
   public constructor(dependencies: DocumentServiceDependencies = {}) {
     this.repository = dependencies.repository ?? createInMemoryRepository();
@@ -79,6 +90,7 @@ export class DocumentService implements IDocumentService {
     this.metadataRepository =
       dependencies.metadataRepository ?? new InMemoryDocumentMetadataRepository();
     this.metadataExtractor = dependencies.metadataExtractor ?? new DeterministicMetadataExtractor();
+    this.contentHashRepository = dependencies.contentHashRepository;
   }
 
   public async validateUpload(
@@ -107,7 +119,9 @@ export class DocumentService implements IDocumentService {
       hashes.push(hash);
     }
 
-    const existingHashes = await this.repository.findExistingHashes(hashes);
+    const existingHashes = this.contentHashRepository
+      ? await this.contentHashRepository.findExistingHashes(hashes)
+      : await this.repository.findExistingHashes(hashes);
     if (existingHashes.size > 0) {
       throw new ConflictError(
         DOCUMENT_ERROR_CODES.DUPLICATE_DOCUMENT,
@@ -152,6 +166,19 @@ export class DocumentService implements IDocumentService {
       }
 
       await this.repository.saveDocumentBatch(batchItems);
+      if (this.contentHashRepository) {
+        for (const item of batchItems) {
+          try {
+            await this.contentHashRepository.saveContentHash({
+              documentId: item.id,
+              contentHash: item.contentHash,
+              hashAlgorithm: item.hashAlgorithm,
+            });
+          } catch {
+            // Hash may already be saved by DocumentRepository
+          }
+        }
+      }
     } catch (error) {
       if (uploadedStorageKeys.length > 0) {
         const results = await Promise.allSettled(
@@ -204,6 +231,33 @@ export class DocumentService implements IDocumentService {
         size: item.fileSize,
         documentType: item.fileExtension as DocumentType,
       })),
+    };
+  }
+
+  public async checkDuplicate(input: CheckDuplicateInput): Promise<CheckDuplicateResponse> {
+    let hash = input.contentHash;
+    if (!hash && input.buffer) {
+      hash = crypto.createHash("sha256").update(input.buffer).digest("hex");
+    }
+
+    if (!hash) {
+      throw new ValidationError("Content hash atau file diperlukan");
+    }
+
+    const existing = this.contentHashRepository
+      ? await this.contentHashRepository.findByContentHash(hash, input.algorithm)
+      : await this.repository.findByContentHash?.(hash, input.algorithm);
+
+    if (existing) {
+      return {
+        isDuplicate: true,
+        existingDocumentId: existing.documentId,
+        message: DOCUMENT_COPY.DUPLICATE_WARNING,
+      };
+    }
+
+    return {
+      isDuplicate: false,
     };
   }
 

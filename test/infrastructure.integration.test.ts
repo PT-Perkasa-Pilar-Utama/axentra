@@ -413,4 +413,60 @@ describe("infrastructure integration", () => {
       }
     },
   );
+
+  integrationTest(
+    "enforces unique content hash per algorithm database constraint and detects duplicate",
+    async () => {
+      if (database === undefined) {
+        throw new Error("Integration infrastructure was not initialized");
+      }
+      const { documents } = await import("@axentra/db");
+      const { DrizzleDocumentContentHashRepository } =
+        await import("../apps/api/src/modules/documents/duplicate.repository");
+
+      const hashRepo = new DrizzleDocumentContentHashRepository(database.db);
+      const documentId1 = crypto.randomUUID();
+      const documentId2 = crypto.randomUUID();
+      const contentHash = "e".repeat(64);
+
+      await database.db.insert(documents).values([
+        { id: documentId1, title: "Doc 1" },
+        { id: documentId2, title: "Doc 2" },
+      ]);
+
+      try {
+        const saved = await hashRepo.saveContentHash({
+          documentId: documentId1,
+          contentHash,
+        });
+        expect(saved.documentId).toBe(documentId1);
+        expect(saved.contentHash).toBe(contentHash);
+
+        // Verify findByContentHash
+        const found = await hashRepo.findByContentHash(contentHash);
+        expect(found).not.toBeNull();
+        expect(found?.documentId).toBe(documentId1);
+
+        // Verify findExistingHashes
+        const existing = await hashRepo.findExistingHashes([contentHash, "f".repeat(64)]);
+        expect(existing.has(contentHash)).toBe(true);
+        expect(existing.has("f".repeat(64))).toBe(false);
+
+        // Database unique constraint: attempting to insert same content_hash fails
+        let duplicateDbError: unknown;
+        try {
+          await hashRepo.saveContentHash({
+            documentId: documentId2,
+            contentHash,
+          });
+        } catch (error) {
+          duplicateDbError = error;
+        }
+        expect(duplicateDbError).toBeDefined();
+      } finally {
+        await database.db.delete(documents).where(eq(documents.id, documentId1));
+        await database.db.delete(documents).where(eq(documents.id, documentId2));
+      }
+    },
+  );
 });

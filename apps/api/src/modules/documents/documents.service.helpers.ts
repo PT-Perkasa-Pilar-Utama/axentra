@@ -25,6 +25,7 @@ export function sanitizeFilename(filename: string): string {
 
 export function createInMemoryRepository(): IDocumentRepository {
   const existingHashes = new Set<string>();
+  const hashToDocId = new Map<string, string>();
   const savedBatches: CreateDocumentBatchItem[][] = [];
   return {
     findExistingHashes: async (hashes) => {
@@ -33,6 +34,11 @@ export function createInMemoryRepository(): IDocumentRepository {
         if (existingHashes.has(h)) found.add(h);
       }
       return found;
+    },
+    findByContentHash: async (contentHash: string) => {
+      const docId = hashToDocId.get(contentHash);
+      if (!docId) return null;
+      return { documentId: docId, contentHash };
     },
     saveDocumentBatch: async (items) => {
       for (const item of items) {
@@ -46,6 +52,7 @@ export function createInMemoryRepository(): IDocumentRepository {
       savedBatches.push([...items]);
       for (const item of items) {
         existingHashes.add(item.contentHash);
+        hashToDocId.set(item.contentHash, item.id);
       }
       return items.map((i) => ({
         documentId: i.id,

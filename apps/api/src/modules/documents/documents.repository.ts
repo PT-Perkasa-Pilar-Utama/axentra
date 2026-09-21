@@ -29,6 +29,10 @@ export type SavedDocumentRecord = {
 
 export type IDocumentRepository = {
   findExistingHashes: (hashes: ReadonlyArray<string>, algorithm?: string) => Promise<Set<string>>;
+  findByContentHash?: (
+    contentHash: string,
+    algorithm?: string,
+  ) => Promise<{ documentId: string; contentHash: string } | null>;
   saveDocumentBatch: (
     items: ReadonlyArray<CreateDocumentBatchItem>,
   ) => Promise<ReadonlyArray<SavedDocumentRecord>>;
@@ -78,6 +82,27 @@ export class DocumentRepository implements IDocumentRepository {
       );
 
     return new Set(rows.map((r) => r.contentHash));
+  }
+
+  public async findByContentHash(
+    contentHash: string,
+    algorithm = "sha256",
+  ): Promise<{ documentId: string; contentHash: string } | null> {
+    const rows = await this.db
+      .select({
+        documentId: documentContentHashes.documentId,
+        contentHash: documentContentHashes.contentHash,
+      })
+      .from(documentContentHashes)
+      .where(
+        and(
+          eq(documentContentHashes.contentHash, contentHash),
+          eq(documentContentHashes.hashAlgorithm, algorithm),
+        ),
+      )
+      .limit(1);
+
+    return rows[0] ?? null;
   }
 
   public async saveDocumentBatch(
