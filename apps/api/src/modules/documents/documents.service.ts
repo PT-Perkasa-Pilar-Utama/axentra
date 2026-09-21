@@ -5,6 +5,7 @@ import type { RawUploadFile, ValidatedDocumentFile } from "./documents.schema";
 import { validateUploadBatchConstraints } from "./documents.schema";
 import type { IMetadataExtractor } from "./metadata.extractor";
 import { DeterministicMetadataExtractor } from "./metadata.extractor";
+import type { QueueProducer } from "@axentra/queue";
 import type {
   DocumentMetadataRecord,
   IDocumentMetadataRepository,
@@ -27,11 +28,13 @@ export type DocumentService = {
     options?: ExtractMetadataOptions | undefined,
   ) => Promise<DocumentMetadataResult>;
   storeMetadata: (data: SaveMetadataInput) => Promise<DocumentMetadataResult>;
+  enqueueProcessingJob: (documentId: string) => Promise<string>;
 };
 
 export type DocumentServiceDependencies = {
   metadataRepository?: IDocumentMetadataRepository | undefined;
   metadataExtractor?: IMetadataExtractor | undefined;
+  queueProducer?: QueueProducer | undefined;
 };
 
 function formatMetadataResult(record: DocumentMetadataRecord): DocumentMetadataResult {
@@ -115,6 +118,18 @@ export function createDocumentService(
 
       const saved = await repository.saveMetadata(data);
       return formatMetadataResult(saved);
+    },
+
+    async enqueueProcessingJob(documentId: string): Promise<string> {
+      if (!dependencies.queueProducer) {
+        throw new Error("QueueProducer tidak tersedia untuk memproses dokumen");
+      }
+      return dependencies.queueProducer.enqueueDocumentProcessing({
+        jobId: crypto.randomUUID(),
+        documentId,
+        schemaVersion: 1,
+        requestedAt: new Date().toISOString(),
+      });
     },
   };
 }

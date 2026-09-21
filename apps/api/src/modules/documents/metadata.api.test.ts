@@ -3,6 +3,7 @@ import { createLogger } from "@axentra/observability";
 import type { ApiErrorEnvelope, ApiSuccessEnvelope, DocumentMetadataResult } from "@axentra/shared";
 import { createApp } from "../../app";
 import type { TokenVerifier } from "../../middleware/auth";
+import { createAuthService } from "../auth/auth.service";
 import { createDocumentService } from "./documents.service";
 import { InMemoryDocumentMetadataRepository } from "./metadata.repository";
 import { DeterministicMetadataExtractor } from "./metadata.extractor";
@@ -242,6 +243,73 @@ describe("GET /api/v1/documents/:id/metadata - Task BE-S1-05 (AC-03.01)", () => 
       expect(json.data.documentId).toBe(newDocId);
       expect(json.data.author).toBe("Prof. Sumitro");
       expect(json.data.rawMetadata?.extractor).toBe("deterministic-placeholder");
+    });
+  });
+
+  describe("Production Server Composition (Finding F1)", () => {
+    it("proves metadata endpoint is registered (returns 401 not 404) under server composition", async () => {
+      // Replicate the exact dependency composition used in server.ts
+      const prodAuthService = createAuthService({
+        authenticator: (creds) => {
+          if (creds.email === "member@axentra.local") {
+            return {
+              id: "usr-prod-member",
+              email: "member@axentra.local",
+              role: "member_team",
+              name: "Production Member",
+            };
+          }
+          return null;
+        },
+      });
+      const prodDocService = createDocumentService({
+        metadataRepository: new InMemoryDocumentMetadataRepository(),
+      });
+
+      const prodApp = createApp({
+        logger: testLogger,
+        version: "0.1.0",
+        readinessChecks: [],
+        authService: prodAuthService,
+        documentService: prodDocService,
+      });
+
+      // 1. Unauthenticated request to metadata endpoint must hit auth middleware (401), NOT router 404
+      const unauthResponse = await prodApp.request(
+        "/api/v1/documents/11111111-1111-4111-8111-111111111111/metadata",
+        { method: "GET" },
+      );
+      expect(unauthResponse.status).toBe(401);
+      const unauthJson = (await unauthResponse.json()) as ApiErrorEnvelope;
+      expect(unauthJson.success).toBe(false);
+      expect(unauthJson.error.code).toBe("UNAUTHORIZED");
+
+      // 2. Authenticated request with invalid UUID returns 400 (proves route is mounted and active)
+      const login = await prodAuthService.login({
+        email: "member@axentra.local",
+        password: "any",
+      });
+
+      const invalidParamResponse = await prodApp.request(
+        "/api/v1/documents/not-a-valid-uuid/metadata",
+        {
+          method: "GET",
+          headers: { authorization: `Bearer ${login.token}` },
+        },
+      );
+      expect(invalidParamResponse.status).toBe(400);
+
+      // 3. Authenticated request for non-existent doc returns 404 "Dokumen tidak ditemukan", NOT "Endpoint tidak ditemukan"
+      const notFoundDocResponse = await prodApp.request(
+        "/api/v1/documents/22222222-2222-4222-8222-222222222222/metadata",
+        {
+          method: "GET",
+          headers: { authorization: `Bearer ${login.token}` },
+        },
+      );
+      expect(notFoundDocResponse.status).toBe(404);
+      const notFoundJson = (await notFoundDocResponse.json()) as ApiErrorEnvelope;
+      expect(notFoundJson.error.message).toBe("Dokumen tidak ditemukan");
     });
   });
 });

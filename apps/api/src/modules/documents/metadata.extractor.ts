@@ -6,6 +6,8 @@
  * until production OCR/AI engine is approved.
  */
 
+import { extractAuthorFromDocxBuffer } from "./metadata.docx";
+
 export type ExtractorInput = {
   documentId: string;
   filename: string;
@@ -102,9 +104,11 @@ function extractFromPdfBuffer(buffer: Uint8Array): string | null {
 }
 
 function extractFromDocxBuffer(buffer: Uint8Array): string | null {
-  // DOCX contains XML files inside a ZIP container.
-  // docProps/core.xml typically contains <dc:creator>Author Name</dc:creator>
-  // In many cases, the uncompressed string is visible in the raw buffer or XML stream
+  // 1. Traverse ZIP central directory and decompress docProps/core.xml (standard OOXML)
+  const zipAuthor = extractAuthorFromDocxBuffer(buffer);
+  if (zipAuthor) return zipAuthor;
+
+  // 2. Fallback to uncompressed text matching for malformed or uncompressed test streams
   const maxSearchLength = Math.min(buffer.length, 65536);
   const sample = Buffer.from(buffer.subarray(0, maxSearchLength)).toString("latin1");
 

@@ -1,6 +1,24 @@
 import { eq } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
+import { z } from "zod";
 import { documentMetadata, documents } from "@axentra/db";
+
+const rawMetadataRecordSchema = z.record(z.string(), z.unknown());
+
+/**
+ * Validates and safely narrows unknown JSONB values to Record<string, unknown> | null
+ * without unsafe type casting.
+ */
+export function parseRawMetadata(value: unknown): Record<string, unknown> | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const parsed = rawMetadataRecordSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
 
 export type DocumentRecord = {
   id: string;
@@ -76,7 +94,7 @@ export class DrizzleDocumentMetadataRepository implements IDocumentMetadataRepos
       id: row.id,
       documentId: row.documentId,
       author: row.author,
-      rawMetadata: (row.rawMetadata as Record<string, unknown>) ?? null,
+      rawMetadata: parseRawMetadata(row.rawMetadata),
       extractedAt: row.extractedAt,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
@@ -113,7 +131,7 @@ export class DrizzleDocumentMetadataRepository implements IDocumentMetadataRepos
       id: saved.id,
       documentId: saved.documentId,
       author: saved.author,
-      rawMetadata: (saved.rawMetadata as Record<string, unknown>) ?? null,
+      rawMetadata: parseRawMetadata(saved.rawMetadata),
       extractedAt: saved.extractedAt,
       createdAt: saved.createdAt,
       updatedAt: saved.updatedAt,

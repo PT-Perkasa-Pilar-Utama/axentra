@@ -39,8 +39,13 @@ export {
 } from "./document";
 export type { LivenessData, ReadinessData } from "./health";
 export { dependencyStateSchema, livenessDataSchema, readinessDataSchema } from "./health";
-export type { SystemHealthCheckJob } from "./queue";
-export { systemHealthCheckJobName, systemHealthCheckJobSchema } from "./queue";
+export type { DocumentProcessingJob, SystemHealthCheckJob } from "./queue";
+export {
+  documentProcessingJobName,
+  documentProcessingJobSchema,
+  systemHealthCheckJobName,
+  systemHealthCheckJobSchema,
+} from "./queue";
 export type {
   CheckDuplicateResponse,
   DocumentErrorCode,

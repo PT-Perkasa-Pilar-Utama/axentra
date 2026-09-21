@@ -1,10 +1,11 @@
 import { loadWorkerConfigFromRuntime } from "@axentra/config";
 import { checkDatabase, closeDatabase, createDatabaseClient } from "@axentra/db";
 import { createLogger, jobLogger, summarizeError } from "@axentra/observability";
-import { createRedisProbe, createSystemHealthWorker } from "@axentra/queue";
+import { createQueueWorker, createRedisProbe } from "@axentra/queue";
 import { createS3StorageAdapter } from "@axentra/storage";
-import type { SystemHealthCheckJob } from "@axentra/shared";
+import type { DocumentProcessingJob, SystemHealthCheckJob } from "@axentra/shared";
 import { closeResourcesWithinDeadline, closeWorkerWithinDeadline } from "./lifecycle";
+import { processDocumentJob } from "./processors/document.processor";
 
 async function start(): Promise<void> {
   const config = loadWorkerConfigFromRuntime();
@@ -37,12 +38,19 @@ async function start(): Promise<void> {
     );
   };
 
-  const worker = createSystemHealthWorker(
-    config.QUEUE_NAME,
-    config.REDIS_URL,
-    config.WORKER_CONCURRENCY,
+  const handleDocumentProcessing = async (payload: DocumentProcessingJob): Promise<void> => {
+    const jobScopedLogger = jobLogger(logger, payload.jobId);
+    await processDocumentJob(payload, {
+      db: database.db,
+      storage,
+      logger: jobScopedLogger,
+    });
+  };
+
+  const worker = createQueueWorker(config.QUEUE_NAME, config.REDIS_URL, config.WORKER_CONCURRENCY, {
     handleSystemHealthCheck,
-  );
+    handleDocumentProcessing,
+  });
 
   worker.on("failed", (job, error) => {
     logger.error({ jobId: job?.id, error }, "queue job failed");

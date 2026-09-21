@@ -5,6 +5,8 @@ import { createRedisProbe } from "@axentra/queue";
 import { createS3StorageAdapter } from "@axentra/storage";
 import { createApp } from "./app";
 import { createAuthService } from "./modules/auth/auth.service";
+import { createDocumentService } from "./modules/documents/documents.service";
+import { DrizzleDocumentMetadataRepository } from "./modules/documents/metadata.repository";
 
 const closeResourcesWithinDeadline = async (
   operations: Array<() => Promise<unknown>>,
@@ -53,6 +55,9 @@ async function start(): Promise<void> {
   }
 
   const authService = createAuthService();
+  const documentService = createDocumentService({
+    metadataRepository: new DrizzleDocumentMetadataRepository(database.db),
+  });
 
   const app = createApp({
     logger,
@@ -63,6 +68,7 @@ async function start(): Promise<void> {
       { name: "storage", check: storage.checkHealth },
     ],
     authService,
+    documentService,
   });
 
   const server = Bun.serve({

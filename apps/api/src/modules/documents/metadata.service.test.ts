@@ -113,4 +113,37 @@ describe("DocumentService - Metadata Operations (Task BE-S1-05)", () => {
     expect(retrieved.author).toBe("Jane Doe");
     expect(retrieved.rawMetadata?.manual).toBe(true);
   });
+
+  it("enqueues processing job when queueProducer is provided", async () => {
+    let enqueuedJobName = "";
+    let enqueuedPayload: unknown = null;
+
+    const mockProducer = {
+      enqueueSystemHealthCheck: async () => "health-id",
+      enqueueDocumentProcessing: async (payload: unknown) => {
+        enqueuedJobName = "document.process";
+        enqueuedPayload = payload;
+        return "job-12345";
+      },
+      close: async () => undefined,
+    };
+
+    const service = createDocumentService({
+      queueProducer: mockProducer,
+    });
+
+    const docId = "44444444-4444-4444-8444-444444444444";
+    const jobId = await service.enqueueProcessingJob(docId);
+
+    expect(jobId).toBe("job-12345");
+    expect(enqueuedJobName).toBe("document.process");
+    expect((enqueuedPayload as { documentId: string }).documentId).toBe(docId);
+  });
+
+  it("throws error when enqueueProcessingJob is called without queueProducer", async () => {
+    const service = createDocumentService();
+    await expect(
+      service.enqueueProcessingJob("55555555-5555-4555-8555-555555555555"),
+    ).rejects.toThrow("QueueProducer tidak tersedia untuk memproses dokumen");
+  });
 });
