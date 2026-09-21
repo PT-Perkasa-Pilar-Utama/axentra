@@ -48,6 +48,7 @@ function createTestApp(verifier: TokenVerifier = testTokenVerifier) {
     readinessChecks: [],
     documentService: createDocumentService(),
     tokenVerifier: verifier,
+    enableUploadRoute: true,
   });
 }
 
@@ -240,6 +241,7 @@ describe("POST /api/v1/documents/upload - Task BE-S1-03", () => {
         version: "0.1.0",
         readinessChecks: [],
         documentService: createDocumentService(),
+        enableUploadRoute: true,
       });
 
       const forgedPayload = Buffer.from(
@@ -761,6 +763,7 @@ describe("POST /api/v1/documents/upload - Task BE-S1-03", () => {
         readinessChecks: [],
         authService,
         documentService,
+        enableUploadRoute: true,
       });
 
       // 1. Without authentication: Route is registered and protected (returns 401, not 404)

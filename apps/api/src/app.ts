@@ -19,6 +19,7 @@ export type AppDependencies = {
   tokenVerifier?: TokenVerifier | undefined;
   authService?: AuthService | undefined;
   documentService?: DocumentService | undefined;
+  enableUploadRoute?: boolean | undefined;
 };
 
 export function createApp(dependencies: AppDependencies): Hono<ApiEnvironment> {
@@ -51,6 +52,7 @@ export function createApp(dependencies: AppDependencies): Hono<ApiEnvironment> {
       createDocumentRoutes({
         documentService: dependencies.documentService,
         tokenVerifier,
+        enableUploadRoute: dependencies.enableUploadRoute ?? false,
       }),
     );
   }

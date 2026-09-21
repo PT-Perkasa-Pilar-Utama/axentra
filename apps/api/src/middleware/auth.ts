@@ -48,14 +48,20 @@ export function requireAuth(
   });
 }
 
-export function requireRole(allowedRole: UserRole): MiddlewareHandler<ApiEnvironment> {
+export function requireRole(
+  allowedRole: UserRole | ReadonlyArray<UserRole>,
+): MiddlewareHandler<ApiEnvironment> {
   return createMiddleware<ApiEnvironment>(async (context, next) => {
     const user = context.get("user");
     if (!user) {
       throw new UnauthorizedError("Autentikasi diperlukan");
     }
 
-    if (user.role !== allowedRole) {
+    const isAllowed = Array.isArray(allowedRole)
+      ? allowedRole.includes(user.role)
+      : user.role === allowedRole;
+
+    if (!isAllowed) {
       throw new ForbiddenError("Anda tidak memiliki akses untuk tindakan ini");
     }
 
