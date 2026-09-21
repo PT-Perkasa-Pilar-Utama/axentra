@@ -26,6 +26,22 @@ export const documentMetadataSchema = z.object({
 });
 export type DocumentMetadata = z.infer<typeof documentMetadataSchema>;
 
+export const documentMetadataResultSchema = z.object({
+  id: z.string().uuid(),
+  documentId: z.string().uuid(),
+  author: z.string().nullable(),
+  rawMetadata: z.record(z.string(), z.unknown()).nullable().optional(),
+  extractedAt: z.string().datetime().nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+export type DocumentMetadataResult = z.infer<typeof documentMetadataResultSchema>;
+
+export const documentIdParamSchema = z.object({
+  id: z.string().uuid({ message: "ID dokumen harus berupa UUID yang valid" }),
+});
+export type DocumentIdParam = z.infer<typeof documentIdParamSchema>;
+
 export const documentFileInfoSchema = z.object({
   id: z.string().uuid(),
   originalName: z.string().min(1),

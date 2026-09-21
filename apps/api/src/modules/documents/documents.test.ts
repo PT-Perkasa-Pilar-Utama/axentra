@@ -287,6 +287,10 @@ function createMockQueue(): QueueProducer & {
   return {
     enqueued,
     enqueueSystemHealthCheck: async () => "job-health",
+    enqueueDocumentProcessing: async (data: DocumentProcessJob) => {
+      enqueued.push({ name: documentProcessJobName, data });
+      return `job-${enqueued.length}`;
+    },
     enqueueDocumentProcess: async (data: DocumentProcessJob) => {
       enqueued.push({ name: documentProcessJobName, data });
       return `job-${enqueued.length}`;
@@ -302,6 +306,7 @@ function createTestApp(verifier: TokenVerifier = testTokenVerifier, service?: Do
     readinessChecks: [],
     documentService: service ?? createDocumentService(),
     tokenVerifier: verifier,
+    enableUploadRoute: true,
   });
 }
 
@@ -380,6 +385,7 @@ describe("POST /api/v1/documents/upload", () => {
         version: "0.1.0",
         readinessChecks: [],
         documentService: createDocumentService(),
+        enableUploadRoute: true,
       });
 
       const forgedPayload = Buffer.from(
@@ -782,6 +788,7 @@ describe("POST /api/v1/documents/upload", () => {
         readinessChecks: [],
         tokenVerifier: testTokenVerifier,
         documentService,
+        enableUploadRoute: true,
       });
     });
 
@@ -1008,6 +1015,7 @@ describe("POST /api/v1/documents/upload", () => {
         readinessChecks: [],
         tokenVerifier: testTokenVerifier,
         documentService: failingService,
+        enableUploadRoute: true,
       });
 
       const formData = new FormData();
@@ -1101,6 +1109,7 @@ describe("POST /api/v1/documents/upload", () => {
         readinessChecks: [],
         authService,
         documentService,
+        enableUploadRoute: true,
       });
 
       // 1. Without authentication: Route is registered and protected (returns 401, not 404)

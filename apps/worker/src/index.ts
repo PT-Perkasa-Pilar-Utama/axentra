@@ -3,8 +3,12 @@ import { checkDatabase, closeDatabase, createDatabaseClient } from "@axentra/db"
 import { createLogger, jobLogger, summarizeError } from "@axentra/observability";
 import { createQueueWorker, createRedisProbe } from "@axentra/queue";
 import { createS3StorageAdapter } from "@axentra/storage";
-import type { DocumentProcessJob, SystemHealthCheckJob } from "@axentra/shared";
+import type { DocumentProcessingJob, SystemHealthCheckJob } from "@axentra/shared";
 import { closeResourcesWithinDeadline, closeWorkerWithinDeadline } from "./lifecycle";
+import {
+  DrizzleDocumentProcessingRepository,
+  processDocumentJob,
+} from "./processors/document.processor";
 
 async function start(): Promise<void> {
   const config = loadWorkerConfigFromRuntime();
@@ -30,6 +34,8 @@ async function start(): Promise<void> {
     throw error;
   }
 
+  const documentProcessingRepository = new DrizzleDocumentProcessingRepository(database.db);
+
   const handleSystemHealthCheck = async (payload: SystemHealthCheckJob): Promise<void> => {
     jobLogger(logger, payload.jobId).info(
       { schemaVersion: payload.schemaVersion, requestedAt: payload.requestedAt },
@@ -37,21 +43,18 @@ async function start(): Promise<void> {
     );
   };
 
-  const handleDocumentProcess = async (payload: DocumentProcessJob): Promise<void> => {
-    jobLogger(logger, payload.jobId).info(
-      {
-        schemaVersion: payload.schemaVersion,
-        documentId: payload.documentId,
-        storageKey: payload.storageKey,
-        enqueuedAt: payload.enqueuedAt,
-      },
-      "document processing job completed",
-    );
+  const handleDocumentProcessing = async (payload: DocumentProcessingJob): Promise<void> => {
+    const jobScopedLogger = jobLogger(logger, payload.jobId);
+    await processDocumentJob(payload, {
+      repository: documentProcessingRepository,
+      storage,
+      logger: jobScopedLogger,
+    });
   };
 
   const worker = createQueueWorker(config.QUEUE_NAME, config.REDIS_URL, config.WORKER_CONCURRENCY, {
     handleSystemHealthCheck,
-    handleDocumentProcess,
+    handleDocumentProcessing,
   });
 
   worker.on("failed", (job, error) => {

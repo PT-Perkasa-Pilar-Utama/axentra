@@ -10,14 +10,19 @@ export const systemHealthCheckJobSchema = z.object({
 
 export type SystemHealthCheckJob = z.infer<typeof systemHealthCheckJobSchema>;
 
-export const documentProcessJobName = "document.process" as const;
+export const documentProcessingJobName = "document.process" as const;
 
-export const documentProcessJobSchema = z.object({
+export const documentProcessingJobSchema = z.object({
   jobId: z.uuid(),
-  schemaVersion: z.literal(1),
   documentId: z.uuid(),
-  storageKey: z.string().min(1),
-  enqueuedAt: z.iso.datetime(),
+  schemaVersion: z.literal(1),
+  requestedAt: z.iso.datetime().optional(),
+  storageKey: z.string().min(1).optional(),
+  enqueuedAt: z.iso.datetime().optional(),
 });
 
-export type DocumentProcessJob = z.infer<typeof documentProcessJobSchema>;
+export type DocumentProcessingJob = z.infer<typeof documentProcessingJobSchema>;
+
+export const documentProcessJobName = documentProcessingJobName;
+export const documentProcessJobSchema = documentProcessingJobSchema;
+export type DocumentProcessJob = DocumentProcessingJob;

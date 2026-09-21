@@ -139,6 +139,7 @@ describe("infrastructure integration", () => {
       version: config.APP_VERSION,
       tokenVerifier: integrationTokenVerifier,
       documentService,
+      enableUploadRoute: true,
       readinessChecks: [
         {
           name: "database",

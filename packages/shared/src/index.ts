@@ -19,7 +19,9 @@ export type {
   CategorySummary,
   DocumentDetail,
   DocumentFileInfo,
+  DocumentIdParam,
   DocumentMetadata,
+  DocumentMetadataResult,
   DocumentSummary,
   ProcessingStatus,
   SmartTag,
@@ -28,6 +30,8 @@ export {
   categorySummarySchema,
   documentDetailSchema,
   documentFileInfoSchema,
+  documentIdParamSchema,
+  documentMetadataResultSchema,
   documentMetadataSchema,
   documentSummarySchema,
   processingStatusSchema,
@@ -35,10 +39,12 @@ export {
 } from "./document";
 export type { LivenessData, ReadinessData } from "./health";
 export { dependencyStateSchema, livenessDataSchema, readinessDataSchema } from "./health";
-export type { DocumentProcessJob, SystemHealthCheckJob } from "./queue";
+export type { DocumentProcessJob, DocumentProcessingJob, SystemHealthCheckJob } from "./queue";
 export {
   documentProcessJobName,
   documentProcessJobSchema,
+  documentProcessingJobName,
+  documentProcessingJobSchema,
   systemHealthCheckJobName,
   systemHealthCheckJobSchema,
 } from "./queue";

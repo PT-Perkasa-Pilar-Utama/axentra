@@ -2,17 +2,20 @@ import { Queue, Worker } from "bullmq";
 import type { Job } from "bullmq";
 import {
   documentProcessJobName,
-  documentProcessJobSchema,
+  documentProcessingJobName,
+  documentProcessingJobSchema,
   systemHealthCheckJobName,
   systemHealthCheckJobSchema,
   type DocumentProcessJob,
+  type DocumentProcessingJob,
   type SystemHealthCheckJob,
 } from "@axentra/shared";
 import { redisConnectionOptions } from "./connection";
 
 export type QueueProducer = {
   enqueueSystemHealthCheck: (payload: SystemHealthCheckJob) => Promise<string>;
-  enqueueDocumentProcess: (payload: DocumentProcessJob) => Promise<string>;
+  enqueueDocumentProcessing: (payload: DocumentProcessingJob) => Promise<string>;
+  enqueueDocumentProcess?: ((payload: DocumentProcessJob) => Promise<string>) | undefined;
   close: () => Promise<void>;
 };
 
@@ -31,9 +34,10 @@ export function createQueueProducer(queueName: string, redisUrl: string): QueueP
       if (job.id === undefined) throw new Error("Queue did not return a job identifier");
       return job.id;
     },
-    async enqueueDocumentProcess(payload: DocumentProcessJob): Promise<string> {
-      const validated = documentProcessJobSchema.parse(payload);
-      const job = await queue.add(documentProcessJobName, validated, {
+
+    async enqueueDocumentProcessing(payload: DocumentProcessingJob): Promise<string> {
+      const validated = documentProcessingJobSchema.parse(payload);
+      const job = await queue.add(documentProcessingJobName, validated, {
         jobId: validated.jobId,
         attempts: 3,
         backoff: { type: "exponential", delay: 1000 },
@@ -43,6 +47,11 @@ export function createQueueProducer(queueName: string, redisUrl: string): QueueP
       if (job.id === undefined) throw new Error("Queue did not return a job identifier");
       return job.id;
     },
+
+    async enqueueDocumentProcess(payload: DocumentProcessJob): Promise<string> {
+      return this.enqueueDocumentProcessing(payload);
+    },
+
     async close(): Promise<void> {
       await queue.close();
     },
@@ -50,34 +59,36 @@ export function createQueueProducer(queueName: string, redisUrl: string): QueueP
 }
 
 export type SystemHealthJobHandler = (payload: SystemHealthCheckJob) => Promise<void>;
-export type DocumentProcessJobHandler = (payload: DocumentProcessJob) => Promise<void>;
+export type DocumentProcessingJobHandler = (payload: DocumentProcessingJob) => Promise<void>;
+export type DocumentProcessJobHandler = DocumentProcessingJobHandler;
 
-export type QueueWorkerHandlers = {
-  handleSystemHealthCheck?: SystemHealthJobHandler;
-  handleDocumentProcess?: DocumentProcessJobHandler;
+export type QueueJobHandlers = {
+  handleSystemHealthCheck?: SystemHealthJobHandler | undefined;
+  handleDocumentProcessing?: DocumentProcessingJobHandler | undefined;
+  handleDocumentProcess?: DocumentProcessJobHandler | undefined;
 };
+
+export type QueueWorkerHandlers = QueueJobHandlers;
 
 export function createQueueWorker(
   queueName: string,
   redisUrl: string,
   concurrency: number,
-  handlers: QueueWorkerHandlers,
+  handlers: QueueJobHandlers,
 ): Worker {
   return new Worker(
     queueName,
     async (job: Job): Promise<void> => {
-      if (job.name === systemHealthCheckJobName) {
-        if (!handlers.handleSystemHealthCheck) {
-          throw new Error(`No handler registered for job type: ${job.name}`);
-        }
+      if (job.name === systemHealthCheckJobName && handlers.handleSystemHealthCheck) {
         await handlers.handleSystemHealthCheck(systemHealthCheckJobSchema.parse(job.data));
         return;
       }
-      if (job.name === documentProcessJobName) {
-        if (!handlers.handleDocumentProcess) {
-          throw new Error(`No handler registered for job type: ${job.name}`);
-        }
-        await handlers.handleDocumentProcess(documentProcessJobSchema.parse(job.data));
+      const documentHandler = handlers.handleDocumentProcessing ?? handlers.handleDocumentProcess;
+      if (
+        (job.name === documentProcessingJobName || job.name === documentProcessJobName) &&
+        documentHandler
+      ) {
+        await documentHandler(documentProcessingJobSchema.parse(job.data));
         return;
       }
       throw new Error(`Unsupported job type: ${job.name}`);

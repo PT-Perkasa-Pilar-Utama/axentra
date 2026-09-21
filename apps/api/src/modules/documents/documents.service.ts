@@ -1,5 +1,4 @@
 import crypto from "node:crypto";
-import path from "node:path";
 import type { Logger } from "@axentra/observability";
 import { createLogger, summarizeError } from "@axentra/observability";
 import type { QueueProducer } from "@axentra/queue";
@@ -7,105 +6,80 @@ import { validateObjectKey, type StorageAdapter } from "@axentra/storage";
 import {
   DOCUMENT_COPY,
   DOCUMENT_ERROR_CODES,
+  type DocumentMetadataResult,
   type DocumentType,
   type DocumentUploadAcceptedData,
 } from "@axentra/shared";
-import { ConflictError } from "../../http/errors";
+import { ConflictError, NotFoundError } from "../../http/errors";
 import type { RawUploadFile } from "./documents.schema";
 import { validateUploadBatchConstraints } from "./documents.schema";
 import type { CreateDocumentBatchItem, IDocumentRepository } from "./documents.repository";
+import type { IMetadataExtractor } from "./metadata.extractor";
+import { DeterministicMetadataExtractor } from "./metadata.extractor";
+import type { IDocumentMetadataRepository, SaveMetadataInput } from "./metadata.repository";
+import { InMemoryDocumentMetadataRepository } from "./metadata.repository";
+import {
+  createInMemoryRepository,
+  createInMemoryStorage,
+  formatMetadataResult,
+  sanitizeFilename,
+} from "./documents.service.helpers";
+
+export type ExtractMetadataOptions = {
+  filename?: string | undefined;
+  mimeType?: string | undefined;
+  buffer?: Uint8Array | Buffer | undefined;
+  rawText?: string | undefined;
+};
 
 export type DocumentServiceDependencies = {
-  repository: IDocumentRepository;
-  storage: StorageAdapter;
+  repository?: IDocumentRepository | undefined;
+  storage?: StorageAdapter | undefined;
   queue?: QueueProducer | undefined;
-  logger: Logger;
+  logger?: Logger | undefined;
+  metadataRepository?: IDocumentMetadataRepository | undefined;
+  metadataExtractor?: IMetadataExtractor | undefined;
+  queueProducer?: QueueProducer | undefined;
 };
 
 export type IDocumentService = {
   uploadDocuments(files: ReadonlyArray<RawUploadFile>): Promise<DocumentUploadAcceptedData>;
   validateUpload(files: ReadonlyArray<RawUploadFile>): Promise<DocumentUploadAcceptedData>;
+  getDocumentMetadata(documentId: string): Promise<DocumentMetadataResult>;
+  extractAndStoreMetadata(
+    documentId: string,
+    options?: ExtractMetadataOptions | undefined,
+  ): Promise<DocumentMetadataResult>;
+  storeMetadata(data: SaveMetadataInput): Promise<DocumentMetadataResult>;
+  enqueueProcessingJob(documentId: string): Promise<string>;
 };
 
-function sanitizeFilename(filename: string): string {
-  const base = path.basename(filename).trim();
-  const cleaned = base.replace(/[^a-zA-Z0-9._-]/g, "_");
-  return cleaned.length > 0 ? cleaned : "document";
-}
-
-function createInMemoryRepository(): IDocumentRepository {
-  const existingHashes = new Set<string>();
-  const savedBatches: CreateDocumentBatchItem[][] = [];
-  return {
-    findExistingHashes: async (hashes) => {
-      const found = new Set<string>();
-      for (const h of hashes) {
-        if (existingHashes.has(h)) found.add(h);
-      }
-      return found;
-    },
-    saveDocumentBatch: async (items) => {
-      for (const item of items) {
-        if (existingHashes.has(item.contentHash)) {
-          throw new ConflictError(
-            DOCUMENT_ERROR_CODES.DUPLICATE_DOCUMENT,
-            DOCUMENT_COPY.DUPLICATE_WARNING,
-          );
-        }
-      }
-      savedBatches.push([...items]);
-      for (const item of items) {
-        existingHashes.add(item.contentHash);
-      }
-      return items.map((i) => ({
-        documentId: i.id,
-        title: i.title,
-        originalName: i.originalName,
-        storageKey: i.storageKey,
-        mimeType: i.mimeType,
-        fileSize: i.fileSize,
-        fileExtension: i.fileExtension,
-        contentHash: i.contentHash,
-      }));
-    },
-    findDocumentById: async () => null,
-    findDocumentFileByDocumentId: async () => null,
-  };
-}
-
-function createInMemoryStorage(): StorageAdapter {
-  const map = new Map<string, Uint8Array | string>();
-  return {
-    initialize: async () => {},
-    checkHealth: async () => {},
-    putObject: async ({ key, body }) => {
-      map.set(key, body);
-    },
-    getObject: async (key) => {
-      const v = map.get(key);
-      if (!v) throw new Error("Not found");
-      return typeof v === "string" ? new TextEncoder().encode(v) : v;
-    },
-    deleteObject: async (key) => {
-      map.delete(key);
-    },
-    headObject: async (key) => {
-      const v = map.get(key);
-      if (!v) throw new Error("Not found");
-      return {
-        key,
-        contentLength: typeof v === "string" ? v.length : v.byteLength,
-        contentType: undefined,
-        checksumSha256: undefined,
-      };
-    },
-    createDownloadUrl: async (key) => `http://mock-storage/${key}`,
-    close: async () => {},
-  };
-}
-
 export class DocumentService implements IDocumentService {
-  public constructor(private readonly dependencies: DocumentServiceDependencies) {}
+  private readonly repository: IDocumentRepository;
+  private readonly storage: StorageAdapter;
+  private readonly queue?: QueueProducer | undefined;
+  private readonly logger: Logger;
+  private readonly metadataRepository: IDocumentMetadataRepository;
+  private readonly metadataExtractor: IMetadataExtractor;
+  private readonly queueProducer?: QueueProducer | undefined;
+
+  public constructor(dependencies: DocumentServiceDependencies = {}) {
+    this.repository = dependencies.repository ?? createInMemoryRepository();
+    this.storage = dependencies.storage ?? createInMemoryStorage();
+    this.queue = dependencies.queue ?? dependencies.queueProducer;
+    this.queueProducer = dependencies.queueProducer ?? dependencies.queue;
+    this.logger =
+      dependencies.logger ??
+      createLogger({
+        service: "axentra-api",
+        environment: "test",
+        version: "0.1.0",
+        level: "fatal",
+      });
+    this.metadataRepository =
+      dependencies.metadataRepository ?? new InMemoryDocumentMetadataRepository();
+    this.metadataExtractor = dependencies.metadataExtractor ?? new DeterministicMetadataExtractor();
+  }
 
   public async validateUpload(
     files: ReadonlyArray<RawUploadFile>,
@@ -116,10 +90,8 @@ export class DocumentService implements IDocumentService {
   public async uploadDocuments(
     files: ReadonlyArray<RawUploadFile>,
   ): Promise<DocumentUploadAcceptedData> {
-    // 1. Strict canonical validation (PDF signature, DOCX OOXML structure, batch limits)
     const validatedFiles = validateUploadBatchConstraints(files);
 
-    // 2. Compute SHA-256 hashes and check for intra-batch duplicates
     const hashes: Array<string> = [];
     const seenHashesInBatch = new Set<string>();
 
@@ -135,8 +107,7 @@ export class DocumentService implements IDocumentService {
       hashes.push(hash);
     }
 
-    // 3. Check against existing hashes in database
-    const existingHashes = await this.dependencies.repository.findExistingHashes(hashes);
+    const existingHashes = await this.repository.findExistingHashes(hashes);
     if (existingHashes.size > 0) {
       throw new ConflictError(
         DOCUMENT_ERROR_CODES.DUPLICATE_DOCUMENT,
@@ -144,7 +115,6 @@ export class DocumentService implements IDocumentService {
       );
     }
 
-    // 4. Upload files to object storage with compensating rollback tracking
     const uploadedStorageKeys: Array<string> = [];
     const batchItems: Array<CreateDocumentBatchItem> = [];
 
@@ -159,7 +129,7 @@ export class DocumentService implements IDocumentService {
         const safeName = sanitizeFilename(validated.filename);
         const storageKey = validateObjectKey(`documents/${documentId}/${safeName}`);
 
-        await this.dependencies.storage.putObject({
+        await this.storage.putObject({
           key: storageKey,
           body: file.bytes,
           contentType: validated.mimeType,
@@ -181,19 +151,17 @@ export class DocumentService implements IDocumentService {
         });
       }
 
-      // 5. Persist to database transactionally (unique constraint violation throws ConflictError)
-      await this.dependencies.repository.saveDocumentBatch(batchItems);
+      await this.repository.saveDocumentBatch(batchItems);
     } catch (error) {
-      // Compensating action: clean up any uploaded storage objects on failure
       if (uploadedStorageKeys.length > 0) {
         const results = await Promise.allSettled(
-          uploadedStorageKeys.map((key) => this.dependencies.storage.deleteObject(key)),
+          uploadedStorageKeys.map((key) => this.storage.deleteObject(key)),
         );
         for (let i = 0; i < results.length; i++) {
           const res = results[i];
           const key = uploadedStorageKeys[i];
           if (res?.status === "rejected") {
-            this.dependencies.logger.error(
+            this.logger.error(
               { storageKey: key, error: summarizeError(res.reason) },
               "Failed to clean up orphaned storage object during rollback",
             );
@@ -203,19 +171,20 @@ export class DocumentService implements IDocumentService {
       throw error;
     }
 
-    // 6. Enqueue background processing job for accepted documents
-    if (this.dependencies.queue) {
+    const producer = this.queue ?? this.queueProducer;
+    if (producer) {
       for (const item of batchItems) {
         try {
-          await this.dependencies.queue.enqueueDocumentProcess({
+          await producer.enqueueDocumentProcessing({
             jobId: crypto.randomUUID(),
-            schemaVersion: 1,
             documentId: item.id,
+            schemaVersion: 1,
+            requestedAt: new Date().toISOString(),
             storageKey: item.storageKey,
             enqueuedAt: new Date().toISOString(),
           });
         } catch (queueError) {
-          this.dependencies.logger.error(
+          this.logger.error(
             {
               documentId: item.id,
               storageKey: item.storageKey,
@@ -227,7 +196,6 @@ export class DocumentService implements IDocumentService {
       }
     }
 
-    // 7. Return success envelope data
     return {
       message: DOCUMENT_COPY.UPLOAD_ACCEPTED,
       count: batchItems.length,
@@ -238,24 +206,76 @@ export class DocumentService implements IDocumentService {
       })),
     };
   }
+
+  public async getDocumentMetadata(documentId: string): Promise<DocumentMetadataResult> {
+    const document = await this.metadataRepository.findDocumentById(documentId);
+    if (!document) {
+      throw new NotFoundError("Dokumen tidak ditemukan");
+    }
+
+    const metadata = await this.metadataRepository.findMetadataByDocumentId(documentId);
+    if (!metadata) {
+      throw new NotFoundError("Metadata dokumen tidak ditemukan");
+    }
+
+    return formatMetadataResult(metadata);
+  }
+
+  public async extractAndStoreMetadata(
+    documentId: string,
+    options?: ExtractMetadataOptions | undefined,
+  ): Promise<DocumentMetadataResult> {
+    const document = await this.metadataRepository.findDocumentById(documentId);
+    if (!document) {
+      throw new NotFoundError("Dokumen tidak ditemukan");
+    }
+
+    const extracted = await this.metadataExtractor.extract({
+      documentId,
+      filename: options?.filename ?? document.title,
+      mimeType: options?.mimeType,
+      buffer: options?.buffer,
+      rawText: options?.rawText,
+    });
+
+    const saved = await this.metadataRepository.saveMetadata({
+      documentId,
+      author: extracted.author,
+      rawMetadata: extracted.rawMetadata,
+      extractedAt: extracted.extractedAt,
+    });
+
+    return formatMetadataResult(saved);
+  }
+
+  public async storeMetadata(data: SaveMetadataInput): Promise<DocumentMetadataResult> {
+    const document = await this.metadataRepository.findDocumentById(data.documentId);
+    if (!document) {
+      throw new NotFoundError("Dokumen tidak ditemukan");
+    }
+
+    const saved = await this.metadataRepository.saveMetadata(data);
+    return formatMetadataResult(saved);
+  }
+
+  public async enqueueProcessingJob(documentId: string): Promise<string> {
+    const producer = this.queueProducer ?? this.queue;
+    if (!producer) {
+      throw new Error("QueueProducer tidak tersedia untuk memproses dokumen");
+    }
+    return producer.enqueueDocumentProcessing({
+      jobId: crypto.randomUUID(),
+      documentId,
+      schemaVersion: 1,
+      requestedAt: new Date().toISOString(),
+    });
+  }
 }
 
 export function createDocumentService(
-  dependencies?: Partial<DocumentServiceDependencies>,
+  dependencies: DocumentServiceDependencies = {},
 ): DocumentService {
-  return new DocumentService({
-    repository: dependencies?.repository ?? createInMemoryRepository(),
-    storage: dependencies?.storage ?? createInMemoryStorage(),
-    queue: dependencies?.queue,
-    logger:
-      dependencies?.logger ??
-      createLogger({
-        service: "axentra-api",
-        environment: "test",
-        version: "0.1.0",
-        level: "fatal",
-      }),
-  });
+  return new DocumentService(dependencies);
 }
 
 export { DocumentService as DefaultDocumentService };

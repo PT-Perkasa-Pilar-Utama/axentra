@@ -7,6 +7,7 @@ import { createApp } from "./app";
 import { createAuthService } from "./modules/auth/auth.service";
 import { DocumentRepository } from "./modules/documents/documents.repository";
 import { createDocumentService } from "./modules/documents/documents.service";
+import { DrizzleDocumentMetadataRepository } from "./modules/documents/metadata.repository";
 
 const closeResourcesWithinDeadline = async (
   operations: Array<() => Promise<unknown>>,
@@ -67,6 +68,7 @@ async function start(): Promise<void> {
     storage,
     queue,
     logger,
+    metadataRepository: new DrizzleDocumentMetadataRepository(database.db),
   });
 
   const app = createApp({
@@ -79,6 +81,7 @@ async function start(): Promise<void> {
     ],
     authService,
     documentService,
+    enableUploadRoute: true,
   });
 
   const server = Bun.serve({
