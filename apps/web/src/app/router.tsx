@@ -1,12 +1,17 @@
-import { createBrowserRouter } from "react-router";
+import { createBrowserRouter, type RouteObject } from "react-router";
 import { FoundationPage } from "./foundation-page";
+import { MemberTeamDashboardPage } from "./member-team-dashboard-page";
 import { DocumentUploadPage } from "../features/document-upload/document-upload.view";
 import { DocumentDetailView } from "../features/document-detail/document-detail.view";
 
-export const router = createBrowserRouter([
+export const routes: RouteObject[] = [
   {
     path: "/",
     element: <FoundationPage />,
+  },
+  {
+    path: "/dashboard",
+    element: <MemberTeamDashboardPage />,
   },
   {
     path: "/upload",
@@ -16,4 +21,6 @@ export const router = createBrowserRouter([
     path: "/documents/:id",
     element: <DocumentDetailView />,
   },
-]);
+];
+
+export const router = createBrowserRouter(routes);

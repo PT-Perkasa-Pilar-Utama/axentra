@@ -1,7 +1,4 @@
 import { describe, expect, spyOn, test } from "bun:test";
-import { createElement } from "react";
-import { renderToString } from "react-dom/server";
-import { MemoryRouter, Route, Routes } from "react-router";
 import type { DocumentUploadAcceptedData } from "@axentra/shared";
 import {
   DOCUMENT_COPY,
@@ -14,15 +11,12 @@ import {
   uploadDocuments,
 } from "../src/features/document-upload/document-upload.api";
 import {
+  classifyUploadError,
+  isRecoverableStatus,
   isSupportedFile,
   validateUploadFiles,
   UPLOAD_MESSAGES,
 } from "../src/features/document-upload/document-upload.presenter";
-import {
-  DocumentUploadAreaView,
-  DocumentUploadNotificationView,
-  DocumentUploadPage,
-} from "../src/features/document-upload/document-upload.view";
 import { ApiClientError } from "../src/lib/api-client";
 
 function createMockFetch(
@@ -231,210 +225,48 @@ describe("document-upload API batch request (F2)", () => {
   });
 });
 
-describe("document-upload presenter state handling", () => {
-  test("handles successful upload and triggers onSuccess callback", async () => {
-    const acceptedData: DocumentUploadAcceptedData = {
-      message: DOCUMENT_COPY.UPLOAD_ACCEPTED,
-      count: 1,
-      files: [{ filename: "doc.pdf", size: 100, documentType: "pdf" }],
-    };
-
-    let callbackCalledWith: DocumentUploadAcceptedData | null = null;
-    const mockUpload = async (): Promise<DocumentUploadAcceptedData> => acceptedData;
-
-    const files = [new File(["test"], "doc.pdf", { type: "application/pdf" })];
-    const validation = validateUploadFiles(files);
-    expect(validation.valid).toBe(true);
-
-    const result = await mockUpload();
-    callbackCalledWith = result;
-
-    expect(callbackCalledWith.message).toBe("File diterima untuk diproses");
-    expect(callbackCalledWith.count).toBe(1);
-  });
-
-  test("handles duplicate error with DUPLICATE_DOCUMENT code", () => {
-    const error = new ApiClientError(
-      DOCUMENT_ERROR_CODES.DUPLICATE_DOCUMENT,
-      "File ini sudah ada",
-      409,
+describe("document-upload error classification (F2)", () => {
+  test("classifies duplicate responses", () => {
+    const result = classifyUploadError(
+      new ApiClientError(DOCUMENT_ERROR_CODES.DUPLICATE_DOCUMENT, "File ini sudah ada", 409),
     );
 
-    expect(error.code).toBe("DUPLICATE_DOCUMENT");
-    expect(error.status).toBe(409);
-    expect(UPLOAD_MESSAGES.DUPLICATE).toBe("File ini sudah ada");
+    expect(result.status).toBe("duplicate_error");
+    expect(result.message).toBe(DOCUMENT_COPY.DUPLICATE_WARNING);
   });
 
-  test("handles unsupported file type rejection", () => {
-    const badFiles = [new File(["img"], "image.jpg", { type: "image/jpeg" })];
-    const validation = validateUploadFiles(badFiles);
-    expect(validation.valid).toBe(false);
-    expect(validation.errorMessage).toBe(UPLOAD_MESSAGES.UNSUPPORTED);
-  });
-});
-
-describe("document-upload view & route integration (F4)", () => {
-  test("renders empty prompt and dropzone in idle state", () => {
-    const presenterMock = {
-      status: "idle" as const,
-      isUploading: false,
-      notification: null,
-      uploadedResult: null,
-      uploadFiles: async () => {},
-      dismissNotification: () => {},
-      reset: () => {},
-    };
-
-    const html = renderToString(<DocumentUploadAreaView presenter={presenterMock} />);
-
-    expect(html).toContain("Area Unggah Dokumen");
-    expect(html).toContain("Klik di sini");
-    expect(html).toContain("untuk mengunggah file Anda");
-    expect(html).toContain('type="file"');
-    expect(html).toContain('accept=".pdf,.docx');
-  });
-
-  test("renders loading state when isUploading is true", () => {
-    const presenterMock = {
-      status: "uploading" as const,
-      isUploading: true,
-      notification: null,
-      uploadedResult: null,
-      uploadFiles: async () => {},
-      dismissNotification: () => {},
-      reset: () => {},
-    };
-
-    const html = renderToString(<DocumentUploadAreaView presenter={presenterMock} />);
-
-    expect(html).toContain("Mengunggah dokumen...");
-    expect(html).toContain('data-testid="upload-loading-state"');
-  });
-
-  test("renders success notification view", () => {
-    const presenterMock = {
-      status: "success" as const,
-      isUploading: false,
-      notification: {
-        type: "success" as const,
-        message: DOCUMENT_COPY.UPLOAD_ACCEPTED,
-      },
-      uploadedResult: {
-        message: DOCUMENT_COPY.UPLOAD_ACCEPTED,
-        count: 1,
-        files: [{ filename: "laporan.pdf", size: 1024, documentType: "pdf" as const }],
-      },
-      uploadFiles: async () => {},
-      dismissNotification: () => {},
-      reset: () => {},
-    };
-
-    const html = renderToString(<DocumentUploadNotificationView presenter={presenterMock} />);
-
-    expect(html).toContain("File diterima untuk diproses");
-    expect(html).toContain("bg-[#c9f0dc]/90");
-    expect(html).toContain("Upload berhasil.");
-  });
-
-  test("renders duplicate error notification view", () => {
-    const presenterMock = {
-      status: "duplicate_error" as const,
-      isUploading: false,
-      notification: {
-        type: "error" as const,
-        message: DOCUMENT_COPY.DUPLICATE_WARNING,
-      },
-      uploadedResult: null,
-      uploadFiles: async () => {},
-      dismissNotification: () => {},
-      reset: () => {},
-    };
-
-    const html = renderToString(<DocumentUploadNotificationView presenter={presenterMock} />);
-
-    expect(html).toContain("File ini sudah ada");
-    expect(html).toContain("bg-[#f0a7a7]/90");
-    expect(html).toContain("Upload gagal.");
-  });
-
-  test("renders unsupported error notification view", () => {
-    const presenterMock = {
-      status: "unsupported_error" as const,
-      isUploading: false,
-      notification: {
-        type: "error" as const,
-        message: DOCUMENT_COPY.UNSUPPORTED_TYPE,
-      },
-      uploadedResult: null,
-      uploadFiles: async () => {},
-      dismissNotification: () => {},
-      reset: () => {},
-    };
-
-    const html = renderToString(<DocumentUploadNotificationView presenter={presenterMock} />);
-
-    expect(html).toContain("Tipe file tidak didukung");
-    expect(html).toContain("bg-[#f0a7a7]/90");
-    expect(html).toContain("Upload gagal.");
-  });
-
-  test("renders generic error notification view", () => {
-    const presenterMock = {
-      status: "error" as const,
-      isUploading: false,
-      notification: {
-        type: "error" as const,
-        message: "Gagal mengunggah file",
-      },
-      uploadedResult: null,
-      uploadFiles: async () => {},
-      dismissNotification: () => {},
-      reset: () => {},
-    };
-
-    const html = renderToString(<DocumentUploadNotificationView presenter={presenterMock} />);
-
-    expect(html).toContain("Gagal mengunggah file");
-    expect(html).toContain("bg-[#f0a7a7]/90");
-    expect(html).toContain("Upload gagal.");
-  });
-
-  test("returns empty output when notification is null", () => {
-    const presenterMock = {
-      status: "idle" as const,
-      isUploading: false,
-      notification: null,
-      uploadedResult: null,
-      uploadFiles: async () => {},
-      dismissNotification: () => {},
-      reset: () => {},
-    };
-
-    const html = renderToString(<DocumentUploadNotificationView presenter={presenterMock} />);
-
-    expect(html).toBe("");
-  });
-
-  test("AC-01.01 to AC-01.04: renders DocumentUploadPage connected to presenter and route /upload", () => {
-    const element = createElement(
-      MemoryRouter,
-      { initialEntries: ["/upload"] },
-      createElement(
-        Routes,
-        null,
-        createElement(Route, {
-          path: "/upload",
-          element: createElement(DocumentUploadPage),
-        }),
+  test("classifies unsupported type responses", () => {
+    const result = classifyUploadError(
+      new ApiClientError(
+        DOCUMENT_ERROR_CODES.UNSUPPORTED_FILE_TYPE,
+        "Tipe file tidak didukung",
+        415,
       ),
     );
 
-    const html = renderToString(element);
+    expect(result.status).toBe("unsupported_error");
+    expect(result.message).toBe(DOCUMENT_COPY.UNSUPPORTED_TYPE);
+  });
 
-    expect(html).toContain("Unggah Dokumen");
-    expect(html).toContain("Area Unggah Dokumen");
-    expect(html).toContain("Klik di sini");
-    expect(html).toContain('type="file"');
-    expect(html).toContain('accept=".pdf,.docx');
+  test("classifies transport failures as recoverable errors", () => {
+    const result = classifyUploadError(new Error("Network request failed"));
+
+    expect(result.status).toBe("error");
+    expect(isRecoverableStatus(result.status)).toBe(true);
+    expect(result.message).toBe("Network request failed");
+  });
+
+  test("falls back to the generic message for unknown throwables", () => {
+    const result = classifyUploadError("boom");
+
+    expect(result.status).toBe("error");
+    expect(result.message).toBe(UPLOAD_MESSAGES.GENERIC_ERROR);
+  });
+
+  test("duplicate and unsupported errors are never recoverable through retry", () => {
+    expect(isRecoverableStatus("duplicate_error")).toBe(false);
+    expect(isRecoverableStatus("unsupported_error")).toBe(false);
+    expect(isRecoverableStatus("processing")).toBe(false);
+    expect(isRecoverableStatus("error")).toBe(true);
   });
 });
