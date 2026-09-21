@@ -1,13 +1,15 @@
 import { describe, expect, it } from "bun:test";
 import { createLogger } from "@axentra/observability";
 import type { ApiSuccessEnvelope, DocumentMetadataResult } from "@axentra/shared";
+import type { StorageAdapter } from "@axentra/storage";
 import { createApp } from "../../app";
 import { createAuthService } from "../auth/auth.service";
 import { createDocumentService } from "./documents.service";
 import { InMemoryDocumentMetadataRepository } from "./metadata.repository";
-import { processDocumentJob } from "../../../../worker/src/processors/document.processor";
-import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import type { StorageAdapter } from "@axentra/storage";
+import {
+  InMemoryDocumentProcessingRepository,
+  processDocumentJob,
+} from "../../../../worker/src/processors/document.processor";
 
 const testLogger = createLogger({
   service: "axentra-api",
@@ -16,12 +18,12 @@ const testLogger = createLogger({
   level: "fatal",
 });
 
-describe("Document Processing Lifecycle Integration (Task BE-S1-05 / F2 & F5)", () => {
+describe("Document Processing Lifecycle Integration (Task BE-S1-05 / F2, F7 & F8)", () => {
   it("processes uploaded document through worker lifecycle and serves result via API endpoint", async () => {
     const docId = "77777777-7777-4777-8777-777777777777";
     const storageKey = `uploads/${docId}/laporan.pdf`;
 
-    // 1. In-memory simulated storage and database
+    // 1. In-memory simulated storage and repositories
     const storageFiles = new Map<string, Uint8Array>();
     const pdfContent = `%PDF-1.4\n1 0 obj\n<< /Title (Laporan Keuangan Q3) /Author (Dewi Lestari) >>\nendobj\n%%EOF`;
     storageFiles.set(storageKey, Buffer.from(pdfContent, "utf-8"));
@@ -46,41 +48,6 @@ describe("Document Processing Lifecycle Integration (Task BE-S1-05 / F2 & F5)", 
       close: async () => undefined,
     };
 
-    type LifecycleDoc = {
-      id: string;
-      title: string;
-      processingStatus: "queued" | "processing" | "completed" | "failed";
-      errorMessage: string | null;
-      updatedAt: Date;
-    };
-
-    // Simulated database records
-    const docs = new Map<string, LifecycleDoc>([
-      [
-        docId,
-        {
-          id: docId,
-          title: "Laporan Keuangan Q3.pdf",
-          processingStatus: "queued",
-          errorMessage: null,
-          updatedAt: new Date(),
-        },
-      ],
-    ]);
-
-    const files = new Map([
-      [
-        docId,
-        {
-          id: "ffffffff-ffff-4fff-8fff-ffffffffffff",
-          documentId: docId,
-          storageKey,
-          originalName: "Laporan Keuangan Q3.pdf",
-          mimeType: "application/pdf",
-        },
-      ],
-    ]);
-
     const metadataRepository = new InMemoryDocumentMetadataRepository();
     metadataRepository.addDocument({
       id: docId,
@@ -90,54 +57,32 @@ describe("Document Processing Lifecycle Integration (Task BE-S1-05 / F2 & F5)", 
       updatedAt: new Date(),
     });
 
-    const mockDb = {
-      select: () => ({
-        from: (table: { [key: string]: unknown }) => ({
-          where: () => ({
-            limit: () => {
-              if ("title" in table) {
-                const doc = docs.get(docId);
-                return Promise.resolve(doc ? [doc] : []);
-              }
-              if ("storageKey" in table) {
-                const file = files.get(docId);
-                return Promise.resolve(file ? [file] : []);
-              }
-              return Promise.resolve([]);
-            },
-          }),
-        }),
-      }),
-      update: () => ({
-        set: (updates: {
-          processingStatus?: "queued" | "processing" | "completed" | "failed";
-          errorMessage?: string | null;
-        }) => ({
-          where: () => {
-            const doc = docs.get(docId);
-            if (doc) Object.assign(doc, updates);
-            return Promise.resolve();
-          },
-        }),
-      }),
-      insert: () => ({
-        values: (val: {
-          documentId: string;
-          author: string | null;
-          rawMetadata: Record<string, unknown> | null;
-          extractedAt: Date;
-        }) => ({
-          onConflictDoUpdate: async () => {
-            await metadataRepository.saveMetadata({
-              documentId: val.documentId,
-              author: val.author,
-              rawMetadata: val.rawMetadata,
-              extractedAt: val.extractedAt,
-            });
-          },
-        }),
-      }),
-    };
+    const processingRepository = new InMemoryDocumentProcessingRepository(
+      async (documentId, meta) => {
+        await metadataRepository.saveMetadata({
+          documentId,
+          author: meta.author,
+          rawMetadata: meta.rawMetadata,
+          extractedAt: meta.extractedAt,
+        });
+      },
+    );
+
+    processingRepository.documents.set(docId, {
+      id: docId,
+      title: "Laporan Keuangan Q3.pdf",
+      processingStatus: "queued",
+      errorMessage: null,
+      updatedAt: new Date(),
+    });
+
+    processingRepository.files.set(docId, {
+      id: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+      documentId: docId,
+      storageKey,
+      originalName: "Laporan Keuangan Q3.pdf",
+      mimeType: "application/pdf",
+    });
 
     // 2. Set up API application with metadataRepository
     const authService = createAuthService({
@@ -187,13 +132,13 @@ describe("Document Processing Lifecycle Integration (Task BE-S1-05 / F2 & F5)", 
         requestedAt: new Date().toISOString(),
       },
       {
-        db: mockDb as unknown as PostgresJsDatabase,
+        repository: processingRepository,
         storage: mockStorage,
       },
     );
 
-    // Document status in DB should now be 'completed'
-    expect(docs.get(docId)?.processingStatus).toBe("completed");
+    // Document status in repository should now be 'completed'
+    expect(processingRepository.documents.get(docId)?.processingStatus).toBe("completed");
 
     // 5. After worker processing: metadata endpoint returns 200 OK with extracted author
     const afterResponse = await app.request(`/api/v1/documents/${docId}/metadata`, {

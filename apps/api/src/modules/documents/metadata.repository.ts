@@ -51,6 +51,28 @@ export type IDocumentMetadataRepository = {
   saveMetadata: (data: SaveMetadataInput) => Promise<DocumentMetadataRecord>;
 };
 
+export type DocumentMetadataRow = {
+  id: string;
+  documentId: string;
+  author: string | null;
+  rawMetadata: unknown;
+  extractedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export function mapDocumentMetadataRow(row: DocumentMetadataRow): DocumentMetadataRecord {
+  return {
+    id: row.id,
+    documentId: row.documentId,
+    author: row.author,
+    rawMetadata: parseRawMetadata(row.rawMetadata),
+    extractedAt: row.extractedAt,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
 export class DrizzleDocumentMetadataRepository implements IDocumentMetadataRepository {
   public constructor(private readonly db: PostgresJsDatabase) {}
 
@@ -90,15 +112,7 @@ export class DrizzleDocumentMetadataRepository implements IDocumentMetadataRepos
     const row = rows[0];
     if (!row) return null;
 
-    return {
-      id: row.id,
-      documentId: row.documentId,
-      author: row.author,
-      rawMetadata: parseRawMetadata(row.rawMetadata),
-      extractedAt: row.extractedAt,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-    };
+    return mapDocumentMetadataRow(row);
   }
 
   public async saveMetadata(data: SaveMetadataInput): Promise<DocumentMetadataRecord> {
@@ -127,15 +141,7 @@ export class DrizzleDocumentMetadataRepository implements IDocumentMetadataRepos
       throw new Error("Gagal menyimpan metadata dokumen");
     }
 
-    return {
-      id: saved.id,
-      documentId: saved.documentId,
-      author: saved.author,
-      rawMetadata: parseRawMetadata(saved.rawMetadata),
-      extractedAt: saved.extractedAt,
-      createdAt: saved.createdAt,
-      updatedAt: saved.updatedAt,
-    };
+    return mapDocumentMetadataRow(saved);
   }
 }
 

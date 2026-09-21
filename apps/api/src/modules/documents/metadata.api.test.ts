@@ -246,9 +246,9 @@ describe("GET /api/v1/documents/:id/metadata - Task BE-S1-05 (AC-03.01)", () => 
     });
   });
 
-  describe("Production Server Composition (Finding F1)", () => {
-    it("proves metadata endpoint is registered (returns 401 not 404) under server composition", async () => {
-      // Replicate the exact dependency composition used in server.ts
+  describe("Production Server Composition (Findings F1 & F6)", () => {
+    it("proves metadata endpoint is registered (returns 401 not 404) while unpersisted upload route is disabled (returns 404)", async () => {
+      // Replicate the exact dependency composition used in server.ts (enableUploadRoute defaults to false)
       const prodAuthService = createAuthService({
         authenticator: (creds) => {
           if (creds.email === "member@axentra.local") {
@@ -284,7 +284,17 @@ describe("GET /api/v1/documents/:id/metadata - Task BE-S1-05 (AC-03.01)", () => 
       expect(unauthJson.success).toBe(false);
       expect(unauthJson.error.code).toBe("UNAUTHORIZED");
 
-      // 2. Authenticated request with invalid UUID returns 400 (proves route is mounted and active)
+      // 2. Finding F6: POST /upload must return 404 Not Found in production composition to avoid data-loss false success
+      const uploadResponse = await prodApp.request("/api/v1/documents/upload", {
+        method: "POST",
+      });
+      expect(uploadResponse.status).toBe(404);
+      const uploadJson = (await uploadResponse.json()) as ApiErrorEnvelope;
+      expect(uploadJson.success).toBe(false);
+      expect(uploadJson.error.code).toBe("NOT_FOUND");
+      expect(uploadJson.error.message).toBe("Endpoint tidak ditemukan");
+
+      // 3. Authenticated request with invalid UUID returns 400 (proves metadata route is mounted and active)
       const login = await prodAuthService.login({
         email: "member@axentra.local",
         password: "any",
@@ -299,7 +309,7 @@ describe("GET /api/v1/documents/:id/metadata - Task BE-S1-05 (AC-03.01)", () => 
       );
       expect(invalidParamResponse.status).toBe(400);
 
-      // 3. Authenticated request for non-existent doc returns 404 "Dokumen tidak ditemukan", NOT "Endpoint tidak ditemukan"
+      // 4. Authenticated request for non-existent doc returns 404 "Dokumen tidak ditemukan", NOT "Endpoint tidak ditemukan"
       const notFoundDocResponse = await prodApp.request(
         "/api/v1/documents/22222222-2222-4222-8222-222222222222/metadata",
         {

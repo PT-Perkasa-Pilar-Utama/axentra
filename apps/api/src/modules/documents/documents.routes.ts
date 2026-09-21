@@ -8,6 +8,7 @@ import { createGetDocumentMetadataHandler } from "./metadata.handler";
 
 export type DocumentRouteDependencies = DocumentHandlerDependencies & {
   tokenVerifier?: TokenVerifier | undefined;
+  enableUploadRoute?: boolean | undefined;
 };
 
 export function createDocumentRoutes(
@@ -15,12 +16,14 @@ export function createDocumentRoutes(
 ): Hono<ApiEnvironment> {
   const routes = new Hono<ApiEnvironment>();
 
-  routes.post(
-    "/upload",
-    requireAuth(dependencies.tokenVerifier),
-    requireRole("member_team"),
-    createDocumentUploadHandler(dependencies),
-  );
+  if (dependencies.enableUploadRoute === true) {
+    routes.post(
+      "/upload",
+      requireAuth(dependencies.tokenVerifier),
+      requireRole("member_team"),
+      createDocumentUploadHandler(dependencies),
+    );
+  }
 
   routes.get(
     "/:id/metadata",

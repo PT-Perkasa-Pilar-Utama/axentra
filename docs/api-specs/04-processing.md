@@ -87,11 +87,11 @@ Retrieves extracted document metadata, including author, extraction timestamp, a
    - **PDF:** Extracts author from PDF Info dictionary (`/Author (...)` or hex-encoded `/Author <...>`).
    - **DOCX:** Safely parses ZIP Central Directory, locates `docProps/core.xml`, decompresses raw DEFLATE bytes with bounded size (512 KiB limit), and parses `<dc:creator>` or `<cp:lastModifiedBy>`.
    - **Fallback:** Deterministic `null` when no author metadata is detected.
-4. **Persistence:** Extracted metadata is upserted into `document_metadata` with strict runtime JSONB validation.
-5. **Completion:** Worker transitions `documents.processing_status` to `'completed'`. On fatal failure, status is updated to `'failed'` with `error_message`.
+4. **Atomic Persistence & Completion:** Extracted metadata upsert into `document_metadata` and the document status transition to `'completed'` execute inside a single atomic database transaction (`db.transaction`). If any write fails, both are rolled back, and the document is marked as `'failed'` with `error_message`.
+5. **Terminal State:** On successful completion, `documents.processing_status` becomes `'completed'` and `errorMessage` is cleared. On failure, status is updated to `'failed'` with `error_message`.
 
 > [!NOTE]
-> **Dependency Hold:** Automatic triggering of `document.process` on HTTP upload depends on `BE-S1-02` (persisting file bytes to MinIO and database record on `POST /upload`). The worker processing engine and metadata query API are fully mounted and verified in production composition.
+> **Dependency Hold (AC-03.01 End-to-End Status):** Automatic triggering of `document.process` upon HTTP upload depends on `BE-S1-02` (persisting file bytes to storage and creating document/file database records on `POST /upload`). While `POST /api/v1/documents/upload` remains unmounted in production configuration to prevent false-success data loss, the worker processing engine and `GET /api/v1/documents/:id/metadata` API are fully implemented, typed, and verified.
 
 ---
 

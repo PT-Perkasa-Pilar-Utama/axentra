@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
-  DrizzleDocumentMetadataRepository,
   InMemoryDocumentMetadataRepository,
+  mapDocumentMetadataRow,
   parseRawMetadata,
 } from "./metadata.repository";
 
@@ -24,67 +24,41 @@ describe("parseRawMetadata (Type Safety / F4)", () => {
   });
 });
 
-describe("DrizzleDocumentMetadataRepository with mocked DB (Type Safety / F4)", () => {
-  it("safely parses invalid JSONB database rows without unsafe casting", async () => {
-    const mockDb = {
-      select: () => ({
-        from: () => ({
-          where: () => ({
-            limit: () =>
-              Promise.resolve([
-                {
-                  id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-                  documentId: "11111111-1111-4111-8111-111111111111",
-                  author: "Penulis Valid",
-                  rawMetadata: "corrupted_string_instead_of_object", // invalid JSONB
-                  extractedAt: new Date(),
-                  createdAt: new Date(),
-                  updatedAt: new Date(),
-                },
-              ]),
-          }),
-        }),
-      }),
+describe("mapDocumentMetadataRow (Type Safety / F4 & F8)", () => {
+  it("safely parses invalid JSONB database rows without unsafe casting", () => {
+    const rawRow = {
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      documentId: "11111111-1111-4111-8111-111111111111",
+      author: "Penulis Valid",
+      rawMetadata: "corrupted_string_instead_of_object", // invalid JSONB
+      extractedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
     };
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const repo = new DrizzleDocumentMetadataRepository(mockDb as any);
-    const result = await repo.findMetadataByDocumentId("11111111-1111-4111-8111-111111111111");
+    const result = mapDocumentMetadataRow(rawRow);
 
     expect(result).not.toBeNull();
-    expect(result?.author).toBe("Penulis Valid");
+    expect(result.author).toBe("Penulis Valid");
     // Invalid JSONB is safely parsed to null instead of unsafe cast pass-through
-    expect(result?.rawMetadata).toBeNull();
+    expect(result.rawMetadata).toBeNull();
   });
 
-  it("safely parses valid JSONB database rows", async () => {
-    const mockDb = {
-      select: () => ({
-        from: () => ({
-          where: () => ({
-            limit: () =>
-              Promise.resolve([
-                {
-                  id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-                  documentId: "11111111-1111-4111-8111-111111111111",
-                  author: "Penulis Valid",
-                  rawMetadata: { pageCount: 5, software: "Office" },
-                  extractedAt: new Date(),
-                  createdAt: new Date(),
-                  updatedAt: new Date(),
-                },
-              ]),
-          }),
-        }),
-      }),
+  it("safely parses valid JSONB database rows", () => {
+    const rawRow = {
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      documentId: "11111111-1111-4111-8111-111111111111",
+      author: "Penulis Valid",
+      rawMetadata: { pageCount: 5, software: "Office" },
+      extractedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
     };
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const repo = new DrizzleDocumentMetadataRepository(mockDb as any);
-    const result = await repo.findMetadataByDocumentId("11111111-1111-4111-8111-111111111111");
+    const result = mapDocumentMetadataRow(rawRow);
 
     expect(result).not.toBeNull();
-    expect(result?.rawMetadata).toEqual({ pageCount: 5, software: "Office" });
+    expect(result.rawMetadata).toEqual({ pageCount: 5, software: "Office" });
   });
 });
 

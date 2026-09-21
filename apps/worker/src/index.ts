@@ -5,7 +5,10 @@ import { createQueueWorker, createRedisProbe } from "@axentra/queue";
 import { createS3StorageAdapter } from "@axentra/storage";
 import type { DocumentProcessingJob, SystemHealthCheckJob } from "@axentra/shared";
 import { closeResourcesWithinDeadline, closeWorkerWithinDeadline } from "./lifecycle";
-import { processDocumentJob } from "./processors/document.processor";
+import {
+  DrizzleDocumentProcessingRepository,
+  processDocumentJob,
+} from "./processors/document.processor";
 
 async function start(): Promise<void> {
   const config = loadWorkerConfigFromRuntime();
@@ -31,6 +34,8 @@ async function start(): Promise<void> {
     throw error;
   }
 
+  const documentProcessingRepository = new DrizzleDocumentProcessingRepository(database.db);
+
   const handleSystemHealthCheck = async (payload: SystemHealthCheckJob): Promise<void> => {
     jobLogger(logger, payload.jobId).info(
       { schemaVersion: payload.schemaVersion, requestedAt: payload.requestedAt },
@@ -41,7 +46,7 @@ async function start(): Promise<void> {
   const handleDocumentProcessing = async (payload: DocumentProcessingJob): Promise<void> => {
     const jobScopedLogger = jobLogger(logger, payload.jobId);
     await processDocumentJob(payload, {
-      db: database.db,
+      repository: documentProcessingRepository,
       storage,
       logger: jobScopedLogger,
     });

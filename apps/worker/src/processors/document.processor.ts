@@ -1,13 +1,13 @@
-import { eq } from "drizzle-orm";
-import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import { documentFiles, documentMetadata, documents } from "@axentra/db";
 import type { Logger } from "@axentra/observability";
 import type { DocumentProcessingJob } from "@axentra/shared";
 import type { StorageAdapter } from "@axentra/storage";
 import { extractMetadataFromBuffer } from "./metadata.extractor";
+import type { DocumentProcessingRepository } from "./document.processor.repository";
+
+export * from "./document.processor.repository";
 
 export type DocumentProcessorDependencies = {
-  db: PostgresJsDatabase;
+  repository: DocumentProcessingRepository;
   storage: StorageAdapter;
   logger?: Logger | undefined;
 };
@@ -15,27 +15,20 @@ export type DocumentProcessorDependencies = {
 /**
  * Idempotently processes a document by loading its file from storage,
  * extracting metadata (such as author), persisting it to document_metadata,
- * and transitioning documents.processing_status from queued -> processing -> completed.
+ * and transitioning documents.processing_status from queued -> processing -> completed
+ * inside an atomic database transaction.
  */
 export async function processDocumentJob(
   payload: DocumentProcessingJob,
   dependencies: DocumentProcessorDependencies,
 ): Promise<void> {
-  const { db, storage, logger } = dependencies;
+  const { repository, storage, logger } = dependencies;
   const { documentId, jobId } = payload;
 
   logger?.info({ jobId, documentId }, "Starting document processing");
 
   // 1. Fetch document record
-  const [doc] = await db
-    .select({
-      id: documents.id,
-      title: documents.title,
-      processingStatus: documents.processingStatus,
-    })
-    .from(documents)
-    .where(eq(documents.id, documentId))
-    .limit(1);
+  const doc = await repository.findDocumentById(documentId);
 
   if (!doc) {
     logger?.warn({ jobId, documentId }, "Document not found; aborting processing");
@@ -49,34 +42,15 @@ export async function processDocumentJob(
   }
 
   // 3. Mark document as currently processing
-  await db
-    .update(documents)
-    .set({ processingStatus: "processing", updatedAt: new Date() })
-    .where(eq(documents.id, documentId));
+  await repository.markAsProcessing(documentId);
 
   try {
     // 4. Fetch associated document file
-    const [file] = await db
-      .select({
-        id: documentFiles.id,
-        storageKey: documentFiles.storageKey,
-        originalName: documentFiles.originalName,
-        mimeType: documentFiles.mimeType,
-      })
-      .from(documentFiles)
-      .where(eq(documentFiles.documentId, documentId))
-      .limit(1);
+    const file = await repository.findDocumentFileByDocumentId(documentId);
 
     if (!file) {
       const missingError = "File dokumen tidak ditemukan pada penyimpanan data";
-      await db
-        .update(documents)
-        .set({
-          processingStatus: "failed",
-          errorMessage: missingError,
-          updatedAt: new Date(),
-        })
-        .where(eq(documents.id, documentId));
+      await repository.markAsFailed(documentId, missingError);
       logger?.error({ jobId, documentId }, missingError);
       return;
     }
@@ -87,36 +61,12 @@ export async function processDocumentJob(
     // 6. Extract metadata
     const extracted = extractMetadataFromBuffer(file.originalName, file.mimeType, fileBuffer);
 
-    // 7. Persist metadata atomically with upsert
-    const now = new Date();
-    await db
-      .insert(documentMetadata)
-      .values({
-        documentId,
-        author: extracted.author,
-        rawMetadata: extracted.rawMetadata,
-        extractedAt: extracted.extractedAt,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: documentMetadata.documentId,
-        set: {
-          author: extracted.author,
-          rawMetadata: extracted.rawMetadata,
-          extractedAt: extracted.extractedAt,
-          updatedAt: now,
-        },
-      });
-
-    // 8. Transition document status to terminal completed
-    await db
-      .update(documents)
-      .set({
-        processingStatus: "completed",
-        errorMessage: null,
-        updatedAt: now,
-      })
-      .where(eq(documents.id, documentId));
+    // 7. Persist metadata and mark document completed atomically within a transaction
+    await repository.completeWithMetadata(documentId, {
+      author: extracted.author,
+      rawMetadata: extracted.rawMetadata,
+      extractedAt: extracted.extractedAt,
+    });
 
     logger?.info(
       { jobId, documentId, author: extracted.author },
@@ -125,14 +75,7 @@ export async function processDocumentJob(
   } catch (error: unknown) {
     const errorMessage =
       error instanceof Error ? error.message : "Terjadi kesalahan saat memproses dokumen";
-    await db
-      .update(documents)
-      .set({
-        processingStatus: "failed",
-        errorMessage,
-        updatedAt: new Date(),
-      })
-      .where(eq(documents.id, documentId));
+    await repository.markAsFailed(documentId, errorMessage);
 
     logger?.error({ jobId, documentId, error }, "Document processing failed");
     throw error;
