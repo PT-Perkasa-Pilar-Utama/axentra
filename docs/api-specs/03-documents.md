@@ -30,6 +30,19 @@ Planned behavior:
 - Return `File diterima untuk diproses` when accepted.
 - Trigger duplicate detection and processing workflow.
 
+#### Constraints and Limits
+
+- **Role required**: `member_team` (`401 Unauthorized` if unauthenticated, `403 Forbidden` if wrong role).
+- **Single file limit**: Maximum 50 MB (`MAX_DOCUMENT_FILE_SIZE_BYTES = 52_428_800` bytes). Rejection status `413 Payload Too Large`.
+- **Aggregate upload limit**: Maximum 50 MB per request (`MAX_AGGREGATE_UPLOAD_SIZE_BYTES = 52_428_800` bytes). Rejection status `413 Payload Too Large`.
+- **Batch limit (DOCX)**: Maximum 10 DOCX files per upload (`MAX_DOCX_BATCH_COUNT = 10`). Rejection status `400 Bad Request`.
+- **PDF constraint**: Single PDF only per upload (`400 Bad Request` if multiple PDFs are uploaded).
+- **No mixed types**: Cannot mix PDF and DOCX in a single upload request (`400 Bad Request`).
+- **Allowed formats**:
+  - PDF: Extension `.pdf`, MIME `application/pdf`, header magic bytes `%PDF-`.
+  - DOCX: Extension `.docx`, MIME `application/vnd.openxmlformats-officedocument.wordprocessingml.document`, OOXML zip structure (`[Content_Types].xml` or `word/`).
+- **Unsupported formats**: All other extensions (e.g. `.jpg`, `.png`, `.txt`) return `415 Unsupported Media Type` with message `Tipe file tidak didukung`.
+
 ## Duplicate Check
 
 ### `POST /api/v1/documents/check-duplicate`

@@ -9,6 +9,8 @@ import { requestContextMiddleware } from "./middleware/request-context";
 import { createHealthRoutes } from "./modules/health/health.routes";
 import { createAuthRoutes } from "./modules/auth/auth.routes";
 import type { AuthService } from "./modules/auth/auth.service";
+import { createDocumentRoutes } from "./modules/documents/documents.routes";
+import type { DocumentService } from "./modules/documents/documents.service";
 
 export type AppDependencies = {
   logger: Logger;
@@ -16,6 +18,7 @@ export type AppDependencies = {
   readinessChecks: ReadonlyArray<DependencyCheck>;
   tokenVerifier?: TokenVerifier | undefined;
   authService?: AuthService | undefined;
+  documentService?: DocumentService | undefined;
 };
 
 export function createApp(dependencies: AppDependencies): Hono<ApiEnvironment> {
@@ -41,6 +44,16 @@ export function createApp(dependencies: AppDependencies): Hono<ApiEnvironment> {
       authService: dependencies.authService,
     }),
   );
+
+  if (dependencies.documentService) {
+    app.route(
+      "/api/v1/documents",
+      createDocumentRoutes({
+        documentService: dependencies.documentService,
+        tokenVerifier,
+      }),
+    );
+  }
 
   app.notFound((context) => jsonError(context, "NOT_FOUND", "Endpoint tidak ditemukan", 404));
 
