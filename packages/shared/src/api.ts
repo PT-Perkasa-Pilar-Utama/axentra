@@ -17,11 +17,12 @@ export const apiErrorSchema = z.object({
 export type ErrorDetail = z.infer<typeof errorDetailSchema>;
 export type ApiErrorEnvelope = z.infer<typeof apiErrorSchema>;
 
-export type PaginationMeta = {
-  page: number;
-  limit: number;
-  total: number;
-};
+export const paginationMetaSchema = z.object({
+  page: z.number().int().positive(),
+  limit: z.number().int().positive(),
+  total: z.number().int().nonnegative(),
+});
+export type PaginationMeta = z.infer<typeof paginationMetaSchema>;
 
 export type ApiSuccessEnvelope<T> = {
   success: true;

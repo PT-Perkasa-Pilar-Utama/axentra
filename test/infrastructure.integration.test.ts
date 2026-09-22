@@ -413,4 +413,67 @@ describe("infrastructure integration", () => {
       }
     },
   );
+
+  integrationTest(
+    "lists an uploaded filename and omits a soft-deleted document [BE-S1-06]",
+    async () => {
+      if (app === undefined || database === undefined || storage === undefined) {
+        throw new Error("Integration infrastructure was not initialized");
+      }
+      const { documents, documentFiles, documentContentHashes } = await import("@axentra/db");
+      const { recentDocumentListResponseSchema } = await import("@axentra/shared");
+      const pdfBytes = new TextEncoder().encode(`%PDF-1.4\n% recent-list-${crypto.randomUUID()}\n`);
+      const formData = new FormData();
+      formData.append("file", new File([pdfBytes], "laporan.pdf", { type: "application/pdf" }));
+
+      const uploaded = await app.request("/api/v1/documents/upload", {
+        method: "POST",
+        headers: { authorization: "Bearer integration-member-token" },
+        body: formData,
+      });
+      expect(uploaded.status).toBe(200);
+
+      const hash = crypto.createHash("sha256").update(pdfBytes).digest("hex");
+      const hashRows = await database.db
+        .select()
+        .from(documentContentHashes)
+        .where(eq(documentContentHashes.contentHash, hash));
+      const docId = hashRows[0]?.documentId;
+      expect(docId).toBeDefined();
+      if (docId === undefined) return;
+
+      try {
+        const listed = await app.request("/api/v1/documents?limit=100", {
+          headers: { authorization: "Bearer integration-member-token" },
+        });
+        expect(listed.status).toBe(200);
+        const body = recentDocumentListResponseSchema.parse(await listed.json());
+        const item = body.data.find((row) => row.id === docId);
+        expect(item?.filename).toBe("laporan.pdf");
+        expect(item?.processingStatus).toBe("queued");
+        expect(item).not.toHaveProperty("tags");
+        expect(item).not.toHaveProperty("category");
+
+        await database.db
+          .update(documents)
+          .set({ deletedAt: new Date() })
+          .where(eq(documents.id, docId));
+
+        const afterDelete = await app.request("/api/v1/documents?limit=100", {
+          headers: { authorization: "Bearer integration-member-token" },
+        });
+        const hidden = recentDocumentListResponseSchema.parse(await afterDelete.json());
+        expect(hidden.data.some((row) => row.id === docId)).toBe(false);
+
+        const fileRows = await database.db
+          .select()
+          .from(documentFiles)
+          .where(eq(documentFiles.documentId, docId));
+        const storageKey = fileRows[0]?.storageKey;
+        if (storageKey !== undefined) await storage.deleteObject(storageKey);
+      } finally {
+        await database.db.delete(documents).where(eq(documents.id, docId));
+      }
+    },
+  );
 });

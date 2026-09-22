@@ -8,6 +8,9 @@ import {
   documentMetadataSchema,
   documentSummarySchema,
   processingStatusSchema,
+  recentDocumentListQuerySchema,
+  recentDocumentListResponseSchema,
+  recentDocumentSchema,
   smartTagSchema,
 } from "../src/document";
 
@@ -24,6 +27,75 @@ describe("document shared schemas", () => {
       expect(() => processingStatusSchema.parse("pending")).toThrow();
       expect(() => processingStatusSchema.parse("processed")).toThrow();
       expect(() => processingStatusSchema.parse(123)).toThrow();
+    });
+  });
+
+  describe("recentDocumentSchema", () => {
+    it("accepts the Sprint 1 list item", () => {
+      const valid = {
+        id: "11111111-1111-4111-8111-111111111111",
+        filename: "laporan.pdf",
+        processingStatus: "completed" as const,
+        createdAt: "2026-09-22T00:00:00.000Z",
+      };
+      expect(recentDocumentSchema.parse(valid)).toEqual(valid);
+    });
+
+    it("rejects tags and category on the Sprint 1 list item", () => {
+      const parsed = recentDocumentSchema.parse({
+        id: "11111111-1111-4111-8111-111111111111",
+        filename: "laporan.pdf",
+        processingStatus: "queued",
+        createdAt: "2026-09-22T00:00:00.000Z",
+        tags: ["Strategy"],
+        category: "Reporting",
+      });
+      expect(parsed).not.toHaveProperty("tags");
+      expect(parsed).not.toHaveProperty("category");
+    });
+  });
+
+  describe("recentDocumentListQuerySchema", () => {
+    it("defaults a missing page and limit", () => {
+      expect(recentDocumentListQuerySchema.parse({})).toEqual({ page: 1, limit: 20 });
+    });
+
+    it("rejects a limit above 100", () => {
+      expect(() => recentDocumentListQuerySchema.parse({ limit: "101" })).toThrow();
+    });
+  });
+
+  describe("recentDocumentListResponseSchema", () => {
+    it("accepts a paginated list of recent documents", () => {
+      const valid = {
+        success: true as const,
+        data: [
+          {
+            id: "11111111-1111-4111-8111-111111111111",
+            filename: "laporan.pdf",
+            processingStatus: "completed" as const,
+            createdAt: "2026-09-22T00:00:00.000Z",
+          },
+        ],
+        meta: { page: 1, limit: 20, total: 1 },
+      };
+      expect(recentDocumentListResponseSchema.parse(valid)).toEqual(valid);
+    });
+
+    it("rejects a list item that omits filename", () => {
+      expect(() =>
+        recentDocumentListResponseSchema.parse({
+          success: true,
+          data: [
+            {
+              id: "11111111-1111-4111-8111-111111111111",
+              processingStatus: "queued",
+              createdAt: "2026-09-22T00:00:00.000Z",
+            },
+          ],
+          meta: { page: 1, limit: 20, total: 1 },
+        }),
+      ).toThrow();
     });
   });
 

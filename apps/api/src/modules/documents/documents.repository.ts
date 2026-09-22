@@ -1,7 +1,12 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { documentContentHashes, documentFiles, documents } from "@axentra/db";
-import { DOCUMENT_COPY, DOCUMENT_ERROR_CODES } from "@axentra/shared";
+import {
+  DOCUMENT_COPY,
+  DOCUMENT_ERROR_CODES,
+  type PaginationMeta,
+  type RecentDocument,
+} from "@axentra/shared";
 import { ConflictError } from "../../http/errors";
 
 export type CreateDocumentBatchItem = {
@@ -27,8 +32,14 @@ export type SavedDocumentRecord = {
   contentHash: string;
 };
 
+export type RecentDocumentPage = {
+  items: ReadonlyArray<RecentDocument>;
+  meta: PaginationMeta;
+};
+
 export type IDocumentRepository = {
   findExistingHashes: (hashes: ReadonlyArray<string>, algorithm?: string) => Promise<Set<string>>;
+  listRecentDocuments: (page: number, limit: number) => Promise<RecentDocumentPage>;
   saveDocumentBatch: (
     items: ReadonlyArray<CreateDocumentBatchItem>,
   ) => Promise<ReadonlyArray<SavedDocumentRecord>>;
@@ -78,6 +89,39 @@ export class DocumentRepository implements IDocumentRepository {
       );
 
     return new Set(rows.map((r) => r.contentHash));
+  }
+
+  public async listRecentDocuments(page: number, limit: number): Promise<RecentDocumentPage> {
+    const whereActive = isNull(documents.deletedAt);
+    const [counted] = await this.db
+      .select({ total: count() })
+      .from(documents)
+      .innerJoin(documentFiles, eq(documentFiles.documentId, documents.id))
+      .where(whereActive);
+    const total = Number(counted?.total ?? 0);
+    const rows = await this.db
+      .select({
+        id: documents.id,
+        filename: documentFiles.originalName,
+        processingStatus: documents.processingStatus,
+        createdAt: documents.createdAt,
+      })
+      .from(documents)
+      .innerJoin(documentFiles, eq(documentFiles.documentId, documents.id))
+      .where(whereActive)
+      .orderBy(desc(documents.createdAt), desc(documents.id))
+      .limit(limit)
+      .offset((page - 1) * limit);
+
+    return {
+      items: rows.map((row) => ({
+        id: row.id,
+        filename: row.filename,
+        processingStatus: row.processingStatus,
+        createdAt: row.createdAt.toISOString(),
+      })),
+      meta: { page, limit, total },
+    };
   }
 
   public async saveDocumentBatch(

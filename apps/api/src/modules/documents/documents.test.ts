@@ -249,6 +249,7 @@ function createMockRepository(): IDocumentRepository & {
       }
       return found;
     },
+    listRecentDocuments: async () => ({ items: [], meta: { page: 1, limit: 20, total: 0 } }),
     saveDocumentBatch: async (items: ReadonlyArray<CreateDocumentBatchItem>) => {
       if (repo.failWithUniqueConstraint) {
         throw new ConflictError(
