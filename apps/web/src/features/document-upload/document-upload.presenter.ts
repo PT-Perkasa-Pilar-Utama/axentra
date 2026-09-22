@@ -1,4 +1,10 @@
 import { useState, useCallback, useRef, useEffect } from "react";
+import type {
+  RefObject,
+  DragEvent as ReactDragEvent,
+  ChangeEvent as ReactChangeEvent,
+  MouseEvent as ReactMouseEvent,
+} from "react";
 import type { DocumentUploadAcceptedData } from "@axentra/shared";
 import { uploadDocuments as defaultUploadFn } from "./document-upload.api";
 import {
@@ -22,7 +28,7 @@ export {
 export const PROCESSING_FEEDBACK_MS = 900;
 
 function defaultProcessingFn(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, PROCESSING_FEEDBACK_MS));
+  return new Promise(() => {});
 }
 
 export type DocumentUploadPresenter = {
@@ -143,5 +149,95 @@ export function useDocumentUploadPresenter(
     retry,
     dismissNotification,
     reset,
+  };
+}
+
+export function useDocumentUploadInteraction(
+  presenter: DocumentUploadPresenter,
+  disabled: boolean = false,
+): {
+  isDragOver: boolean;
+  fileInputRef: RefObject<HTMLInputElement | null>;
+  isLocked: boolean;
+  handleDragOver: (e: ReactDragEvent<HTMLElement>) => void;
+  handleDragLeave: (e: ReactDragEvent<HTMLElement>) => void;
+  handleDrop: (e: ReactDragEvent<HTMLElement>) => void;
+  handleFileInputChange: (e: ReactChangeEvent<HTMLInputElement>) => void;
+  handleBrowseClick: () => void;
+  handleRetryClick: (e: ReactMouseEvent<HTMLElement>) => Promise<void>;
+} {
+  const [isDragOver, setIsDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const isLocked = disabled || presenter.isBusy;
+
+  const handleDragOver = useCallback(
+    (e: ReactDragEvent<HTMLElement>): void => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!isLocked) setIsDragOver(true);
+    },
+    [isLocked],
+  );
+
+  const handleDragLeave = useCallback((e: ReactDragEvent<HTMLElement>): void => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+  }, []);
+
+  const handleDrop = useCallback(
+    (e: ReactDragEvent<HTMLElement>): void => {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsDragOver(false);
+      if (isLocked) return;
+
+      const droppedFiles = Array.from(e.dataTransfer.files);
+      if (droppedFiles.length > 0) {
+        void presenter.uploadFiles(droppedFiles);
+      }
+    },
+    [isLocked, presenter],
+  );
+
+  const handleFileInputChange = useCallback(
+    (e: ReactChangeEvent<HTMLInputElement>): void => {
+      const selectedFiles = e.target.files ? Array.from(e.target.files) : [];
+      if (selectedFiles.length > 0) {
+        void presenter.uploadFiles(selectedFiles);
+      }
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    },
+    [presenter],
+  );
+
+  const handleBrowseClick = useCallback((): void => {
+    if (!isLocked && fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  }, [isLocked]);
+
+  const handleRetryClick = useCallback(
+    async (e: ReactMouseEvent<HTMLElement>): Promise<void> => {
+      e.stopPropagation();
+      if (isLocked) return;
+      await presenter.retry();
+    },
+    [isLocked, presenter],
+  );
+
+  return {
+    isDragOver,
+    fileInputRef,
+    isLocked,
+    handleDragOver,
+    handleDragLeave,
+    handleDrop,
+    handleFileInputChange,
+    handleBrowseClick,
+    handleRetryClick,
   };
 }

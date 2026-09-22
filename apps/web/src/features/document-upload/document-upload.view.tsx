@@ -1,7 +1,7 @@
 import type React from "react";
-import { useRef, useState } from "react";
 import {
   useDocumentUploadPresenter,
+  useDocumentUploadInteraction,
   type DocumentUploadPresenter,
 } from "./document-upload.presenter";
 import { DocumentUploadNotificationView } from "./document-upload-notification.view";
@@ -19,11 +19,6 @@ export type DropzoneBodyProps = {
   onRetry: (event: React.MouseEvent<HTMLButtonElement>) => void;
 };
 
-/**
- * Komponen React (bukan sekadar function call) supaya callback yang membawa
- * closure atas fileInputRef hanya tereksekusi lewat event handler, bukan saat
- * render — menghindari lint react-compiler "refs: cannot access ref during render".
- */
 function DropzoneBody({
   presenter,
   disabled,
@@ -42,6 +37,7 @@ function DropzoneBody({
     return (
       <UploadRetryState
         pendingFiles={presenter.pendingFiles}
+        disabled={disabled}
         onRetry={onRetry}
         onChooseOther={onBrowse}
       />
@@ -60,64 +56,21 @@ export function DocumentUploadAreaView({
   presenter,
   disabled = false,
 }: DocumentUploadAreaViewProps): React.JSX.Element {
-  const { isBusy, uploadFiles, retry } = presenter;
-  const [isDragOver, setIsDragOver] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const isLocked = disabled || isBusy;
-
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>): void => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!isLocked) {
-      setIsDragOver(true);
-    }
-  };
-
-  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>): void => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragOver(false);
-  };
-
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>): void => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragOver(false);
-    if (isLocked) return;
-
-    const droppedFiles = Array.from(e.dataTransfer.files);
-    if (droppedFiles.length > 0) {
-      void uploadFiles(droppedFiles);
-    }
-  };
-
-  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
-    const selectedFiles = e.target.files ? Array.from(e.target.files) : [];
-    if (selectedFiles.length > 0) {
-      void uploadFiles(selectedFiles);
-    }
-    // Nilai input dikosongkan agar file yang sama bisa dipilih ulang; objek File
-    // tetap disimpan presenter sebagai pendingFiles untuk keperluan retry.
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  };
-
-  const handleBrowseClick = (): void => {
-    if (!isLocked && fileInputRef.current) {
-      fileInputRef.current.click();
-    }
-  };
+  const {
+    isDragOver,
+    fileInputRef,
+    isLocked,
+    handleDragOver,
+    handleDragLeave,
+    handleDrop,
+    handleFileInputChange,
+    handleBrowseClick,
+    handleRetryClick,
+  } = useDocumentUploadInteraction(presenter, disabled);
 
   const handleBrowseButtonClick = (e: React.MouseEvent<HTMLButtonElement>): void => {
     e.stopPropagation();
     handleBrowseClick();
-  };
-
-  const handleRetryClick = (e: React.MouseEvent<HTMLButtonElement>): void => {
-    e.stopPropagation();
-    void retry();
   };
 
   return (
@@ -128,7 +81,7 @@ export function DocumentUploadAreaView({
         data-testid="upload-dropzone"
         role="region"
         aria-label="Area Unggah Dokumen"
-        aria-busy={isBusy}
+        aria-busy={presenter.isBusy}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}

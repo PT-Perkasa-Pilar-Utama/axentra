@@ -1,16 +1,40 @@
+import "./support/setup-dom";
 import { describe, expect, test } from "bun:test";
 import { createElement } from "react";
 import { renderToString } from "react-dom/server";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { MemoryRouter, useRoutes } from "react-router";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { DocumentUploadAcceptedData } from "@axentra/shared";
 import { DOCUMENT_COPY } from "@axentra/shared";
 import { UPLOAD_MESSAGES } from "../src/features/document-upload/document-upload.presenter";
 import {
   DocumentUploadAreaView,
   DocumentUploadNotificationView,
-  DocumentUploadPage,
 } from "../src/features/document-upload/document-upload.view";
+import { routes } from "../src/app/router";
 import { stubPresenter } from "./support/presenter-stub";
+
+function AppRoutes(): React.JSX.Element | null {
+  return useRoutes(routes);
+}
+
+function createTestQueryClient(): QueryClient {
+  return new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+  });
+}
+
+function renderRealRoute(path: string): string {
+  const queryClient = createTestQueryClient();
+
+  return renderToString(
+    createElement(
+      QueryClientProvider,
+      { client: queryClient },
+      createElement(MemoryRouter, { initialEntries: [path] }, createElement(AppRoutes)),
+    ),
+  );
+}
 
 describe("document-upload dropzone states (F4)", () => {
   test("renders empty prompt and dropzone in idle state", () => {
@@ -97,9 +121,56 @@ describe("document-upload dropzone states (F4)", () => {
       },
     });
 
+    // In a pure unit test without DOM interactions, we can test the view interactions by clicking the button.
+    // However, since we don't have testing-library here, we can just call it through the presenter or we can add a test for the interaction hook directly.
     await presenter.retry();
 
     expect(retryCalls).toBe(1);
+  });
+
+  test("F5: disabled retry renders inert retry and choose-other buttons", () => {
+    const html = renderToString(
+      <DocumentUploadAreaView
+        disabled={true}
+        presenter={stubPresenter({
+          status: "error",
+          canRetry: true,
+          pendingFiles: [new File(["data"], "laporan.pdf", { type: "application/pdf" })],
+        })}
+      />,
+    );
+
+    expect(html).toContain("opacity-60 cursor-not-allowed");
+
+    const retryButtonTag = html.match(/<button[^>]*data-testid="upload-retry-button"[^>]*>/)?.[0];
+    const chooseOtherButtonTag = html.match(
+      /<button[^>]*data-testid="upload-choose-other-button"[^>]*>/,
+    )?.[0];
+
+    expect(retryButtonTag).toContain("disabled");
+    expect(retryButtonTag).toContain('aria-disabled="true"');
+    expect(chooseOtherButtonTag).toContain("disabled");
+    expect(chooseOtherButtonTag).toContain('aria-disabled="true"');
+  });
+
+  test("F5: retry and choose-other buttons stay enabled when the component is not disabled", () => {
+    const html = renderToString(
+      <DocumentUploadAreaView
+        presenter={stubPresenter({
+          status: "error",
+          canRetry: true,
+          pendingFiles: [new File(["data"], "laporan.pdf", { type: "application/pdf" })],
+        })}
+      />,
+    );
+
+    const retryButtonTag = html.match(/<button[^>]*data-testid="upload-retry-button"[^>]*>/)?.[0];
+    const chooseOtherButtonTag = html.match(
+      /<button[^>]*data-testid="upload-choose-other-button"[^>]*>/,
+    )?.[0];
+
+    expect(retryButtonTag).not.toMatch(/\sdisabled(?:=|>|\s)/);
+    expect(chooseOtherButtonTag).not.toMatch(/\sdisabled(?:=|>|\s)/);
   });
 
   test("F2: duplicate errors do not offer a retry action", () => {
@@ -193,27 +264,28 @@ describe("document-upload notification view", () => {
   });
 });
 
-describe("document-upload page & route integration", () => {
-  test("AC-01.01 to AC-01.04: renders DocumentUploadPage connected to presenter and route /upload", () => {
-    const element = createElement(
-      MemoryRouter,
-      { initialEntries: ["/upload"] },
-      createElement(
-        Routes,
-        null,
-        createElement(Route, {
-          path: "/upload",
-          element: createElement(DocumentUploadPage),
-        }),
-      ),
-    );
+describe("document-upload page & route integration (F1)", () => {
+  test("AC-01.01 to AC-01.04: the registered /dashboard route renders the Member Team dashboard upload area", () => {
+    const html = renderRealRoute("/dashboard");
 
-    const html = renderToString(element);
-
-    expect(html).toContain("Unggah Dokumen");
+    expect(html).toContain('data-testid="member-team-dashboard"');
+    expect(html).toContain('data-testid="dashboard-upload-area"');
+    expect(html).toContain("Dashboard");
     expect(html).toContain("Area Unggah Dokumen");
     expect(html).toContain("Klik di sini");
     expect(html).toContain('type="file"');
     expect(html).toContain('accept=".pdf,.docx');
+  });
+
+  test("dashboard route is present in the actual route table used by the app", () => {
+    const dashboardRoute = routes.find((route) => route.path === "/dashboard");
+    expect(dashboardRoute).toBeDefined();
+  });
+
+  test("/upload still renders through the same registered route table", () => {
+    const html = renderRealRoute("/upload");
+
+    expect(html).toContain("Unggah Dokumen");
+    expect(html).toContain('data-testid="upload-dropzone"');
   });
 });

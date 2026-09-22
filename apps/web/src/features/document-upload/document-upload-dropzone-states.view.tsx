@@ -31,12 +31,14 @@ export function UploadProcessingState(): React.JSX.Element {
 
 export type UploadRetryStateProps = {
   pendingFiles: File[];
+  disabled: boolean;
   onRetry: (event: React.MouseEvent<HTMLButtonElement>) => void;
   onChooseOther: (event: React.MouseEvent<HTMLButtonElement>) => void;
 };
 
 export function UploadRetryState({
   pendingFiles,
+  disabled,
   onRetry,
   onChooseOther,
 }: UploadRetryStateProps): React.JSX.Element {
@@ -65,16 +67,30 @@ export function UploadRetryState({
       <button
         type="button"
         data-testid="upload-retry-button"
+        disabled={disabled}
+        aria-disabled={disabled}
+        title={disabled ? "Tidak dapat mengulang unggahan saat ini" : undefined}
         onClick={onRetry}
-        className="rounded-md bg-[#6fa84f] px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#5f9243] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6fa84f] focus-visible:ring-offset-2"
+        className={`rounded-md px-4 py-2 text-xs font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+          disabled
+            ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+            : "bg-[#6fa84f] text-white hover:bg-[#5f9243] focus-visible:ring-[#6fa84f]"
+        }`}
       >
         Coba unggah lagi
       </button>
       <button
         type="button"
         data-testid="upload-choose-other-button"
+        disabled={disabled}
+        aria-disabled={disabled}
+        title={disabled ? "Tidak dapat memilih file saat ini" : undefined}
         onClick={onChooseOther}
-        className="text-xs text-gray-500 underline focus:outline-none focus-visible:text-gray-700"
+        className={`text-xs underline focus:outline-none ${
+          disabled
+            ? "text-gray-300 cursor-not-allowed"
+            : "text-gray-500 focus-visible:text-gray-700"
+        }`}
       >
         Pilih file lain
       </button>
