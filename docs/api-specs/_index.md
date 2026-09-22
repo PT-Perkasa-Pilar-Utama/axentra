@@ -35,7 +35,7 @@ TECHNICAL GET  /auth/me
 ### Documents
 
 ```text
-PLANNED GET    /documents
+OK      GET    /documents
 PLANNED POST   /documents/upload
 PLANNED POST   /documents/check-duplicate
 PLANNED GET    /documents/:id

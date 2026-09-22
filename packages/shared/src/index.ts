@@ -24,6 +24,8 @@ export type {
   DocumentMetadataResult,
   DocumentSummary,
   ProcessingStatus,
+  RecentDocument,
+  RecentDocumentListQuery,
   SmartTag,
 } from "./document";
 export {
@@ -35,6 +37,8 @@ export {
   documentMetadataSchema,
   documentSummarySchema,
   processingStatusSchema,
+  recentDocumentListQuerySchema,
+  recentDocumentSchema,
   smartTagSchema,
 } from "./document";
 export type { LivenessData, ReadinessData } from "./health";

@@ -1,8 +1,17 @@
 import path from "node:path";
 import type { StorageAdapter } from "@axentra/storage";
-import { DOCUMENT_COPY, DOCUMENT_ERROR_CODES, type DocumentMetadataResult } from "@axentra/shared";
+import {
+  DOCUMENT_COPY,
+  DOCUMENT_ERROR_CODES,
+  type DocumentMetadataResult,
+  type RecentDocument,
+} from "@axentra/shared";
 import { ConflictError } from "../../http/errors";
-import type { CreateDocumentBatchItem, IDocumentRepository } from "./documents.repository";
+import type {
+  CreateDocumentBatchItem,
+  IDocumentRepository,
+  RecentDocumentPage,
+} from "./documents.repository";
 import type { DocumentMetadataRecord } from "./metadata.repository";
 
 export function formatMetadataResult(record: DocumentMetadataRecord): DocumentMetadataResult {
@@ -26,6 +35,7 @@ export function sanitizeFilename(filename: string): string {
 export function createInMemoryRepository(): IDocumentRepository {
   const existingHashes = new Set<string>();
   const savedBatches: CreateDocumentBatchItem[][] = [];
+  const recentDocuments: RecentDocument[] = [];
   return {
     findExistingHashes: async (hashes) => {
       const found = new Set<string>();
@@ -33,6 +43,13 @@ export function createInMemoryRepository(): IDocumentRepository {
         if (existingHashes.has(h)) found.add(h);
       }
       return found;
+    },
+    listRecentDocuments: async (page, limit): Promise<RecentDocumentPage> => {
+      const start = (page - 1) * limit;
+      return {
+        items: recentDocuments.slice(start, start + limit),
+        meta: { page, limit, total: recentDocuments.length },
+      };
     },
     saveDocumentBatch: async (items) => {
       for (const item of items) {
@@ -46,6 +63,12 @@ export function createInMemoryRepository(): IDocumentRepository {
       savedBatches.push([...items]);
       for (const item of items) {
         existingHashes.add(item.contentHash);
+        recentDocuments.unshift({
+          id: item.id,
+          filename: item.originalName,
+          processingStatus: "queued",
+          createdAt: new Date().toISOString(),
+        });
       }
       return items.map((i) => ({
         documentId: i.id,
