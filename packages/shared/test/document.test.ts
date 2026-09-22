@@ -9,6 +9,7 @@ import {
   documentSummarySchema,
   processingStatusSchema,
   recentDocumentListQuerySchema,
+  recentDocumentListResponseSchema,
   recentDocumentSchema,
   smartTagSchema,
 } from "../src/document";
@@ -61,6 +62,40 @@ describe("document shared schemas", () => {
 
     it("rejects a limit above 100", () => {
       expect(() => recentDocumentListQuerySchema.parse({ limit: "101" })).toThrow();
+    });
+  });
+
+  describe("recentDocumentListResponseSchema", () => {
+    it("accepts a paginated list of recent documents", () => {
+      const valid = {
+        success: true as const,
+        data: [
+          {
+            id: "11111111-1111-4111-8111-111111111111",
+            filename: "laporan.pdf",
+            processingStatus: "completed" as const,
+            createdAt: "2026-09-22T00:00:00.000Z",
+          },
+        ],
+        meta: { page: 1, limit: 20, total: 1 },
+      };
+      expect(recentDocumentListResponseSchema.parse(valid)).toEqual(valid);
+    });
+
+    it("rejects a list item that omits filename", () => {
+      expect(() =>
+        recentDocumentListResponseSchema.parse({
+          success: true,
+          data: [
+            {
+              id: "11111111-1111-4111-8111-111111111111",
+              processingStatus: "queued",
+              createdAt: "2026-09-22T00:00:00.000Z",
+            },
+          ],
+          meta: { page: 1, limit: 20, total: 1 },
+        }),
+      ).toThrow();
     });
   });
 

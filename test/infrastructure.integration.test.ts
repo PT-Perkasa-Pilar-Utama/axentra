@@ -421,6 +421,7 @@ describe("infrastructure integration", () => {
         throw new Error("Integration infrastructure was not initialized");
       }
       const { documents, documentFiles, documentContentHashes } = await import("@axentra/db");
+      const { recentDocumentListResponseSchema } = await import("@axentra/shared");
       const pdfBytes = new TextEncoder().encode(`%PDF-1.4\n% recent-list-${crypto.randomUUID()}\n`);
       const formData = new FormData();
       formData.append("file", new File([pdfBytes], "laporan.pdf", { type: "application/pdf" }));
@@ -446,16 +447,7 @@ describe("infrastructure integration", () => {
           headers: { authorization: "Bearer integration-member-token" },
         });
         expect(listed.status).toBe(200);
-        const body = (await listed.json()) as {
-          success: boolean;
-          data: Array<{
-            id: string;
-            filename: string;
-            processingStatus: string;
-            createdAt: string;
-          }>;
-          meta: { page: number; limit: number; total: number };
-        };
+        const body = recentDocumentListResponseSchema.parse(await listed.json());
         const item = body.data.find((row) => row.id === docId);
         expect(item?.filename).toBe("laporan.pdf");
         expect(item?.processingStatus).toBe("queued");
@@ -470,7 +462,7 @@ describe("infrastructure integration", () => {
         const afterDelete = await app.request("/api/v1/documents?limit=100", {
           headers: { authorization: "Bearer integration-member-token" },
         });
-        const hidden = (await afterDelete.json()) as { data: Array<{ id: string }> };
+        const hidden = recentDocumentListResponseSchema.parse(await afterDelete.json());
         expect(hidden.data.some((row) => row.id === docId)).toBe(false);
 
         const fileRows = await database.db

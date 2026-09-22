@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { createLogger } from "@axentra/observability";
-import type {
-  ApiErrorEnvelope,
-  ApiSuccessEnvelope,
-  PaginationMeta,
-  RecentDocument,
+import {
+  apiErrorSchema,
+  recentDocumentListResponseSchema,
+  type RecentDocument,
 } from "@axentra/shared";
 import { createApp } from "../../app";
 import type { TokenVerifier } from "../../middleware/auth";
@@ -76,7 +75,7 @@ describe("GET /api/v1/documents — BE-S1-06", () => {
 
     expect(missing.status).toBe(401);
     expect(rejected.status).toBe(401);
-    const body = (await rejected.json()) as ApiErrorEnvelope;
+    const body = apiErrorSchema.parse(await rejected.json());
     expect(body.error.code).toBe("UNAUTHORIZED");
   });
 
@@ -86,9 +85,7 @@ describe("GET /api/v1/documents — BE-S1-06", () => {
     });
 
     expect(response.status).toBe(200);
-    const body = (await response.json()) as ApiSuccessEnvelope<RecentDocument[]> & {
-      meta: PaginationMeta;
-    };
+    const body = recentDocumentListResponseSchema.parse(await response.json());
     expect(body.success).toBe(true);
     expect(body.data).toEqual([laporan]);
     expect(body.data[0]).not.toHaveProperty("tags");
@@ -103,7 +100,7 @@ describe("GET /api/v1/documents — BE-S1-06", () => {
     );
 
     expect(response.status).toBe(200);
-    const body = (await response.json()) as ApiSuccessEnvelope<RecentDocument[]>;
+    const body = recentDocumentListResponseSchema.parse(await response.json());
     expect(body.data[0]?.filename).toBe("laporan.pdf");
   });
 
@@ -114,7 +111,7 @@ describe("GET /api/v1/documents — BE-S1-06", () => {
     );
 
     expect(response.status).toBe(400);
-    const body = (await response.json()) as ApiErrorEnvelope;
+    const body = apiErrorSchema.parse(await response.json());
     expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 

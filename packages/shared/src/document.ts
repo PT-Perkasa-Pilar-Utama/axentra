@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { paginationMetaSchema } from "./api";
 
 export const processingStatusSchema = z.enum(["queued", "processing", "completed", "failed"]);
 export type ProcessingStatus = z.infer<typeof processingStatusSchema>;
@@ -74,6 +75,13 @@ export const recentDocumentListQuerySchema = z.object({
   ),
 });
 export type RecentDocumentListQuery = z.infer<typeof recentDocumentListQuerySchema>;
+
+export const recentDocumentListResponseSchema = z.object({
+  success: z.literal(true),
+  data: z.array(recentDocumentSchema),
+  meta: paginationMetaSchema,
+});
+export type RecentDocumentListResponse = z.infer<typeof recentDocumentListResponseSchema>;
 
 export const documentSummarySchema = z.object({
   id: z.string().uuid(),
