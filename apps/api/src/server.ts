@@ -43,7 +43,11 @@ async function start(): Promise<void> {
   });
   const database = createDatabaseClient(config.DATABASE_URL);
   const redis = createRedisProbe(config.REDIS_URL, config.REDIS_HEALTH_TIMEOUT_MS);
-  const queue = createQueueProducer(config.QUEUE_NAME, config.REDIS_URL);
+  const queue = createQueueProducer(
+    config.QUEUE_NAME,
+    config.REDIS_URL,
+    config.REDIS_HEALTH_TIMEOUT_MS,
+  );
   const storage = createS3StorageAdapter(config);
 
   try {

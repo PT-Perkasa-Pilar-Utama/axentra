@@ -1,5 +1,9 @@
 export type { RedisProbe } from "./connection";
-export { createRedisProbe, redisConnectionOptions } from "./connection";
+export {
+  createRedisProbe,
+  queueCommandConnectionOptions,
+  redisConnectionOptions,
+} from "./connection";
 export type {
   DocumentProcessJobHandler,
   DocumentProcessingJobHandler,

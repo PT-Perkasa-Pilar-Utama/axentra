@@ -36,7 +36,11 @@ async function start(): Promise<void> {
   }
 
   const documentProcessingRepository = new DrizzleDocumentProcessingRepository(database.db);
-  const recoveryQueue = createQueueProducer(config.QUEUE_NAME, config.REDIS_URL);
+  const recoveryQueue = createQueueProducer(
+    config.QUEUE_NAME,
+    config.REDIS_URL,
+    config.REDIS_HEALTH_TIMEOUT_MS,
+  );
   const stopProcessingRecovery = startProcessingRecovery({
     repository: documentProcessingRepository,
     queue: recoveryQueue,
