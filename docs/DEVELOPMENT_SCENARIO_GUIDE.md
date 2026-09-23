@@ -117,7 +117,7 @@ Developers do not pull random backlog items.
 | Frontend                | Azis, Aiman     | Web UI, presenter, and API integration cards assigned in the task breakdown       |
 | Acceptance verification | Card PIC + Arya | Evidence against linked ACs; no dedicated QA role                                 |
 
-Foundation v0.1.0 ships:
+Foundation v1.0.0 ships:
 
 - Bun workspace and package boundaries.
 - React/Vite Web shell.
@@ -483,7 +483,7 @@ runbook. The remote URL must be the private GitHub URL supplied by the organizat
 ```powershell
 git checkout main
 git add .
-git commit -m "chore(foundation): bootstrap Axentra Foundation v0.1.0"
+git commit -m "chore(foundation): bootstrap Axentra Foundation v1.0.0"
 git remote add origin <private-repository-url>
 git push -u origin main
 git checkout -b dev

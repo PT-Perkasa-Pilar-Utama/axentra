@@ -1,6 +1,6 @@
 # Overview
 
-Axentra is an internal Document Management System. Foundation v0.1.0 ships the engineering
+Axentra is an internal Document Management System. Foundation v1.0.0 ships the engineering
 base only: Web, API, Worker, typed configuration, database boundary, queue boundary, storage
 boundary, logging, tests, CI, and documentation.
 

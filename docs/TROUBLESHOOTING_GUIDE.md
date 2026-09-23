@@ -285,7 +285,7 @@ Confirm local `DATABASE_URL` uses `localhost:5432`.
 
 ### 5.2 Migration reports no schema changes
 
-Expected for Foundation v0.1.0.
+Expected for Foundation v1.0.0.
 
 Foundation intentionally has no business tables. Domain tables are added only by reviewed sprint
 cards.
@@ -673,7 +673,7 @@ Resolution:
 
 ## 12. Future DMS Feature Issues
 
-These features are planned and not implemented in Foundation v0.1.0. Use this section once the
+These features are planned and not implemented in Foundation v1.0.0. Use this section once the
 related sprint cards land.
 
 ### 12.1 Upload rejects a valid PDF or DOCX
@@ -782,7 +782,7 @@ Resolution:
 
 Resolution:
 
-- Mark it as `Planned`, `Deferred`, or `Foundation v0.1.0 excludes this`.
+- Mark it as `Planned`, `Deferred`, or `Foundation v1.0.0 excludes this`.
 - Do not imply business APIs exist until code, tests, and verification prove they exist.
 
 ---

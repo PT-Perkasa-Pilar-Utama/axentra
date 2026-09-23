@@ -59,9 +59,16 @@ Desktop.ini
 .vscode/
 .fleet/
 .history/
+.grok/
+.pi/
+.trae/
+skills-lock.json
 
 # Local Kilo worktree metadata
 .kilo/
+
+# Local review notes and audit reports; never commit or push.
+docs/audits/
 
 # Keep project-shared agent configuration and Drizzle migrations tracked:
 # .claude/

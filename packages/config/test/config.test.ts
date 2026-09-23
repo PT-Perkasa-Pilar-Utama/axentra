@@ -16,6 +16,7 @@ const serverEnvironment = {
   S3_ACCESS_KEY_ID: "local-test-user",
   S3_SECRET_ACCESS_KEY: "local-test-password",
   S3_FORCE_PATH_STYLE: "true",
+  AUTH_LOCAL_IDENTITY_DIRECTORY: "eyJpZCI6Im1lbWJlciJ9",
 } as const;
 
 describe("configuration", () => {

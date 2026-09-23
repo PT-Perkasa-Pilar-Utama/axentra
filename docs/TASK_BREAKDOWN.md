@@ -52,14 +52,14 @@ Approximate effort by sprint:
 
 | Sprint   | Arya | Sami | Azis | Aiman |
 | -------- | ---- | ---- | ---- | ----- |
-| Sprint 1 | 1.3d | 4.6d | 2.1d | 1.5d  |
+| Sprint 1 | 1.3d | 4.6d | 2.1d | 3.3d  |
 | Sprint 2 | 1.2d | 3.7d | 2.6d | 1.4d  |
 | Sprint 3 | 1.5d | 2.2d | 0.7d | 1.9d  |
 | Sprint 4 | 1.2d | 1.4d | 0.7d | 1.7d  |
 
 ## Work Model: Foundation + Contract-First Delivery
 
-Foundation v0.1.0 is already implemented. It ships the Bun workspace, Web shell, API process,
+Foundation v1.0.0 is already implemented. It ships the Bun workspace, Web shell, API process,
 Worker process, infrastructure boundaries, local Compose, CI, docs, and operational health
 endpoints.
 
@@ -90,9 +90,10 @@ From Sprint 1 onward:
 ---
 
 Foundation cards record the original bootstrap implementation. They are historical and do not
-assign ongoing backend delivery to the Tech Lead. Sami remains the primary Backend PIC; Arya
-supports exactly two Backend cards per sprint as implementation support, while retaining Tech Lead
-review and acceptance sign-off for the overall release.
+assign ongoing backend delivery to the Tech Lead. Sami remains the primary Backend PIC. Arya
+supports assigned Backend cards as implementation support. Sprint 1 assigns Arya BE-S1-03,
+BE-S1-05, and BE-S1-06, while Arya retains Tech Lead review and acceptance sign-off for the
+overall release.
 
 ## Sprint 1: Upload, Duplicate Detection, Metadata
 
@@ -101,23 +102,26 @@ metadata.
 
 ### Backend
 
-| Card ID  | Board Card Title                          | Task Description                                                                                                                            | AC                           | PIC  | Est  | Docs                                                                 |
-| -------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- | ---- | ---- | -------------------------------------------------------------------- |
-| DB-S1-01 | Create document core schema               | Add initial tables for documents, stored files, metadata, content hash, processing status, categories, tags, and download permissions.      | AC-01.02, AC-02.02, AC-03.01 | Sami | 1.0d | technical-specs/06-data-model.md, api-specs/03-documents.md          |
-| BE-S1-01 | Implement auth prerequisite               | Add server-side authenticated user context with roles `member_team` and `head_of_team`; expose `/auth/me` contract for Web gating.          | Technical prerequisite       | Sami | 0.8d | api-specs/02-authentication.md, technical-specs/09-authentication.md |
-| BE-S1-02 | Implement document upload API             | `POST /documents/upload`; accept supported files, store object, create document record, return accepted processing response.                | AC-01.01, AC-01.02, AC-01.04 | Sami | 1.2d | api-specs/03-documents.md, technical-specs/10-integration-points.md  |
-| BE-S1-03 | Validate file type and upload constraints | Reject unsupported file types such as `.JPG`; enforce MIME and extension policy; return stable error copy.                                  | AC-01.03                     | Arya | 0.5d | api-specs/03-documents.md, technical-specs/07-security.md            |
-| BE-S1-04 | Implement duplicate detection             | Compute content hash, detect same-content upload, return `File ini sudah ada`, and prevent duplicate persistence.                           | AC-02.01, AC-02.02, AC-02.03 | Sami | 0.8d | api-specs/03-documents.md, technical-specs/06-data-model.md          |
-| BE-S1-05 | Implement metadata extraction result API  | Store and return extracted metadata fields such as author; use deterministic placeholder extractor until final OCR/AI provider is approved. | AC-03.01                     | Arya | 0.8d | api-specs/04-processing.md, technical-specs/10-integration-points.md |
+| Card ID  | Board Card Title                          | Task Description                                                                                                                                          | AC                           | PIC  | Est  | Docs                                                                 |
+| -------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- | ---- | ---- | -------------------------------------------------------------------- |
+| DB-S1-01 | Create document core schema               | Add initial tables for documents, stored files, metadata, content hash, processing status, categories, tags, and download permissions.                    | AC-01.02, AC-02.02, AC-03.01 | Sami | 1.0d | technical-specs/06-data-model.md, api-specs/03-documents.md          |
+| BE-S1-01 | Implement auth prerequisite               | Add server-side authenticated user context with roles `member_team` and `head_of_team`; expose `/auth/me` contract for Web gating.                        | Technical prerequisite       | Sami | 0.8d | api-specs/02-authentication.md, technical-specs/09-authentication.md |
+| BE-S1-02 | Implement document upload API             | `POST /documents/upload`; accept supported files, store object, create document record, return accepted processing response.                              | AC-01.01, AC-01.02, AC-01.04 | Sami | 1.2d | api-specs/03-documents.md, technical-specs/10-integration-points.md  |
+| BE-S1-03 | Validate file type and upload constraints | Reject unsupported file types such as `.JPG`; enforce MIME and extension policy; return stable error copy.                                                | AC-01.03                     | Arya | 0.5d | api-specs/03-documents.md, technical-specs/07-security.md            |
+| BE-S1-04 | Implement duplicate detection             | Compute content hash, detect same-content upload, return `File ini sudah ada`, and prevent duplicate persistence.                                         | AC-02.01, AC-02.02, AC-02.03 | Sami | 0.8d | api-specs/03-documents.md, technical-specs/06-data-model.md          |
+| BE-S1-05 | Implement metadata extraction result API  | Store and return extracted metadata fields such as author; use deterministic placeholder extractor until final OCR/AI provider is approved.               | AC-03.01                     | Arya | 0.8d | api-specs/04-processing.md, technical-specs/10-integration-points.md |
+| BE-S1-06 | Implement recent document list API        | `GET /documents`; return recent documents for `member_team` and `head_of_team`, newest first, with `id`, `filename`, `processingStatus`, and `createdAt`. | AC-01.02                     | Arya | 0.6d | api-specs/03-documents.md                                            |
 
 ### Frontend
 
-| Card ID  | Board Card Title                            | Task Description                                                                                                                   | AC                           | PIC   | Est  | Docs                                                               |
-| -------- | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- | ----- | ---- | ------------------------------------------------------------------ |
-| FE-S1-01 | Build Member Team dashboard upload area     | Drag-and-drop upload panel for one PDF or multiple DOCX files; success, unsupported type, duplicate, processing, and retry states. | AC-01.01, AC-01.03, AC-01.04 | Azis  | 1.3d | business/textual-design-member-team.md, api-specs/03-documents.md  |
-| FE-S1-02 | Show recent uploaded documents              | Recent documents section refreshes after processing and shows uploaded filename such as `laporan.pdf`.                             | AC-01.02                     | Azis  | 0.8d | business/textual-design-member-team.md                             |
-| FE-S1-03 | Render document metadata in detail view     | Detail page shows extracted author metadata after processing completes.                                                            | AC-03.01                     | Aiman | 0.8d | business/textual-design-member-team.md, api-specs/04-processing.md |
-| FE-S1-04 | Wire upload API client and presenter states | Feature files follow API -> Presenter -> View; handles accepted, rejected, duplicate, loading, empty, and error states.            | AC-01.01 to AC-03.01         | Aiman | 0.7d | CODING_STANDARD.md                                                 |
+| Card ID  | Board Card Title                            | Task Description                                                                                                                                                                                                                                                                                                                    | AC                              | PIC   | Est  | Docs                                                                                         |
+| -------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- | ----- | ---- | -------------------------------------------------------------------------------------------- |
+| FE-S1-01 | Build Member Team dashboard upload area     | Drag-and-drop upload panel for one PDF or multiple DOCX files; success, unsupported type, duplicate, processing, and retry states.                                                                                                                                                                                                  | AC-01.01, AC-01.03, AC-01.04    | Azis  | 1.3d | business/textual-design-member-team.md, api-specs/03-documents.md                            |
+| FE-S1-02 | Show recent uploaded documents              | Recent documents section refreshes after processing and shows uploaded filename such as `laporan.pdf`.                                                                                                                                                                                                                              | AC-01.02                        | Azis  | 0.8d | business/textual-design-member-team.md                                                       |
+| FE-S1-03 | Render document metadata in detail view     | Detail page shows extracted author metadata after processing completes.                                                                                                                                                                                                                                                             | AC-03.01                        | Aiman | 0.8d | business/textual-design-member-team.md, api-specs/04-processing.md                           |
+| FE-S1-04 | Wire upload API client and presenter states | Feature files follow API -> Presenter -> View; handles accepted, rejected, duplicate, loading, empty, and error states.                                                                                                                                                                                                             | AC-01.01 to AC-03.01            | Aiman | 0.7d | CODING_STANDARD.md                                                                           |
+| FE-S1-05 | Build Perkasa login UI and form presenter   | Implementasi kartu login sesuai mockup Perkasa (logo, input email dengan icon, input password dengan toggle lihat password, checkbox Ingat saya, tombol submit hijau dengan indikator loading). Terapkan Zod validation (`loginRequestSchema`), penanganan error credential (_alert envelope_), dan arsitektur _Presenter -> View_. | Prasyarat F-A1 & Desain Perkasa | Aiman | 1.0d | api-specs/02-authentication.md, CODING_STANDARD.md                                           |
+| FE-S1-06 | Wire auth session and Bearer token client   | Manajemen sesi Web (penyimpanan token, dukungan remember me), injeksi otomatis `Authorization: Bearer <token>` pada api-client.ts, route protection & redirect 401 ke /login (menutup blocker F-A1).                                                                                                                                | Prasyarat Proteksi API Dokumen  | Aiman | 0.8d | api-specs/02-authentication.md, audits/SPRINT-1_STATUS_AUDIT_AIMAN_AND_BACKEND_2026-09-22.md |
 
 ### Acceptance Verification
 
@@ -239,7 +243,7 @@ Applies to every BE, FE, DB, FND, and shared verification card:
 | Sprint     | Focus                                                | BE/DB cards | FE cards | Verification cards | Est total |
 | ---------- | ---------------------------------------------------- | ----------- | -------- | ------------------ | --------- |
 | Foundation | Runtime, infrastructure, docs, CI                    | Done        | Done     | Done               | Done      |
-| Sprint 1   | Upload, duplicate detection, metadata                | 6           | 4        | 1                  | 8.7d      |
+| Sprint 1   | Upload, duplicate detection, metadata, auth          | 6           | 6        | 1                  | 10.5d     |
 | Sprint 2   | Smart Tags, category, search, related documents      | 6           | 5        | 1                  | 8.4d      |
 | Sprint 3   | Preview, single download, bulk download              | 4           | 3        | 1                  | 7.1d      |
 | Sprint 4   | Analytics, audit trail, category download permission | 4           | 3        | 1                  | 5.8d      |
