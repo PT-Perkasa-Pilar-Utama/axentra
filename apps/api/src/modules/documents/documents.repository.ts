@@ -255,7 +255,7 @@ export class DocumentRepository implements IDocumentRepository {
     errorMessage: string,
   ): Promise<void> {
     if (documentIds.length === 0) return;
-    await this.db
+    await this.sqlDb
       .update(documents)
       .set({
         processingStatus: "failed",
