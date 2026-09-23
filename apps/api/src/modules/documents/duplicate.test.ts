@@ -1,11 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { createLogger } from "@axentra/observability";
+import type { QueueProducer } from "@axentra/queue";
 import {
   apiErrorSchema,
   checkDuplicateSuccessResponseSchema,
   uploadDocumentSuccessResponseSchema,
   DOCUMENT_COPY,
   DOCUMENT_ERROR_CODES,
+  type DocumentProcessingJob,
+  type SystemHealthCheckJob,
 } from "@axentra/shared";
 import type { StorageAdapter } from "@axentra/storage";
 import { ConflictError } from "../../http/errors";
@@ -142,6 +145,15 @@ function createPdf(content = "sample pdf content"): Uint8Array {
   buffer[4] = 0x2d;
   buffer.set(textBytes, 5);
   return buffer;
+}
+
+function createMockQueue(): QueueProducer {
+  return {
+    enqueueSystemHealthCheck: async (_job: SystemHealthCheckJob): Promise<string> => "health-job",
+    enqueueDocumentProcessing: async (job: DocumentProcessingJob): Promise<string> => job.jobId,
+    reconcileDocumentProcessing: async (job: DocumentProcessingJob): Promise<string> => job.jobId,
+    close: async (): Promise<void> => {},
+  };
 }
 
 describe("Task BE-S1-04: Duplicate Detection", () => {
@@ -367,6 +379,7 @@ describe("Task BE-S1-04: Duplicate Detection", () => {
 
       const documentService = createDocumentService({
         contentHashRepository: hashRepo,
+        queue: createMockQueue(),
       });
 
       const app = createApp({
@@ -832,6 +845,7 @@ describe("Task BE-S1-04: Duplicate Detection", () => {
             DOCUMENT_COPY.DUPLICATE_WARNING,
           );
         },
+        markProcessingEnqueueFailed: async (): Promise<void> => {},
       };
 
       const service = createDocumentService({
