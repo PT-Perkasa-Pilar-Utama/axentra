@@ -57,7 +57,7 @@ describe("document-upload dropzone states (F4)", () => {
     expect(html).toContain('data-testid="upload-loading-state"');
   });
 
-  test("F2: renders a distinct processing state after an accepted upload", () => {
+  test("F2: stays in honest processing state and provides safe upload another action", () => {
     const accepted: DocumentUploadAcceptedData = {
       message: DOCUMENT_COPY.UPLOAD_ACCEPTED,
       count: 1,
@@ -79,15 +79,22 @@ describe("document-upload dropzone states (F4)", () => {
     expect(html).toContain('aria-busy="true"');
     expect(html).not.toContain('data-testid="upload-loading-state"');
     expect(html).not.toContain('data-testid="upload-empty-prompt"');
+
+    expect(html).toContain("Unggah Dokumen Lain");
+    expect(html).toContain('data-testid="upload-another-button"');
   });
 
-  test("F2: success state no longer shows the processing indicator", () => {
+  test("F2: renders upload another action in success state and no longer shows the processing indicator", () => {
     const html = renderToString(
       <DocumentUploadAreaView presenter={stubPresenter({ status: "success" })} />,
     );
 
     expect(html).not.toContain('data-testid="upload-processing-state"');
-    expect(html).toContain('data-testid="upload-empty-prompt"');
+    expect(html).not.toContain('data-testid="upload-empty-prompt"');
+    expect(html).toContain('data-testid="upload-success-state"');
+    expect(html).toContain("File diterima untuk diproses");
+    expect(html).toContain("Unggah Dokumen Lain");
+    expect(html).toContain('data-testid="upload-another-button"');
   });
 
   test("F2: offers a retry action and keeps the attempted file selection", () => {

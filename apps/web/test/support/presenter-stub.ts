@@ -21,6 +21,7 @@ export function stubPresenter(
     retry: async () => {},
     dismissNotification: () => {},
     reset: () => {},
+    uploadAnother: () => {},
   };
 
   return { ...defaults, ...overrides };

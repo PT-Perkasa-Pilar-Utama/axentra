@@ -10,6 +10,7 @@ import {
   UploadLoadingState,
   UploadProcessingState,
   UploadRetryState,
+  UploadSuccessState,
 } from "./document-upload-dropzone-states.view";
 
 export type DropzoneBodyProps = {
@@ -30,7 +31,11 @@ function DropzoneBody({
   }
 
   if (presenter.isProcessing) {
-    return <UploadProcessingState />;
+    return <UploadProcessingState onUploadAnother={presenter.uploadAnother} />;
+  }
+
+  if (presenter.status === "success") {
+    return <UploadSuccessState onUploadAnother={presenter.uploadAnother} />;
   }
 
   if (presenter.canRetry) {

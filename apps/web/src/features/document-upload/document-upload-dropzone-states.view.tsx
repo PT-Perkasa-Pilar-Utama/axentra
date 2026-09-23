@@ -13,7 +13,13 @@ export function UploadLoadingState(): React.JSX.Element {
   );
 }
 
-export function UploadProcessingState(): React.JSX.Element {
+export type UploadProcessingStateProps = {
+  onUploadAnother: () => void;
+};
+
+export function UploadProcessingState({
+  onUploadAnother,
+}: UploadProcessingStateProps): React.JSX.Element {
   return (
     <div data-testid="upload-processing-state" className="flex flex-col items-center gap-3 py-4">
       <div
@@ -22,9 +28,52 @@ export function UploadProcessingState(): React.JSX.Element {
         aria-label="Memproses"
       />
       <p className="text-sm font-medium text-gray-700">Dokumen sedang diproses...</p>
-      <p className="text-xs text-gray-500">
-        File diterima untuk diproses. Anda dapat menunggu di halaman ini.
+      <p className="text-xs text-gray-500 mb-2">
+        File diterima untuk diproses. Anda dapat menunggu di halaman ini atau mengunggah file lain.
       </p>
+      <button
+        type="button"
+        data-testid="upload-another-button"
+        onClick={onUploadAnother}
+        className="rounded-md bg-white border border-gray-300 px-4 py-2 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 focus-visible:ring-offset-2"
+      >
+        Unggah Dokumen Lain
+      </button>
+    </div>
+  );
+}
+
+export type UploadSuccessStateProps = {
+  onUploadAnother: () => void;
+};
+
+export function UploadSuccessState({
+  onUploadAnother,
+}: UploadSuccessStateProps): React.JSX.Element {
+  return (
+    <div data-testid="upload-success-state" className="flex flex-col items-center gap-3 py-4">
+      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#d7f0c8] text-[#4a8a2a]">
+        <svg
+          className="h-5 w-5"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+          aria-hidden="true"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="m5 13 4 4L19 7" />
+        </svg>
+      </div>
+      <p className="text-sm font-medium text-gray-700">File diterima untuk diproses</p>
+      <p className="text-xs text-gray-500">Dokumen Anda masuk dalam antrian pemrosesan.</p>
+      <button
+        type="button"
+        data-testid="upload-another-button"
+        onClick={onUploadAnother}
+        className="rounded-md bg-[#6fa84f] px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#5f9243] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6fa84f] focus-visible:ring-offset-2"
+      >
+        Unggah Dokumen Lain
+      </button>
     </div>
   );
 }

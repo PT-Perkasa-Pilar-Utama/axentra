@@ -25,8 +25,6 @@ export {
   UPLOAD_MESSAGES,
 } from "./document-upload.rules";
 
-export const PROCESSING_FEEDBACK_MS = 900;
-
 function defaultProcessingFn(): Promise<void> {
   return new Promise(() => {});
 }
@@ -44,6 +42,7 @@ export type DocumentUploadPresenter = {
   retry: () => Promise<void>;
   dismissNotification: () => void;
   reset: () => void;
+  uploadAnother: () => void;
 };
 
 export type DocumentUploadPresenterOptions = {
@@ -140,7 +139,7 @@ export function useDocumentUploadPresenter(
     status,
     isUploading: status === "uploading",
     isProcessing: status === "processing",
-    isBusy: status === "uploading" || status === "processing",
+    isBusy: status === "uploading",
     notification,
     uploadedResult,
     pendingFiles,
@@ -149,6 +148,7 @@ export function useDocumentUploadPresenter(
     retry,
     dismissNotification,
     reset,
+    uploadAnother: reset,
   };
 }
 
