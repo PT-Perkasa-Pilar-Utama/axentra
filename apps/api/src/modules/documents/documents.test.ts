@@ -5,7 +5,9 @@ import {
   DOCUMENT_COPY,
   DOCUMENT_ERROR_CODES,
   PROCESSING_ENQUEUE_FAILURE_MESSAGE,
+  apiErrorSchema,
   documentProcessJobName,
+  documentProcessJobSchema,
   type ApiErrorEnvelope,
   type ApiSuccessEnvelope,
   type AuthUser,
@@ -860,16 +862,18 @@ describe("POST /api/v1/documents/upload", () => {
       });
 
       expect(response.status).toBe(503);
-      const json = (await response.json()) as ApiErrorEnvelope;
+      const json = apiErrorSchema.parse(await response.json());
       expect(json.success).toBe(false);
       expect(json.error.code).toBe(DOCUMENT_ERROR_CODES.PROCESSING_UNAVAILABLE);
       expect(json.error.message).toBe(PROCESSING_ENQUEUE_FAILURE_MESSAGE);
-      expect("data" in json).toBe(false);
       expect(repository.savedBatches.length).toBe(1);
       const failedDocumentId = repository.savedBatches[0]?.[0]?.id;
       if (failedDocumentId === undefined) {
         throw new Error("Expected the failed upload to persist a document id");
       }
+      expect(json.error.details).toEqual([
+        { field: failedDocumentId, message: "failed laporan.pdf" },
+      ]);
       expect(failedIds).toEqual([failedDocumentId]);
       expect(queue.enqueued).toHaveLength(0);
     });
@@ -897,7 +901,7 @@ describe("POST /api/v1/documents/upload", () => {
       });
 
       expect(response.status).toBe(503);
-      const json = (await response.json()) as ApiErrorEnvelope;
+      const json = apiErrorSchema.parse(await response.json());
       expect(json.error.code).toBe(DOCUMENT_ERROR_CODES.PROCESSING_UNAVAILABLE);
       expect(repository.savedBatches[0]?.map((item) => item.originalName)).toEqual([
         "satu.docx",
@@ -908,10 +912,14 @@ describe("POST /api/v1/documents/upload", () => {
       if (firstId === undefined || secondId === undefined) {
         throw new Error("Expected both document ids");
       }
-      expect(failedIds).toEqual([secondId]);
-      expect(queue.enqueued.map((job) => (job.data as DocumentProcessJob).documentId)).toEqual([
-        firstId,
+      expect(json.error.details).toEqual([
+        { field: firstId, message: "queued satu.docx" },
+        { field: secondId, message: "failed dua.docx" },
       ]);
+      expect(failedIds).toEqual([secondId]);
+      expect(
+        queue.enqueued.map((job) => documentProcessJobSchema.parse(job.data).documentId),
+      ).toEqual([firstId]);
     });
 
     it("propagates a failed enqueue-status write instead of hiding the document [BE-S1-02]", async () => {
@@ -931,7 +939,7 @@ describe("POST /api/v1/documents/upload", () => {
       });
 
       expect(response.status).toBe(500);
-      const json = (await response.json()) as ApiErrorEnvelope;
+      const json = apiErrorSchema.parse(await response.json());
       expect(json.error.code).toBe("INTERNAL_ERROR");
     });
 

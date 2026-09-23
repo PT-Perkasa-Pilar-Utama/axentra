@@ -1,11 +1,12 @@
 import { describe, expect, it } from "bun:test";
 import { Hono } from "hono";
 import { createLogger } from "@axentra/observability";
-import type {
-  ApiErrorEnvelope,
-  ApiSuccessEnvelope,
-  AuthUser,
-  LoginResponse,
+import {
+  apiErrorSchema,
+  type ApiErrorEnvelope,
+  type ApiSuccessEnvelope,
+  type AuthUser,
+  type LoginResponse,
 } from "@axentra/shared";
 import { createApp } from "../../app";
 import type { ApiEnvironment } from "../../environment";
@@ -567,7 +568,7 @@ describe("Auth API Module", () => {
         }),
       });
       expect(response.status).toBe(401);
-      const body = (await response.json()) as ApiErrorEnvelope;
+      const body = apiErrorSchema.parse(await response.json());
       expect(body.error.code).toBe("UNAUTHORIZED");
     });
 
@@ -605,6 +606,34 @@ describe("Auth API Module", () => {
         AUTH_LOCAL_IDENTITY_DIRECTORY: "not-a-directory",
       });
       expect(() => createRuntimeAuthenticator(malformed)).toThrow("AUTH_LOCAL_IDENTITY_DIRECTORY");
+    });
+
+    it("rejects production login when the identity directory is malformed [BE-S1-01]", async () => {
+      expect(() =>
+        loadApiConfig({
+          ...runtimeEnvironment("production"),
+          AUTH_LOCAL_IDENTITY_DIRECTORY: undefined,
+        }),
+      ).toThrow("AUTH_LOCAL_IDENTITY_DIRECTORY");
+
+      const app = createApp({
+        logger,
+        version: "0.1.0",
+        readinessChecks: [],
+        authService: createAuthService({
+          authenticator: createRuntimeAuthenticator(runtimeConfig("production", "not-a-directory")),
+        }),
+      });
+      const response = await app.request("/api/v1/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: "member@axentra.local",
+          password: "local-member-password",
+        }),
+      });
+      expect(response.status).toBe(401);
+      expect(apiErrorSchema.parse(await response.json()).error.code).toBe("UNAUTHORIZED");
     });
   });
 });

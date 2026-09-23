@@ -9,6 +9,7 @@ import {
   PROCESSING_ENQUEUE_FAILURE_MESSAGE,
   type DocumentType,
   type DocumentUploadAcceptedData,
+  type ErrorDetail,
 } from "@axentra/shared";
 import { ConflictError, DependencyUnavailableError } from "../../http/errors";
 import type { RawUploadFile } from "./documents.schema";
@@ -148,10 +149,7 @@ async function enqueueAcceptedDocuments(
   const producer = dependencies.queue ?? dependencies.queueProducer;
   if (!producer) {
     await recordEnqueueFailure(dependencies, batchItems);
-    throw new DependencyUnavailableError(
-      DOCUMENT_ERROR_CODES.PROCESSING_UNAVAILABLE,
-      PROCESSING_ENQUEUE_FAILURE_MESSAGE,
-    );
+    throw processingUnavailable(batchItems, 0);
   }
 
   const acceptedAt = new Date().toISOString();
@@ -168,12 +166,24 @@ async function enqueueAcceptedDocuments(
     } catch (queueError) {
       const pending = batchItems.slice(index);
       await recordEnqueueFailure(dependencies, pending, queueError);
-      throw new DependencyUnavailableError(
-        DOCUMENT_ERROR_CODES.PROCESSING_UNAVAILABLE,
-        PROCESSING_ENQUEUE_FAILURE_MESSAGE,
-      );
+      throw processingUnavailable(batchItems, index);
     }
   }
+}
+
+function processingUnavailable(
+  batchItems: ReadonlyArray<CreateDocumentBatchItem>,
+  failedFromIndex: number,
+): DependencyUnavailableError {
+  const details: ErrorDetail[] = batchItems.map((item, index) => ({
+    field: item.id,
+    message: `${index < failedFromIndex ? "queued" : "failed"} ${item.originalName}`,
+  }));
+  return new DependencyUnavailableError(
+    DOCUMENT_ERROR_CODES.PROCESSING_UNAVAILABLE,
+    PROCESSING_ENQUEUE_FAILURE_MESSAGE,
+    details,
+  );
 }
 
 async function recordEnqueueFailure(

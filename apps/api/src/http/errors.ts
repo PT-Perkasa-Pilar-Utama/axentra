@@ -75,8 +75,8 @@ export class PayloadTooLargeError extends AppError {
 }
 
 export class DependencyUnavailableError extends AppError {
-  public constructor(code: string, message: string) {
-    super(code, message, 503);
+  public constructor(code: string, message: string, details?: ReadonlyArray<ErrorDetail>) {
+    super(code, message, 503, details);
   }
 }
 

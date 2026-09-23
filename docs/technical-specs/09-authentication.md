@@ -63,4 +63,4 @@ Route middleware evaluates:
 ### 5. App and Service Composition
 
 - When `authService` is provided to `createApp({ authService })` without an explicit `tokenVerifier`, `createApp` automatically selects `dependencies.authService.tokenVerifier`. This guarantees that `/api/v1/auth/login`, `/api/v1/auth/me`, and all protected routes share the identical session registry.
-- Development and test startup verify credentials against `AUTH_LOCAL_IDENTITY_DIRECTORY`. Production startup ignores that directory and rejects every credential login with 401. Startup fails when a non-production directory is missing or invalid. An unconfigured `createAuthService()` still rejects every login.
+- Development and test startup verify credentials against `AUTH_LOCAL_IDENTITY_DIRECTORY`. Production startup ignores that directory and rejects every credential login with 401. A missing or empty directory fails startup in every environment. Malformed directory contents fail startup only in development and test; production does not parse them. An unconfigured `createAuthService()` still rejects every login.
