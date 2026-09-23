@@ -21,15 +21,8 @@ export type CreateDocumentBatchItem = {
   hashAlgorithm?: string;
 };
 
-export type SavedDocumentRecord = {
+export type SavedDocumentRecord = Omit<CreateDocumentBatchItem, "id" | "hashAlgorithm"> & {
   documentId: string;
-  title: string;
-  originalName: string;
-  storageKey: string;
-  mimeType: string;
-  fileSize: number;
-  fileExtension: string;
-  contentHash: string;
 };
 
 export type RecentDocumentPage = {
@@ -57,32 +50,44 @@ function isUniqueConstraintError(error: unknown): boolean {
   if (typeof error !== "object" || error === null) return false;
   const e = error as Record<string, unknown>;
   if (e.code === "23505") return true;
-  if (
-    typeof e.message === "string" &&
-    (e.message.includes("document_content_hashes_hash_algo_unique_idx") ||
-      e.message.includes("duplicate key value violates unique constraint") ||
-      e.message.includes("UNIQUE constraint failed"))
-  ) {
-    return true;
-  }
-  if (e.cause !== null && typeof e.cause === "object") {
-    return isUniqueConstraintError(e.cause);
-  }
-  return false;
+  const msg = typeof e.message === "string" ? e.message : "";
+  const matches =
+    msg.includes("document_content_hashes_hash_algo_unique_idx") ||
+    msg.includes("duplicate key value violates unique constraint") ||
+    msg.includes("UNIQUE constraint failed");
+  return (
+    matches || (e.cause !== null && typeof e.cause === "object" && isUniqueConstraintError(e.cause))
+  );
 }
 
+export type DocumentBatchTx = {
+  select: (fields: unknown) => {
+    from: (table: unknown) => {
+      where: (condition: unknown) => Promise<ReadonlyArray<{ contentHash: string }>>;
+    };
+  };
+  insert: (table: unknown) => { values: (values: unknown) => Promise<unknown> };
+};
+
+export type DocumentBatchDb = {
+  transaction: <T>(callback: (tx: DocumentBatchTx) => Promise<T>) => Promise<T>;
+};
+
 export class DocumentRepository implements IDocumentRepository {
-  public constructor(private readonly db: PostgresJsDatabase) {}
+  public constructor(private readonly db: PostgresJsDatabase | DocumentBatchDb) {}
+
+  private get sqlDb(): PostgresJsDatabase {
+    if (!("select" in this.db)) throw new Error("Database query engine not configured");
+    return this.db;
+  }
 
   public async findExistingHashes(
     hashes: ReadonlyArray<string>,
     algorithm = "sha256",
   ): Promise<Set<string>> {
-    if (hashes.length === 0) {
-      return new Set();
-    }
+    if (hashes.length === 0) return new Set();
 
-    const rows = await this.db
+    const rows = await this.sqlDb
       .select({ contentHash: documentContentHashes.contentHash })
       .from(documentContentHashes)
       .where(
@@ -99,7 +104,7 @@ export class DocumentRepository implements IDocumentRepository {
     contentHash: string,
     algorithm = "sha256",
   ): Promise<{ documentId: string; contentHash: string } | null> {
-    const rows = await this.db
+    const rows = await this.sqlDb
       .select({
         documentId: documentContentHashes.documentId,
         contentHash: documentContentHashes.contentHash,
@@ -118,13 +123,13 @@ export class DocumentRepository implements IDocumentRepository {
 
   public async listRecentDocuments(page: number, limit: number): Promise<RecentDocumentPage> {
     const whereActive = isNull(documents.deletedAt);
-    const [counted] = await this.db
+    const [counted] = await this.sqlDb
       .select({ total: count() })
       .from(documents)
       .innerJoin(documentFiles, eq(documentFiles.documentId, documents.id))
       .where(whereActive);
     const total = Number(counted?.total ?? 0);
-    const rows = await this.db
+    const rows = await this.sqlDb
       .select({
         id: documents.id,
         filename: documentFiles.originalName,
@@ -180,12 +185,9 @@ export class DocumentRepository implements IDocumentRepository {
         const saved: Array<SavedDocumentRecord> = [];
 
         for (const item of items) {
-          await tx.insert(documents).values({
-            id: item.id,
-            title: item.title,
-            processingStatus: "queued",
-          });
-
+          await tx
+            .insert(documents)
+            .values({ id: item.id, title: item.title, processingStatus: "queued" });
           await tx.insert(documentFiles).values({
             id: crypto.randomUUID(),
             documentId: item.id,
@@ -195,7 +197,6 @@ export class DocumentRepository implements IDocumentRepository {
             fileSize: item.fileSize,
             fileExtension: item.fileExtension,
           });
-
           await tx.insert(documentContentHashes).values({
             id: crypto.randomUUID(),
             documentId: item.id,
@@ -218,9 +219,7 @@ export class DocumentRepository implements IDocumentRepository {
         return saved;
       });
     } catch (error: unknown) {
-      if (error instanceof ConflictError) {
-        throw error;
-      }
+      if (error instanceof ConflictError) throw error;
       if (isUniqueConstraintError(error)) {
         throw new ConflictError(
           DOCUMENT_ERROR_CODES.DUPLICATE_DOCUMENT,
@@ -232,14 +231,14 @@ export class DocumentRepository implements IDocumentRepository {
   }
 
   public async findDocumentById(id: string): Promise<typeof documents.$inferSelect | null> {
-    const rows = await this.db.select().from(documents).where(eq(documents.id, id)).limit(1);
+    const rows = await this.sqlDb.select().from(documents).where(eq(documents.id, id)).limit(1);
     return rows[0] ?? null;
   }
 
   public async findDocumentFileByDocumentId(
     documentId: string,
   ): Promise<typeof documentFiles.$inferSelect | null> {
-    const rows = await this.db
+    const rows = await this.sqlDb
       .select()
       .from(documentFiles)
       .where(eq(documentFiles.documentId, documentId))

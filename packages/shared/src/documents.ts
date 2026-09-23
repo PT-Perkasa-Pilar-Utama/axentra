@@ -110,6 +110,18 @@ export const checkDuplicateResponseSchema = z.object({
 });
 export type CheckDuplicateResponse = z.infer<typeof checkDuplicateResponseSchema>;
 
+export const checkDuplicateSuccessResponseSchema = z.object({
+  success: z.literal(true),
+  data: checkDuplicateResponseSchema,
+});
+export type CheckDuplicateSuccessResponse = z.infer<typeof checkDuplicateSuccessResponseSchema>;
+
+export const uploadDocumentSuccessResponseSchema = z.object({
+  success: z.literal(true),
+  data: documentUploadAcceptedDataSchema,
+});
+export type UploadDocumentSuccessResponse = z.infer<typeof uploadDocumentSuccessResponseSchema>;
+
 export const documentProcessingStatusSchema = z.enum([
   "queued",
   "processing",

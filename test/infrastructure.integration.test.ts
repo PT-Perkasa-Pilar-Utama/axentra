@@ -12,7 +12,12 @@ import type {
   createRedisProbe as CreateRedisProbe,
   createSystemHealthWorker as CreateSystemHealthWorker,
 } from "@axentra/queue";
-import type { SystemHealthCheckJob } from "@axentra/shared";
+import {
+  apiErrorSchema,
+  checkDuplicateSuccessResponseSchema,
+  uploadDocumentSuccessResponseSchema,
+  type SystemHealthCheckJob,
+} from "@axentra/shared";
 import type { createS3StorageAdapter as CreateS3StorageAdapter } from "@axentra/storage";
 import type { DatabaseClient } from "@axentra/db";
 import type { QueueProducer, RedisProbe } from "@axentra/queue";
@@ -44,6 +49,7 @@ describe("infrastructure integration", () => {
   let database: DatabaseClient | undefined;
   let redis: RedisProbe | undefined;
   let storage: StorageAdapter | undefined;
+  const storageOps: Array<{ op: "put" | "delete"; key: string }> = [];
   let producer: QueueProducer | undefined;
   let worker: ReturnType<CreateSystemHealthWorker> | undefined;
   let onJobProcessed: ((payload: SystemHealthCheckJob) => void) | undefined;
@@ -95,7 +101,18 @@ describe("infrastructure integration", () => {
     const config = loadApiConfigFromRuntime();
     database = createDatabaseClient(config.DATABASE_URL);
     redis = createRedisProbe(config.REDIS_URL, config.REDIS_HEALTH_TIMEOUT_MS);
-    storage = createS3StorageAdapter(config);
+    const rawStorage = createS3StorageAdapter(config);
+    storage = {
+      ...rawStorage,
+      async putObject(input) {
+        storageOps.push({ op: "put", key: input.key });
+        return rawStorage.putObject(input);
+      },
+      async deleteObject(key) {
+        storageOps.push({ op: "delete", key });
+        return rawStorage.deleteObject(key);
+      },
+    };
     await Promise.all([checkDatabase(database), redis.checkHealth(), storage.initialize()]);
 
     const queueName = `axentra-integration-${crypto.randomUUID()}`;
@@ -397,10 +414,7 @@ describe("infrastructure integration", () => {
       expect(statuses).toEqual([200, 409]);
 
       const conflictRes = res1.status === 409 ? res1 : res2;
-      const conflictBody = (await conflictRes.json()) as {
-        success: boolean;
-        error: { code: string; message: string };
-      };
+      const conflictBody = apiErrorSchema.parse(await conflictRes.json());
       expect(conflictBody.success).toBe(false);
       expect(conflictBody.error.code).toBe("DUPLICATE_DOCUMENT");
       expect(conflictBody.error.message).toBe("File ini sudah ada");
@@ -550,6 +564,8 @@ describe("infrastructure integration", () => {
 
       const createdDocIds: string[] = [];
       const createdStorageKeys: string[] = [];
+      let testError: unknown;
+      const cleanupErrors: Error[] = [];
 
       try {
         // 1. First upload: valid file, should succeed (AC-02.03)
@@ -563,7 +579,7 @@ describe("infrastructure integration", () => {
         });
 
         expect(res1.status).toBe(200);
-        const body1 = (await res1.json()) as { success: boolean; data: { message: string } };
+        const body1 = uploadDocumentSuccessResponseSchema.parse(await res1.json());
         expect(body1.success).toBe(true);
         expect(body1.data.message).toBe("File diterima untuk diproses");
 
@@ -600,28 +616,51 @@ describe("infrastructure integration", () => {
         });
 
         expect(res2.status).toBe(409);
-        const body2 = (await res2.json()) as {
-          success: boolean;
-          error: { code: string; message: string };
-        };
+        const body2 = apiErrorSchema.parse(await res2.json());
         expect(body2.success).toBe(false);
         expect(body2.error.code).toBe("DUPLICATE_DOCUMENT");
         expect(body2.error.message).toBe("File ini sudah ada");
 
-        // 3. Verify database: still only 1 document and 1 content_hash row exists for this content
+        // 3. Verify database: observe all rows for this content hash across documents, files, and hashes
         const allHashRows = await database.db
           .select()
           .from(documentContentHashes)
           .where(eq(documentContentHashes.contentHash, hash));
         expect(allHashRows.length).toBe(1);
 
-        const allDocRows = await database.db
+        const allDocRowsForContent = await database.db
           .select()
           .from(documents)
-          .where(eq(documents.id, originalDocId));
-        expect(allDocRows.length).toBe(1);
+          .innerJoin(documentContentHashes, eq(documents.id, documentContentHashes.documentId))
+          .where(eq(documentContentHashes.contentHash, hash));
+        expect(allDocRowsForContent.length).toBe(1);
+        expect(allDocRowsForContent[0]?.documents.id).toBe(originalDocId);
 
-        // 4. Verify storage: only 1 storage object exists; the failed duplicate did not leave an orphaned object
+        const allFileRowsForContent = await database.db
+          .select()
+          .from(documentFiles)
+          .innerJoin(
+            documentContentHashes,
+            eq(documentFiles.documentId, documentContentHashes.documentId),
+          )
+          .where(eq(documentContentHashes.contentHash, hash));
+        expect(allFileRowsForContent.length).toBe(1);
+        expect(allFileRowsForContent[0]?.document_files.storageKey).toBe(storageKey1);
+
+        // 4. Verify storage: verify storage operations tracked the rejected upload and proved it was removed
+        const duplicateAttemptPut = storageOps.find(
+          (op) => op.op === "put" && op.key !== storageKey1,
+        );
+        expect(duplicateAttemptPut).toBeDefined();
+        const duplicateAttemptKey = duplicateAttemptPut?.key;
+        if (duplicateAttemptKey !== undefined) {
+          const duplicateAttemptDelete = storageOps.find(
+            (op) => op.op === "delete" && op.key === duplicateAttemptKey,
+          );
+          expect(duplicateAttemptDelete).toBeDefined();
+          await expect(storage.headObject(duplicateAttemptKey)).rejects.toThrow();
+        }
+
         const storedBytes = await storage.getObject(storageKey1);
         expect(Buffer.from(storedBytes)).toEqual(Buffer.from(pdfBytes));
 
@@ -642,7 +681,7 @@ describe("infrastructure integration", () => {
         });
 
         expect(res3.status).toBe(200);
-        const body3 = (await res3.json()) as { success: boolean; data: { message: string } };
+        const body3 = uploadDocumentSuccessResponseSchema.parse(await res3.json());
         expect(body3.success).toBe(true);
         expect(body3.data.message).toBe("File diterima untuk diproses");
 
@@ -674,9 +713,7 @@ describe("infrastructure integration", () => {
           body: JSON.stringify({ contentHash: hash }),
         });
         expect(checkJsonRes.status).toBe(200);
-        const checkJsonBody = (await checkJsonRes.json()) as {
-          data: { isDuplicate: boolean; existingDocumentId: string; message: string };
-        };
+        const checkJsonBody = checkDuplicateSuccessResponseSchema.parse(await checkJsonRes.json());
         expect(checkJsonBody.data.isDuplicate).toBe(true);
         expect(checkJsonBody.data.existingDocumentId).toBe(originalDocId);
         expect(checkJsonBody.data.message).toBe("File ini sudah ada");
@@ -689,21 +726,42 @@ describe("infrastructure integration", () => {
           body: checkForm,
         });
         expect(checkMultipartRes.status).toBe(200);
-        const checkMultiBody = (await checkMultipartRes.json()) as {
-          data: { isDuplicate: boolean; existingDocumentId: string; message: string };
-        };
+        const checkMultiBody = checkDuplicateSuccessResponseSchema.parse(
+          await checkMultipartRes.json(),
+        );
         expect(checkMultiBody.data.isDuplicate).toBe(true);
         expect(checkMultiBody.data.existingDocumentId).toBe(originalDocId);
+      } catch (error) {
+        testError = error;
       } finally {
         for (const key of createdStorageKeys) {
-          await storage.deleteObject(key).catch(() => {});
+          try {
+            await storage.deleteObject(key);
+          } catch (error) {
+            cleanupErrors.push(error instanceof Error ? error : new Error(String(error)));
+          }
         }
         for (const docId of createdDocIds) {
-          await database.db
-            .delete(documents)
-            .where(eq(documents.id, docId))
-            .catch(() => {});
+          try {
+            await database.db.delete(documents).where(eq(documents.id, docId));
+          } catch (error) {
+            cleanupErrors.push(error instanceof Error ? error : new Error(String(error)));
+          }
         }
+      }
+
+      if (testError !== undefined) {
+        if (cleanupErrors.length > 0) {
+          const cleanupDetails = cleanupErrors.map((e) => e.message).join("\n");
+          console.error(`Integration test cleanup also failed with errors:\n${cleanupDetails}`);
+        }
+        throw testError;
+      }
+      if (cleanupErrors.length > 0) {
+        const errorDetails = cleanupErrors.map((e) => e.message).join("\n");
+        throw new Error(
+          `Integration test cleanup failed with ${cleanupErrors.length} errors:\n${errorDetails}`,
+        );
       }
     },
   );

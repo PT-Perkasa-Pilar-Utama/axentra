@@ -57,6 +57,7 @@ export {
 export type {
   CheckDuplicateRequest,
   CheckDuplicateResponse,
+  CheckDuplicateSuccessResponse,
   DocumentErrorCode,
   DocumentProcessingStatus,
   DocumentType,
@@ -65,6 +66,7 @@ export type {
   SupportedDocumentExtension,
   SupportedDocumentMimeType,
   UploadDocumentResponse,
+  UploadDocumentSuccessResponse,
 } from "./documents";
 export {
   DOCUMENT_COPY,
@@ -78,6 +80,7 @@ export {
   SUPPORTED_DOCUMENT_MIME_TYPES,
   checkDuplicateRequestSchema,
   checkDuplicateResponseSchema,
+  checkDuplicateSuccessResponseSchema,
   documentProcessingStatusSchema,
   documentUploadAcceptedDataSchema,
   documentUploadFileMetaSchema,
@@ -88,4 +91,5 @@ export {
   supportedExtensions,
   supportedMimeTypes,
   uploadDocumentResponseSchema,
+  uploadDocumentSuccessResponseSchema,
 } from "./documents";

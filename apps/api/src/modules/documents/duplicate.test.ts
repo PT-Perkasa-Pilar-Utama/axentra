@@ -1,16 +1,24 @@
 import { describe, expect, test } from "bun:test";
 import { createLogger } from "@axentra/observability";
-import type {
-  ApiErrorEnvelope,
-  ApiSuccessEnvelope,
-  CheckDuplicateResponse,
-  DocumentUploadAcceptedData,
+import {
+  apiErrorSchema,
+  checkDuplicateSuccessResponseSchema,
+  uploadDocumentSuccessResponseSchema,
+  DOCUMENT_COPY,
+  DOCUMENT_ERROR_CODES,
 } from "@axentra/shared";
+import type { StorageAdapter } from "@axentra/storage";
+import { ConflictError } from "../../http/errors";
 import { createApp } from "../../app";
 import type { TokenVerifier } from "../../middleware/auth";
 import { createDocumentService } from "./documents.service";
 import { computeSha256, InMemoryDocumentContentHashRepository } from "./duplicate.repository";
-import { DocumentRepository } from "./documents.repository";
+import {
+  DocumentRepository,
+  type DocumentBatchDb,
+  type DocumentBatchTx,
+  type IDocumentRepository,
+} from "./documents.repository";
 
 const testLogger = createLogger({
   service: "axentra-api",
@@ -219,7 +227,7 @@ describe("Task BE-S1-04: Duplicate Detection", () => {
       });
 
       expect(response.status).toBe(409);
-      const json = (await response.json()) as ApiErrorEnvelope;
+      const json = apiErrorSchema.parse(await response.json());
       expect(json.success).toBe(false);
       expect(json.error.code).toBe("DUPLICATE_DOCUMENT");
       expect(json.error.message).toBe("File ini sudah ada");
@@ -263,7 +271,7 @@ describe("Task BE-S1-04: Duplicate Detection", () => {
       });
 
       expect(response.status).toBe(409);
-      const json = (await response.json()) as ApiErrorEnvelope;
+      const json = apiErrorSchema.parse(await response.json());
       expect(json.error.code).toBe("DUPLICATE_DOCUMENT");
       expect(json.error.message).toBe("File ini sudah ada");
     });
@@ -296,7 +304,7 @@ describe("Task BE-S1-04: Duplicate Detection", () => {
       });
 
       expect(response.status).toBe(409);
-      const json = (await response.json()) as ApiErrorEnvelope;
+      const json = apiErrorSchema.parse(await response.json());
       expect(json.error.code).toBe("DUPLICATE_DOCUMENT");
       expect(json.error.message).toBe("File ini sudah ada");
     });
@@ -386,7 +394,7 @@ describe("Task BE-S1-04: Duplicate Detection", () => {
       });
 
       expect(response.status).toBe(200);
-      const json = (await response.json()) as ApiSuccessEnvelope<DocumentUploadAcceptedData>;
+      const json = uploadDocumentSuccessResponseSchema.parse(await response.json());
       expect(json.success).toBe(true);
       expect(json.data.message).toBe("File diterima untuk diproses");
       expect(json.data.count).toBe(1);
@@ -412,7 +420,7 @@ describe("Task BE-S1-04: Duplicate Detection", () => {
       });
 
       expect(response.status).toBe(401);
-      const json = (await response.json()) as ApiErrorEnvelope;
+      const json = apiErrorSchema.parse(await response.json());
       expect(json.error.code).toBe("UNAUTHORIZED");
     });
 
@@ -437,7 +445,7 @@ describe("Task BE-S1-04: Duplicate Detection", () => {
       });
 
       expect(response.status).toBe(200);
-      const json = (await response.json()) as ApiSuccessEnvelope<CheckDuplicateResponse>;
+      const json = checkDuplicateSuccessResponseSchema.parse(await response.json());
       expect(json.success).toBe(true);
       expect(json.data.isDuplicate).toBe(false);
     });
@@ -472,7 +480,7 @@ describe("Task BE-S1-04: Duplicate Detection", () => {
       });
 
       expect(response.status).toBe(200);
-      const json = (await response.json()) as ApiSuccessEnvelope<CheckDuplicateResponse>;
+      const json = checkDuplicateSuccessResponseSchema.parse(await response.json());
       expect(json.success).toBe(true);
       expect(json.data.isDuplicate).toBe(true);
       expect(json.data.existingDocumentId).toBe(existingDocId);
@@ -500,7 +508,7 @@ describe("Task BE-S1-04: Duplicate Detection", () => {
       });
 
       expect(response.status).toBe(200);
-      const json = (await response.json()) as ApiSuccessEnvelope<CheckDuplicateResponse>;
+      const json = checkDuplicateSuccessResponseSchema.parse(await response.json());
       expect(json.success).toBe(true);
       expect(json.data.isDuplicate).toBe(false);
       expect(json.data.existingDocumentId).toBeUndefined();
@@ -527,7 +535,7 @@ describe("Task BE-S1-04: Duplicate Detection", () => {
       });
 
       expect(response.status).toBe(400);
-      const json = (await response.json()) as ApiErrorEnvelope;
+      const json = apiErrorSchema.parse(await response.json());
       expect(json.error.code).toBe("VALIDATION_ERROR");
     });
 
@@ -561,7 +569,7 @@ describe("Task BE-S1-04: Duplicate Detection", () => {
       });
 
       expect(dupResponse.status).toBe(200);
-      const dupJson = (await dupResponse.json()) as ApiSuccessEnvelope<CheckDuplicateResponse>;
+      const dupJson = checkDuplicateSuccessResponseSchema.parse(await dupResponse.json());
       expect(dupJson.data.isDuplicate).toBe(true);
       expect(dupJson.data.existingDocumentId).toBe(existingDocId);
       expect(dupJson.data.message).toBe("File ini sudah ada");
@@ -581,7 +589,7 @@ describe("Task BE-S1-04: Duplicate Detection", () => {
       });
 
       expect(newResponse.status).toBe(200);
-      const newJson = (await newResponse.json()) as ApiSuccessEnvelope<CheckDuplicateResponse>;
+      const newJson = checkDuplicateSuccessResponseSchema.parse(await newResponse.json());
       expect(newJson.data.isDuplicate).toBe(false);
     });
 
@@ -604,7 +612,7 @@ describe("Task BE-S1-04: Duplicate Detection", () => {
       });
 
       expect(response.status).toBe(400);
-      const json = (await response.json()) as ApiErrorEnvelope;
+      const json = apiErrorSchema.parse(await response.json());
       expect(json.error.code).toBe("VALIDATION_ERROR");
       expect(json.error.message).toBe(
         "Permintaan harus menggunakan format application/json atau multipart/form-data",
@@ -632,7 +640,7 @@ describe("Task BE-S1-04: Duplicate Detection", () => {
       });
 
       expect(response.status).toBe(401);
-      const json = (await response.json()) as ApiErrorEnvelope;
+      const json = apiErrorSchema.parse(await response.json());
       expect(json.error.code).toBe("UNAUTHORIZED");
       expect(json.error.message).toBe("Token tidak valid atau telah kedaluwarsa");
     });
@@ -657,7 +665,7 @@ describe("Task BE-S1-04: Duplicate Detection", () => {
       });
 
       expect(response.status).toBe(413);
-      const json = (await response.json()) as ApiErrorEnvelope;
+      const json = apiErrorSchema.parse(await response.json());
       expect(json.error.code).toBe("PAYLOAD_TOO_LARGE");
       expect(json.error.message).toBe("Ukuran file melebihi batas maksimum");
     });
@@ -681,7 +689,7 @@ describe("Task BE-S1-04: Duplicate Detection", () => {
       });
 
       expect(response.status).toBe(400);
-      const json = (await response.json()) as ApiErrorEnvelope;
+      const json = apiErrorSchema.parse(await response.json());
       expect(json.error.code).toBe("VALIDATION_ERROR");
       expect(json.error.message).toBe("File tidak boleh kosong");
     });
@@ -730,15 +738,15 @@ describe("Task BE-S1-04: Duplicate Detection", () => {
       });
 
       expect(response.status).toBe(413);
-      const json = (await response.json()) as ApiErrorEnvelope;
+      const json = apiErrorSchema.parse(await response.json());
       expect(json.error.code).toBe("PAYLOAD_TOO_LARGE");
       expect(json.error.message).toBe("Ukuran file melebihi batas maksimum");
     });
 
     test("DocumentRepository.saveDocumentBatch maps unique constraint error to 409 DUPLICATE_DOCUMENT (F3/F4)", async () => {
-      const mockDb = {
-        transaction: async (callback: (tx: unknown) => Promise<unknown>) => {
-          const fakeTx = {
+      const mockDb: DocumentBatchDb = {
+        transaction: async (callback) => {
+          const fakeTx: DocumentBatchTx = {
             select: () => ({
               from: () => ({
                 where: async () => [],
@@ -758,7 +766,7 @@ describe("Task BE-S1-04: Duplicate Detection", () => {
         },
       };
 
-      const repo = new DocumentRepository(mockDb as never);
+      const repo = new DocumentRepository(mockDb);
 
       await expect(
         repo.saveDocumentBatch([
@@ -775,6 +783,60 @@ describe("Task BE-S1-04: Duplicate Detection", () => {
           },
         ]),
       ).rejects.toThrow("File ini sudah ada");
+    });
+
+    test("compensates and removes uploaded file from storage when saveDocumentBatch fails with ConflictError (F6)", async () => {
+      const removedKeys: string[] = [];
+      const trackingStorage: StorageAdapter = {
+        initialize: async () => {},
+        checkHealth: async () => {},
+        putObject: async () => {},
+        getObject: async () => new Uint8Array(),
+        deleteObject: async (key: string) => {
+          removedKeys.push(key);
+        },
+        headObject: async (key: string) => ({
+          key,
+          contentLength: 100,
+          contentType: "application/pdf",
+          checksumSha256: undefined,
+        }),
+        createDownloadUrl: async () => "https://example.com",
+        close: async () => {},
+      };
+
+      const throwingRepo: IDocumentRepository = {
+        findExistingHashes: async () => new Set(),
+        listRecentDocuments: async () => ({ items: [], meta: { page: 1, limit: 20, total: 0 } }),
+        findDocumentById: async () => null,
+        findDocumentFileByDocumentId: async () => null,
+        saveDocumentBatch: async () => {
+          throw new ConflictError(
+            DOCUMENT_ERROR_CODES.DUPLICATE_DOCUMENT,
+            DOCUMENT_COPY.DUPLICATE_WARNING,
+          );
+        },
+      };
+
+      const service = createDocumentService({
+        repository: throwingRepo,
+        storage: trackingStorage,
+      });
+
+      const pdfBytes = createPdf("test compensation");
+      await expect(
+        service.uploadDocuments([
+          {
+            bytes: pdfBytes,
+            filename: "compensate.pdf",
+            mimeType: "application/pdf",
+            size: pdfBytes.length,
+          },
+        ]),
+      ).rejects.toThrow("File ini sudah ada");
+
+      expect(removedKeys.length).toBe(1);
+      expect(removedKeys[0]).toContain("compensate.pdf");
     });
   });
 });
