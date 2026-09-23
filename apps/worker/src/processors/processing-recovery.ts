@@ -8,7 +8,7 @@ const RECOVERY_INTERVAL_MS = 30_000;
 export type ProcessingRecoveryDependencies = {
   repository: Pick<
     DocumentProcessingRepository,
-    "listEnqueueFailedDocuments" | "markEnqueueRecovered"
+    "listRecoverableDocuments" | "markEnqueueRecovered"
   >;
   queue: Pick<QueueProducer, "reconcileDocumentProcessing">;
   logger: Logger;
@@ -17,7 +17,7 @@ export type ProcessingRecoveryDependencies = {
 export async function recoverFailedProcessingJobs(
   dependencies: ProcessingRecoveryDependencies,
 ): Promise<number> {
-  const pending = await dependencies.repository.listEnqueueFailedDocuments();
+  const pending = await dependencies.repository.listRecoverableDocuments();
   const requestedAt = new Date().toISOString();
   let recovered = 0;
 

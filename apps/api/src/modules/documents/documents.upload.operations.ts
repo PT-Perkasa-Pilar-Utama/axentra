@@ -182,17 +182,10 @@ async function recordEnqueueFailure(
   queueError?: unknown,
 ): Promise<void> {
   const documentIds = pendingItems.map((item) => item.id);
-  try {
-    await dependencies.repository.markProcessingEnqueueFailed(
-      documentIds,
-      PROCESSING_ENQUEUE_FAILURE_MESSAGE,
-    );
-  } catch (statusError) {
-    dependencies.logger.error(
-      { documentIds, error: summarizeError(statusError) },
-      "Failed to record processing enqueue failure",
-    );
-  }
+  await dependencies.repository.markProcessingEnqueueFailed(
+    documentIds,
+    PROCESSING_ENQUEUE_FAILURE_MESSAGE,
+  );
 
   dependencies.logger.error(
     {

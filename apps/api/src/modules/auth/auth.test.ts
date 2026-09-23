@@ -13,8 +13,10 @@ import { isAppError } from "../../http/errors";
 import { jsonError, jsonSuccess } from "../../http/responses";
 import { requireAuth, requireRole } from "../../middleware/auth";
 import { requestContextMiddleware } from "../../middleware/request-context";
+import { loadApiConfig } from "@axentra/config";
 import { createAuthService } from "./auth.service";
 import { createLocalIdentityAuthenticator } from "./local-identity";
+import { createRuntimeAuthenticator } from "./runtime-authenticator";
 
 const logger = createLogger({
   service: "axentra-api",
@@ -542,5 +544,107 @@ describe("Auth API Module", () => {
       const meBody = (await meRes.json()) as ApiSuccessEnvelope<AuthUser>;
       expect(meBody.data.email).toBe(TEST_MEMBER.email);
     });
+
+    it("rejects the tracked development credentials when APP_ENV is production [BE-S1-01]", async () => {
+      const authService = createAuthService({
+        authenticator: createRuntimeAuthenticator(
+          runtimeConfig("production", await memberDirectory()),
+        ),
+      });
+      const app = createApp({
+        logger,
+        version: "0.1.0",
+        readinessChecks: [],
+        authService,
+      });
+
+      const response = await app.request("/api/v1/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: "member@axentra.local",
+          password: "local-member-password",
+        }),
+      });
+      expect(response.status).toBe(401);
+      const body = (await response.json()) as ApiErrorEnvelope;
+      expect(body.error.code).toBe("UNAUTHORIZED");
+    });
+
+    it("accepts the tracked development credentials when APP_ENV is development [BE-S1-01]", async () => {
+      const app = createApp({
+        logger,
+        version: "0.1.0",
+        readinessChecks: [],
+        authService: createAuthService({
+          authenticator: createRuntimeAuthenticator(
+            runtimeConfig("development", await memberDirectory()),
+          ),
+        }),
+      });
+      const response = await app.request("/api/v1/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: "member@axentra.local",
+          password: "local-member-password",
+        }),
+      });
+      expect(response.status).toBe(200);
+    });
+
+    it("fails startup when the development identity directory is missing or malformed [BE-S1-01]", () => {
+      expect(() =>
+        loadApiConfig({
+          ...runtimeEnvironment("development"),
+          AUTH_LOCAL_IDENTITY_DIRECTORY: undefined,
+        }),
+      ).toThrow("AUTH_LOCAL_IDENTITY_DIRECTORY");
+      const malformed = loadApiConfig({
+        ...runtimeEnvironment("development"),
+        AUTH_LOCAL_IDENTITY_DIRECTORY: "not-a-directory",
+      });
+      expect(() => createRuntimeAuthenticator(malformed)).toThrow("AUTH_LOCAL_IDENTITY_DIRECTORY");
+    });
   });
 });
+
+function runtimeEnvironment(appEnv: "development" | "production"): Record<string, string> {
+  return {
+    APP_ENV: appEnv,
+    APP_VERSION: "0.1.0",
+    DATABASE_URL: "postgres://axentra:test@localhost:5432/axentra_test",
+    REDIS_URL: "redis://localhost:6379/0",
+    S3_PROVIDER: "minio",
+    S3_ENDPOINT: "http://localhost:9000",
+    S3_REGION: "ap-southeast-3",
+    S3_BUCKET: "axentra-test",
+    S3_ACCESS_KEY_ID: "local-test-user",
+    S3_SECRET_ACCESS_KEY: "local-test-password",
+    S3_FORCE_PATH_STYLE: "true",
+  };
+}
+
+function runtimeConfig(
+  appEnv: "development" | "production",
+  directory: string,
+): ReturnType<typeof loadApiConfig> {
+  return loadApiConfig({
+    ...runtimeEnvironment(appEnv),
+    AUTH_LOCAL_IDENTITY_DIRECTORY: directory,
+  });
+}
+
+async function memberDirectory(): Promise<string> {
+  return Buffer.from(
+    JSON.stringify([
+      {
+        id: "11111111-1111-4111-8111-111111111111",
+        email: "member@axentra.local",
+        role: "member_team",
+        name: "Member Team",
+        passwordHash: await Bun.password.hash("local-member-password"),
+      },
+    ]),
+  ).toString("base64");
+}

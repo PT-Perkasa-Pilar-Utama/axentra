@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { documentFiles, documentMetadata, documents } from "@axentra/db";
 import { PROCESSING_ENQUEUE_FAILURE_MESSAGE } from "@axentra/shared";
@@ -29,7 +29,7 @@ export type FailedProcessingDocument = {
 };
 
 export type DocumentProcessingRepository = {
-  listEnqueueFailedDocuments: () => Promise<ReadonlyArray<FailedProcessingDocument>>;
+  listRecoverableDocuments: () => Promise<ReadonlyArray<FailedProcessingDocument>>;
   markEnqueueRecovered: (documentId: string) => Promise<void>;
   findDocumentById: (id: string) => Promise<DocumentProcessingRecord | null>;
   findDocumentFileByDocumentId: (
@@ -46,7 +46,7 @@ export type DocumentProcessingRepository = {
 export class DrizzleDocumentProcessingRepository implements DocumentProcessingRepository {
   public constructor(private readonly db: PostgresJsDatabase) {}
 
-  public async listEnqueueFailedDocuments(): Promise<ReadonlyArray<FailedProcessingDocument>> {
+  public async listRecoverableDocuments(): Promise<ReadonlyArray<FailedProcessingDocument>> {
     return this.db
       .select({
         documentId: documents.id,
@@ -56,8 +56,14 @@ export class DrizzleDocumentProcessingRepository implements DocumentProcessingRe
       .innerJoin(documentFiles, eq(documentFiles.documentId, documents.id))
       .where(
         and(
-          eq(documents.processingStatus, "failed"),
-          eq(documents.errorMessage, PROCESSING_ENQUEUE_FAILURE_MESSAGE),
+          isNull(documents.deletedAt),
+          or(
+            eq(documents.processingStatus, "queued"),
+            and(
+              eq(documents.processingStatus, "failed"),
+              eq(documents.errorMessage, PROCESSING_ENQUEUE_FAILURE_MESSAGE),
+            ),
+          ),
         ),
       );
   }
@@ -187,8 +193,19 @@ export class InMemoryDocumentProcessingRepository implements DocumentProcessingR
 
   public readonly enqueueFailures: FailedProcessingDocument[] = [];
 
-  public async listEnqueueFailedDocuments(): Promise<ReadonlyArray<FailedProcessingDocument>> {
-    return [...this.enqueueFailures];
+  public async listRecoverableDocuments(): Promise<ReadonlyArray<FailedProcessingDocument>> {
+    if (this.enqueueFailures.length > 0) return [...this.enqueueFailures];
+    const recoverable: FailedProcessingDocument[] = [];
+    for (const [documentId, document] of this.documents) {
+      const stranded =
+        document.processingStatus === "queued" ||
+        (document.processingStatus === "failed" &&
+          document.errorMessage === PROCESSING_ENQUEUE_FAILURE_MESSAGE);
+      const file = this.files.get(documentId);
+      if (!stranded || file === undefined) continue;
+      recoverable.push({ documentId, storageKey: file.storageKey });
+    }
+    return recoverable;
   }
 
   public async markEnqueueRecovered(documentId: string): Promise<void> {

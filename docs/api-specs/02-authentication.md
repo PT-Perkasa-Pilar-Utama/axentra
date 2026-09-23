@@ -56,7 +56,7 @@ Authenticates credentials and establishes a server-side session.
     }
   }
   ```
-- **Identity source:** Runtime login uses `AUTH_LOCAL_IDENTITY_DIRECTORY`, a base64 JSON array of `{ id, email, role, name?, passwordHash }`. `passwordHash` is an Argon2id hash. A matching credential issues `ax_...` and `ax_rt_...` tokens through the existing session store. A missing directory, malformed directory, unknown email, or wrong password returns 401. Plaintext passwords stay out of tracked code. The durable user table remains a later identity-store card.
+- **Identity source:** When `APP_ENV` is `development` or `test`, login uses `AUTH_LOCAL_IDENTITY_DIRECTORY`, a base64 JSON array of `{ id, email, role, name?, passwordHash }`. `passwordHash` is an Argon2id hash. A matching credential issues `ax_...` and `ax_rt_...` tokens. Unknown email or wrong password returns 401. `APP_ENV=production` ignores that directory and rejects every credential login with 401 until the durable identity store exists. A missing or malformed directory fails API startup before `/login` is served. Plaintext passwords stay out of tracked code.
 
 ### 3. `POST /api/v1/auth/refresh`
 

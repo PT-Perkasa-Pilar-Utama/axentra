@@ -90,7 +90,7 @@ Retrieves extracted document metadata, including author, extraction timestamp, a
 4. **Atomic Persistence & Completion:** Extracted metadata upsert into `document_metadata` and the document status transition to `'completed'` execute inside a single atomic database transaction (`db.transaction`). If any write fails, both are rolled back, and the document is marked as `'failed'` with `error_message`.
 5. **Terminal State:** On successful completion, `documents.processing_status` becomes `'completed'` and `errorMessage` is cleared. On failure, status is updated to `'failed'` with `error_message`.
 
-Accepted uploads enqueue `document.process` with `jobId` equal to the document id. If the queue rejects the job, the API returns `503 PROCESSING_UNAVAILABLE` and marks the document `failed` with `Antrean pemrosesan dokumen tidak tersedia`. The worker scans that exact failure at startup and every 30 seconds, enqueues the missing job idempotently, and returns the document to `queued`. The job then moves it through `processing` to `completed`.
+Accepted uploads enqueue `document.process` with `jobId` equal to the document id. If any queue write in the batch fails, the API returns `503 PROCESSING_UNAVAILABLE`. Files already accepted by the queue stay `queued`; files not yet accepted are marked `failed` with `Antrean pemrosesan dokumen tidak tersedia`. A failed status write leaves the row `queued`. The worker scans non-deleted `queued` rows and enqueue-failed rows at startup and every 30 seconds. A retained completed or failed BullMQ job is removed and replaced. A waiting, delayed, prioritized, or active job is left in place, and a failed document row returns to `queued`. The replacement job then moves the document through `processing` to `completed`.
 
 ---
 

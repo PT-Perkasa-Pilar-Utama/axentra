@@ -115,7 +115,7 @@ Status: Implemented (BE-S1-02).
 - `403 FORBIDDEN`: Non-member role (e.g. `head_of_team`).
 - `409 DUPLICATE_DOCUMENT`: Content identical to existing document or intra-batch duplicate.
 - `413 PAYLOAD_TOO_LARGE`: Individual or aggregate size exceeds 50 MB.
-- `503 PROCESSING_UNAVAILABLE`: The stored upload could not be placed on the processing queue. The response is an error envelope with message `Antrean pemrosesan dokumen tidak tersedia`. Persisted documents from that batch stay `failed` with the same message until the worker re-enqueues them. A successful `200` means every document in the batch has a queue job.
+- `503 PROCESSING_UNAVAILABLE`: One or more stored files in the batch could not be placed on the processing queue. The response is an error envelope with message `Antrean pemrosesan dokumen tidak tersedia` and no per-file success list. Files already enqueued stay recoverable as `queued`; files that were not enqueued are marked `failed` with the same message. If that status write also fails, those rows stay `queued` and remain visible to recovery. The worker re-enqueues both states, replaces a retained completed or failed queue job, and processing then reaches `completed` or a non-enqueue `failed` state. A `200` means every file in the batch has a runnable queue job. Retrying the same bytes returns `409 DUPLICATE_DOCUMENT`.
 
 #### Constraints and Limits
 

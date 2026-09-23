@@ -11,6 +11,7 @@ import {
   type SystemHealthCheckJob,
 } from "@axentra/shared";
 import { redisConnectionOptions } from "./connection";
+import { reconcileRetainedDocumentJob } from "./reconciliation";
 
 export type QueueProducer = {
   enqueueSystemHealthCheck: (payload: SystemHealthCheckJob) => Promise<string>;
@@ -55,9 +56,11 @@ export function createQueueProducer(queueName: string, redisUrl: string): QueueP
 
     async reconcileDocumentProcessing(payload: DocumentProcessingJob): Promise<string> {
       const validated = documentProcessingJobSchema.parse(payload);
-      const existing = await queue.getJob(validated.jobId);
-      if (existing !== undefined) return existing.id ?? validated.jobId;
-      return this.enqueueDocumentProcessing(validated);
+      return reconcileRetainedDocumentJob(
+        validated,
+        (jobId) => queue.getJob(jobId),
+        (next) => this.enqueueDocumentProcessing(next),
+      );
     },
 
     async close(): Promise<void> {

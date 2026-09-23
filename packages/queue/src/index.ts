@@ -9,3 +9,5 @@ export type {
   SystemHealthJobHandler,
 } from "./queue";
 export { createQueueProducer, createQueueWorker, createSystemHealthWorker } from "./queue";
+export { reconcileRetainedDocumentJob } from "./reconciliation";
+export type { RetainedProcessingJob } from "./reconciliation";

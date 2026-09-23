@@ -874,6 +874,67 @@ describe("POST /api/v1/documents/upload", () => {
       expect(queue.enqueued).toHaveLength(0);
     });
 
+    it("returns 503 when the second DOCX enqueue fails and records only that file [BE-S1-02]", async () => {
+      const failedIds: string[] = [];
+      repository.markProcessingEnqueueFailed = async (documentIds) => {
+        failedIds.push(...documentIds);
+      };
+      let enqueueCalls = 0;
+      queue.enqueueDocumentProcessing = async (data) => {
+        enqueueCalls += 1;
+        if (enqueueCalls === 2) throw new Error("redis unavailable");
+        queue.enqueued.push({ name: documentProcessJobName, data });
+        return data.jobId;
+      };
+
+      const formData = new FormData();
+      formData.append("files", makeDocxFile("satu.docx", "first docx"));
+      formData.append("files", makeDocxFile("dua.docx", "second docx"));
+      const response = await app.request("/api/v1/documents/upload", {
+        method: "POST",
+        headers: { authorization: "Bearer member-token" },
+        body: formData,
+      });
+
+      expect(response.status).toBe(503);
+      const json = (await response.json()) as ApiErrorEnvelope;
+      expect(json.error.code).toBe(DOCUMENT_ERROR_CODES.PROCESSING_UNAVAILABLE);
+      expect(repository.savedBatches[0]?.map((item) => item.originalName)).toEqual([
+        "satu.docx",
+        "dua.docx",
+      ]);
+      const firstId = repository.savedBatches[0]?.[0]?.id;
+      const secondId = repository.savedBatches[0]?.[1]?.id;
+      if (firstId === undefined || secondId === undefined) {
+        throw new Error("Expected both document ids");
+      }
+      expect(failedIds).toEqual([secondId]);
+      expect(queue.enqueued.map((job) => (job.data as DocumentProcessJob).documentId)).toEqual([
+        firstId,
+      ]);
+    });
+
+    it("propagates a failed enqueue-status write instead of hiding the document [BE-S1-02]", async () => {
+      repository.markProcessingEnqueueFailed = async () => {
+        throw new Error("database unavailable");
+      };
+      queue.enqueueDocumentProcessing = async () => {
+        throw new Error("redis unavailable");
+      };
+
+      const formData = new FormData();
+      formData.append("files", makePdfFile("gagal-status.pdf", "status write failure"));
+      const response = await app.request("/api/v1/documents/upload", {
+        method: "POST",
+        headers: { authorization: "Bearer member-token" },
+        body: formData,
+      });
+
+      expect(response.status).toBe(500);
+      const json = (await response.json()) as ApiErrorEnvelope;
+      expect(json.error.code).toBe("INTERNAL_ERROR");
+    });
+
     it("accepts multiple valid DOCX files and returns count and details", async () => {
       const formData = new FormData();
       formData.append("files", makeDocxFile("doc1.docx", "DOCX content 1"));

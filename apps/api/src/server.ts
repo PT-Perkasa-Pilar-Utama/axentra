@@ -5,7 +5,7 @@ import { createQueueProducer, createRedisProbe } from "@axentra/queue";
 import { createS3StorageAdapter } from "@axentra/storage";
 import { createApp } from "./app";
 import { createAuthService } from "./modules/auth/auth.service";
-import { createLocalIdentityAuthenticator } from "./modules/auth/local-identity";
+import { createRuntimeAuthenticator } from "./modules/auth/runtime-authenticator";
 import { DocumentRepository } from "./modules/documents/documents.repository";
 import { createDocumentService } from "./modules/documents/documents.service";
 import { DrizzleDocumentMetadataRepository } from "./modules/documents/metadata.repository";
@@ -63,7 +63,7 @@ async function start(): Promise<void> {
   }
 
   const authService = createAuthService({
-    authenticator: createLocalIdentityAuthenticator(config.AUTH_LOCAL_IDENTITY_DIRECTORY),
+    authenticator: createRuntimeAuthenticator(config),
   });
   const documentRepository = new DocumentRepository(database.db);
   const documentService = createDocumentService({
