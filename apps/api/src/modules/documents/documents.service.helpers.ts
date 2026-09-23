@@ -1,8 +1,17 @@
 import path from "node:path";
 import type { StorageAdapter } from "@axentra/storage";
-import { DOCUMENT_COPY, DOCUMENT_ERROR_CODES, type DocumentMetadataResult } from "@axentra/shared";
-import { ConflictError } from "../../http/errors";
-import type { CreateDocumentBatchItem, IDocumentRepository } from "./documents.repository";
+import {
+  DOCUMENT_COPY,
+  DOCUMENT_ERROR_CODES,
+  type DocumentMetadataResult,
+  type RecentDocument,
+} from "@axentra/shared";
+import { ConflictError, PayloadTooLargeError } from "../../http/errors";
+import type {
+  CreateDocumentBatchItem,
+  IDocumentRepository,
+  RecentDocumentPage,
+} from "./documents.repository";
 import type { DocumentMetadataRecord } from "./metadata.repository";
 
 export function formatMetadataResult(record: DocumentMetadataRecord): DocumentMetadataResult {
@@ -27,6 +36,7 @@ export function createInMemoryRepository(): IDocumentRepository {
   const existingHashes = new Set<string>();
   const hashToDocId = new Map<string, string>();
   const savedBatches: CreateDocumentBatchItem[][] = [];
+  const recentDocuments: RecentDocument[] = [];
   return {
     findExistingHashes: async (hashes) => {
       const found = new Set<string>();
@@ -39,6 +49,13 @@ export function createInMemoryRepository(): IDocumentRepository {
       const docId = hashToDocId.get(contentHash);
       if (!docId) return null;
       return { documentId: docId, contentHash };
+    },
+    listRecentDocuments: async (page, limit): Promise<RecentDocumentPage> => {
+      const start = (page - 1) * limit;
+      return {
+        items: recentDocuments.slice(start, start + limit),
+        meta: { page, limit, total: recentDocuments.length },
+      };
     },
     saveDocumentBatch: async (items) => {
       for (const item of items) {
@@ -53,6 +70,12 @@ export function createInMemoryRepository(): IDocumentRepository {
       for (const item of items) {
         existingHashes.add(item.contentHash);
         hashToDocId.set(item.contentHash, item.id);
+        recentDocuments.unshift({
+          id: item.id,
+          filename: item.originalName,
+          processingStatus: "queued",
+          createdAt: new Date().toISOString(),
+        });
       }
       return items.map((i) => ({
         documentId: i.id,
@@ -68,6 +91,28 @@ export function createInMemoryRepository(): IDocumentRepository {
     findDocumentById: async () => null,
     findDocumentFileByDocumentId: async () => null,
   };
+}
+
+/**
+ * Creates a bounded stream that counts incoming bytes and aborts immediately
+ * with PayloadTooLargeError as soon as total bytes exceed maxBytes.
+ */
+export function createBoundedStream(
+  source: ReadableStream<Uint8Array>,
+  maxBytes: number,
+): ReadableStream<Uint8Array> {
+  let totalBytes = 0;
+  const transform = new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      totalBytes += chunk.byteLength;
+      if (totalBytes > maxBytes) {
+        controller.error(new PayloadTooLargeError(DOCUMENT_COPY.FILE_TOO_LARGE));
+        return;
+      }
+      controller.enqueue(chunk);
+    },
+  });
+  return source.pipeThrough(transform);
 }
 
 export function createInMemoryStorage(): StorageAdapter {

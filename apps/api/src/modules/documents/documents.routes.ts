@@ -4,6 +4,7 @@ import type { TokenVerifier } from "../../middleware/auth";
 import { defaultTokenVerifier, requireAuth, requireRole } from "../../middleware/auth";
 import { createDocumentUploadHandler } from "./documents.handler";
 import { createCheckDuplicateHandler } from "./duplicate.handler";
+import { createListRecentDocumentsHandler } from "./documents.list.handler";
 import { createGetDocumentMetadataHandler } from "./metadata.handler";
 import type { DocumentService } from "./documents.service";
 
@@ -21,6 +22,13 @@ export function createDocumentRoutes(
   const verifier = dependencies.tokenVerifier ?? defaultTokenVerifier;
   const routes = new Hono<ApiEnvironment>();
 
+  routes.get(
+    "/",
+    requireAuth(verifier),
+    requireRole(["member_team", "head_of_team"]),
+    createListRecentDocumentsHandler(dependencies),
+  );
+
   if (dependencies.enableUploadRoute === true) {
     routes.post(
       "/upload",
@@ -32,14 +40,14 @@ export function createDocumentRoutes(
 
   routes.post(
     "/check-duplicate",
-    requireAuth(dependencies.tokenVerifier),
+    requireAuth(verifier),
     requireRole(["member_team", "head_of_team"]),
     createCheckDuplicateHandler(dependencies),
   );
 
   routes.get(
     "/:id/metadata",
-    requireAuth(dependencies.tokenVerifier),
+    requireAuth(verifier),
     requireRole(["member_team", "head_of_team"]),
     createGetDocumentMetadataHandler(dependencies),
   );

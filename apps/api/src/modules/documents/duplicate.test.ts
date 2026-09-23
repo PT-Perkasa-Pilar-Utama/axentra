@@ -10,6 +10,7 @@ import { createApp } from "../../app";
 import type { TokenVerifier } from "../../middleware/auth";
 import { createDocumentService } from "./documents.service";
 import { computeSha256, InMemoryDocumentContentHashRepository } from "./duplicate.repository";
+import { DocumentRepository } from "./documents.repository";
 
 const testLogger = createLogger({
   service: "axentra-api",
@@ -608,6 +609,172 @@ describe("Task BE-S1-04: Duplicate Detection", () => {
       expect(json.error.message).toBe(
         "Permintaan harus menggunakan format application/json atau multipart/form-data",
       );
+    });
+
+    test("proves check-duplicate route defaults to defaultTokenVerifier when tokenVerifier is omitted (F1)", async () => {
+      const app = createApp({
+        logger: testLogger,
+        version: "0.1.0",
+        readinessChecks: [],
+        documentService: createDocumentService(),
+      });
+
+      // Bearer token provided, but defaultTokenVerifier always returns null -> 401 UNAUTHORIZED
+      const response = await app.request("/api/v1/documents/check-duplicate", {
+        method: "POST",
+        headers: {
+          authorization: "Bearer some-token",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          contentHash: "a".repeat(64),
+        }),
+      });
+
+      expect(response.status).toBe(401);
+      const json = (await response.json()) as ApiErrorEnvelope;
+      expect(json.error.code).toBe("UNAUTHORIZED");
+      expect(json.error.message).toBe("Token tidak valid atau telah kedaluwarsa");
+    });
+
+    test("rejects multipart check-duplicate with Content-Length exceeding 50MB (F2)", async () => {
+      const app = createApp({
+        logger: testLogger,
+        version: "0.1.0",
+        readinessChecks: [],
+        documentService: createDocumentService(),
+        tokenVerifier: testTokenVerifier,
+      });
+
+      const response = await app.request("/api/v1/documents/check-duplicate", {
+        method: "POST",
+        headers: {
+          ...MEMBER_AUTH,
+          "content-type": "multipart/form-data; boundary=----boundary",
+          "content-length": (50 * 1024 * 1024 + 1).toString(),
+        },
+        body: "dummy body",
+      });
+
+      expect(response.status).toBe(413);
+      const json = (await response.json()) as ApiErrorEnvelope;
+      expect(json.error.code).toBe("PAYLOAD_TOO_LARGE");
+      expect(json.error.message).toBe("Ukuran file melebihi batas maksimum");
+    });
+
+    test("rejects multipart check-duplicate with empty file (F2)", async () => {
+      const app = createApp({
+        logger: testLogger,
+        version: "0.1.0",
+        readinessChecks: [],
+        documentService: createDocumentService(),
+        tokenVerifier: testTokenVerifier,
+      });
+
+      const emptyFormData = new FormData();
+      emptyFormData.append("file", new Blob([], { type: "application/pdf" }), "empty.pdf");
+
+      const response = await app.request("/api/v1/documents/check-duplicate", {
+        method: "POST",
+        headers: MEMBER_AUTH,
+        body: emptyFormData,
+      });
+
+      expect(response.status).toBe(400);
+      const json = (await response.json()) as ApiErrorEnvelope;
+      expect(json.error.code).toBe("VALIDATION_ERROR");
+      expect(json.error.message).toBe("File tidak boleh kosong");
+    });
+
+    test("rejects streaming multipart check-duplicate without Content-Length exceeding 50MB mid-stream (F2)", async () => {
+      const app = createApp({
+        logger: testLogger,
+        version: "0.1.0",
+        readinessChecks: [],
+        documentService: createDocumentService(),
+        tokenVerifier: testTokenVerifier,
+      });
+
+      const boundary = "----WebKitFormBoundaryChunkedTest";
+      const headerPart =
+        `--${boundary}\r\n` +
+        `Content-Disposition: form-data; name="file"; filename="large.pdf"\r\n` +
+        `Content-Type: application/pdf\r\n\r\n`;
+      const headerBytes = new TextEncoder().encode(headerPart);
+
+      const chunk5Mb = new Uint8Array(5 * 1024 * 1024);
+      let chunksSent = 0;
+
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(headerBytes);
+        },
+        pull(controller) {
+          if (chunksSent < 11) {
+            controller.enqueue(chunk5Mb);
+            chunksSent++;
+          } else {
+            controller.close();
+          }
+        },
+      });
+
+      const response = await app.request("/api/v1/documents/check-duplicate", {
+        method: "POST",
+        headers: {
+          ...MEMBER_AUTH,
+          "content-type": `multipart/form-data; boundary=${boundary}`,
+        },
+        body: stream,
+        duplex: "half",
+      });
+
+      expect(response.status).toBe(413);
+      const json = (await response.json()) as ApiErrorEnvelope;
+      expect(json.error.code).toBe("PAYLOAD_TOO_LARGE");
+      expect(json.error.message).toBe("Ukuran file melebihi batas maksimum");
+    });
+
+    test("DocumentRepository.saveDocumentBatch maps unique constraint error to 409 DUPLICATE_DOCUMENT (F3/F4)", async () => {
+      const mockDb = {
+        transaction: async (callback: (tx: unknown) => Promise<unknown>) => {
+          const fakeTx = {
+            select: () => ({
+              from: () => ({
+                where: async () => [],
+              }),
+            }),
+            insert: () => ({
+              values: async () => {
+                const err = new Error(
+                  'duplicate key value violates unique constraint "document_content_hashes_hash_algo_unique_idx"',
+                );
+                Object.assign(err, { code: "23505" });
+                throw err;
+              },
+            }),
+          };
+          return callback(fakeTx);
+        },
+      };
+
+      const repo = new DocumentRepository(mockDb as never);
+
+      await expect(
+        repo.saveDocumentBatch([
+          {
+            id: crypto.randomUUID(),
+            title: "doc.pdf",
+            storageKey: "documents/key/doc.pdf",
+            originalName: "doc.pdf",
+            mimeType: "application/pdf",
+            fileSize: 100,
+            fileExtension: "pdf",
+            contentHash: "a".repeat(64),
+            hashAlgorithm: "sha256",
+          },
+        ]),
+      ).rejects.toThrow("File ini sudah ada");
     });
   });
 });

@@ -109,3 +109,26 @@ export const checkDuplicateResponseSchema = z.object({
   message: z.string().optional(),
 });
 export type CheckDuplicateResponse = z.infer<typeof checkDuplicateResponseSchema>;
+
+export const documentProcessingStatusSchema = z.enum([
+  "queued",
+  "processing",
+  "processed",
+  "failed",
+]);
+
+export type DocumentProcessingStatus = z.infer<typeof documentProcessingStatusSchema>;
+
+export const documentMetadataSchema = z.object({
+  id: z.string(),
+  filename: z.string(),
+  author: z.string().nullable().optional(),
+  format: z.string().optional(),
+  sizeBytes: z.number().optional(),
+  tags: z.array(z.string()).default([]),
+  category: z.string().nullable().optional(),
+  uploadDate: z.string().optional(),
+  processingStatus: documentProcessingStatusSchema,
+});
+
+export type DocumentMetadata = z.infer<typeof documentMetadataSchema>;

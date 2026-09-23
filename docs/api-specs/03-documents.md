@@ -17,6 +17,52 @@ POST /api/v1/documents/bulk-download
 GET  /api/v1/documents/:id/related
 ```
 
+## Recent Document List
+
+### `GET /api/v1/documents`
+
+Status: Implemented (BE-S1-06).
+
+Returns documents that have a stored file, newest `created_at` first. Soft-deleted documents are omitted. Sprint 1 items do not include `tags` or `category`.
+
+**Authorization:**
+
+- Requires authenticated session (`Bearer <token>`).
+- Allows `member_team` and `head_of_team`.
+
+**Query:**
+
+- `page` — integer, default `1`, minimum `1`, maximum `1000`.
+- `limit` — integer, default `20`, minimum `1`, maximum `100`.
+
+**Success Response (`200 OK`):**
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "11111111-1111-4111-8111-111111111111",
+      "filename": "laporan.pdf",
+      "processingStatus": "completed",
+      "createdAt": "2026-09-22T00:00:00.000Z"
+    }
+  ],
+  "meta": {
+    "page": 1,
+    "limit": 20,
+    "total": 1
+  }
+}
+```
+
+`processingStatus` is `queued`, `processing`, `completed`, or `failed`. `filename` is `document_files.original_name`.
+
+**Error Responses:**
+
+- `400 VALIDATION_ERROR`: `page` or `limit` is not an integer inside the bounds above.
+- `401 UNAUTHORIZED`: Missing or rejected bearer token.
+
 ## Upload
 
 ### `POST /api/v1/documents/upload`

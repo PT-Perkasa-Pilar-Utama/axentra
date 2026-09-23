@@ -1,7 +1,12 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { documentContentHashes, documentFiles, documents } from "@axentra/db";
-import { DOCUMENT_COPY, DOCUMENT_ERROR_CODES } from "@axentra/shared";
+import {
+  DOCUMENT_COPY,
+  DOCUMENT_ERROR_CODES,
+  type PaginationMeta,
+  type RecentDocument,
+} from "@axentra/shared";
 import { ConflictError } from "../../http/errors";
 
 export type CreateDocumentBatchItem = {
@@ -27,12 +32,18 @@ export type SavedDocumentRecord = {
   contentHash: string;
 };
 
+export type RecentDocumentPage = {
+  items: ReadonlyArray<RecentDocument>;
+  meta: PaginationMeta;
+};
+
 export type IDocumentRepository = {
   findExistingHashes: (hashes: ReadonlyArray<string>, algorithm?: string) => Promise<Set<string>>;
   findByContentHash?: (
     contentHash: string,
     algorithm?: string,
   ) => Promise<{ documentId: string; contentHash: string } | null>;
+  listRecentDocuments: (page: number, limit: number) => Promise<RecentDocumentPage>;
   saveDocumentBatch: (
     items: ReadonlyArray<CreateDocumentBatchItem>,
   ) => Promise<ReadonlyArray<SavedDocumentRecord>>;
@@ -105,6 +116,39 @@ export class DocumentRepository implements IDocumentRepository {
     return rows[0] ?? null;
   }
 
+  public async listRecentDocuments(page: number, limit: number): Promise<RecentDocumentPage> {
+    const whereActive = isNull(documents.deletedAt);
+    const [counted] = await this.db
+      .select({ total: count() })
+      .from(documents)
+      .innerJoin(documentFiles, eq(documentFiles.documentId, documents.id))
+      .where(whereActive);
+    const total = Number(counted?.total ?? 0);
+    const rows = await this.db
+      .select({
+        id: documents.id,
+        filename: documentFiles.originalName,
+        processingStatus: documents.processingStatus,
+        createdAt: documents.createdAt,
+      })
+      .from(documents)
+      .innerJoin(documentFiles, eq(documentFiles.documentId, documents.id))
+      .where(whereActive)
+      .orderBy(desc(documents.createdAt), desc(documents.id))
+      .limit(limit)
+      .offset((page - 1) * limit);
+
+    return {
+      items: rows.map((row) => ({
+        id: row.id,
+        filename: row.filename,
+        processingStatus: row.processingStatus,
+        createdAt: row.createdAt.toISOString(),
+      })),
+      meta: { page, limit, total },
+    };
+  }
+
   public async saveDocumentBatch(
     items: ReadonlyArray<CreateDocumentBatchItem>,
   ): Promise<ReadonlyArray<SavedDocumentRecord>> {
@@ -114,6 +158,25 @@ export class DocumentRepository implements IDocumentRepository {
 
     try {
       return await this.db.transaction(async (tx) => {
+        const hashes = items.map((item) => item.contentHash);
+        const algorithm = items[0]?.hashAlgorithm ?? "sha256";
+        const existingInTx = await tx
+          .select({ contentHash: documentContentHashes.contentHash })
+          .from(documentContentHashes)
+          .where(
+            and(
+              inArray(documentContentHashes.contentHash, hashes),
+              eq(documentContentHashes.hashAlgorithm, algorithm),
+            ),
+          );
+
+        if (existingInTx.length > 0) {
+          throw new ConflictError(
+            DOCUMENT_ERROR_CODES.DUPLICATE_DOCUMENT,
+            DOCUMENT_COPY.DUPLICATE_WARNING,
+          );
+        }
+
         const saved: Array<SavedDocumentRecord> = [];
 
         for (const item of items) {
@@ -155,6 +218,9 @@ export class DocumentRepository implements IDocumentRepository {
         return saved;
       });
     } catch (error: unknown) {
+      if (error instanceof ConflictError) {
+        throw error;
+      }
       if (isUniqueConstraintError(error)) {
         throw new ConflictError(
           DOCUMENT_ERROR_CODES.DUPLICATE_DOCUMENT,

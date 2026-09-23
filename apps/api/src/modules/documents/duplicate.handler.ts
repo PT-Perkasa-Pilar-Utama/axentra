@@ -1,8 +1,14 @@
 import type { Context } from "hono";
-import { checkDuplicateRequestSchema, DOCUMENT_COPY } from "@axentra/shared";
+import {
+  checkDuplicateRequestSchema,
+  DOCUMENT_COPY,
+  MAX_AGGREGATE_UPLOAD_SIZE_BYTES,
+  MAX_DOCUMENT_FILE_SIZE_BYTES,
+} from "@axentra/shared";
 import type { ApiEnvironment } from "../../environment";
-import { ValidationError } from "../../http/errors";
+import { PayloadTooLargeError, ValidationError } from "../../http/errors";
 import { jsonSuccess } from "../../http/responses";
+import { createBoundedStream } from "./documents.service.helpers";
 import type { DocumentService } from "./documents.service";
 
 export type DuplicateHandlerDependencies = {
@@ -40,10 +46,41 @@ export function createCheckDuplicateHandler(
     }
 
     if (contentType.includes("multipart/form-data")) {
-      let formData: FormData;
+      const contentLengthHeader = context.req.header("content-length");
+      if (contentLengthHeader) {
+        const parsedLength = Number.parseInt(contentLengthHeader, 10);
+        if (!Number.isNaN(parsedLength) && parsedLength > MAX_AGGREGATE_UPLOAD_SIZE_BYTES) {
+          throw new PayloadTooLargeError(DOCUMENT_COPY.FILE_TOO_LARGE);
+        }
+      }
+
+      let formData: { entries: () => Iterable<[string, unknown]> };
       try {
-        formData = await context.req.formData();
-      } catch {
+        if (context.req.raw.body) {
+          const boundedStream = createBoundedStream(
+            context.req.raw.body,
+            MAX_AGGREGATE_UPLOAD_SIZE_BYTES,
+          );
+          const boundedResponse = new Response(boundedStream, {
+            headers: context.req.raw.headers,
+          });
+          formData = await boundedResponse.formData();
+        } else {
+          formData = await context.req.formData();
+        }
+      } catch (error: unknown) {
+        if (error instanceof PayloadTooLargeError) {
+          throw error;
+        }
+        if (
+          typeof error === "object" &&
+          error !== null &&
+          "message" in error &&
+          typeof error.message === "string" &&
+          error.message.includes(DOCUMENT_COPY.FILE_TOO_LARGE)
+        ) {
+          throw new PayloadTooLargeError(DOCUMENT_COPY.FILE_TOO_LARGE);
+        }
         throw new ValidationError("Gagal membaca data form");
       }
 
@@ -57,6 +94,14 @@ export function createCheckDuplicateHandler(
 
       if (!targetFile) {
         throw new ValidationError(DOCUMENT_COPY.NO_FILES);
+      }
+
+      if (targetFile.size === 0) {
+        throw new ValidationError(DOCUMENT_COPY.EMPTY_FILE);
+      }
+
+      if (targetFile.size > MAX_DOCUMENT_FILE_SIZE_BYTES) {
+        throw new PayloadTooLargeError(DOCUMENT_COPY.FILE_TOO_LARGE);
       }
 
       const bytes = new Uint8Array(await targetFile.arrayBuffer());

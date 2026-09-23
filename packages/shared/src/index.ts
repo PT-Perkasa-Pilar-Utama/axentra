@@ -5,7 +5,7 @@ export type {
   ErrorDetail,
   PaginationMeta,
 } from "./api";
-export { apiErrorSchema, errorDetailSchema } from "./api";
+export { apiErrorSchema, errorDetailSchema, paginationMetaSchema } from "./api";
 export type { AuthUser, LoginRequest, LoginResponse, UserRole } from "./auth";
 export {
   USER_ROLES,
@@ -24,6 +24,9 @@ export type {
   DocumentMetadataResult,
   DocumentSummary,
   ProcessingStatus,
+  RecentDocument,
+  RecentDocumentListQuery,
+  RecentDocumentListResponse,
   SmartTag,
 } from "./document";
 export {
@@ -35,6 +38,9 @@ export {
   documentMetadataSchema,
   documentSummarySchema,
   processingStatusSchema,
+  recentDocumentListQuerySchema,
+  recentDocumentListResponseSchema,
+  recentDocumentSchema,
   smartTagSchema,
 } from "./document";
 export type { LivenessData, ReadinessData } from "./health";
@@ -52,6 +58,7 @@ export type {
   CheckDuplicateRequest,
   CheckDuplicateResponse,
   DocumentErrorCode,
+  DocumentProcessingStatus,
   DocumentType,
   DocumentUploadAcceptedData,
   DocumentUploadFileMeta,
@@ -71,6 +78,7 @@ export {
   SUPPORTED_DOCUMENT_MIME_TYPES,
   checkDuplicateRequestSchema,
   checkDuplicateResponseSchema,
+  documentProcessingStatusSchema,
   documentUploadAcceptedDataSchema,
   documentUploadFileMetaSchema,
   getDocumentExtension,
