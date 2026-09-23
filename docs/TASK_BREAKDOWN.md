@@ -59,7 +59,7 @@ Approximate effort by sprint:
 
 ## Work Model: Foundation + Contract-First Delivery
 
-Foundation v0.1.0 is already implemented. It ships the Bun workspace, Web shell, API process,
+Foundation v1.0.0 is already implemented. It ships the Bun workspace, Web shell, API process,
 Worker process, infrastructure boundaries, local Compose, CI, docs, and operational health
 endpoints.
 

@@ -14,7 +14,7 @@ export function FoundationPage(): React.JSX.Element {
         <a className="wordmark" href="/" aria-label="Axentra Foundation">
           AXENTRA
         </a>
-        <span>Foundation v0.1.0</span>
+        <span>Foundation v1.0.0</span>
       </header>
 
       <section className="intro" aria-labelledby="foundation-title">

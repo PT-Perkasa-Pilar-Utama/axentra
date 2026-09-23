@@ -39,7 +39,7 @@
 
 ## Planned BA Business Modules
 
-These modules are not implemented in Foundation v0.1.0. They need approved sprint scope before
+These modules are not implemented in Foundation v1.0.0. They need approved sprint scope before
 code or tables are added.
 
 | Module               | Planned Responsibility                                                                    |
