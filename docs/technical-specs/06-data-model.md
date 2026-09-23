@@ -200,12 +200,12 @@ Many-to-many association between documents and Smart Tags.
 
 Persisted PostgreSQL enum and shared contract:
 
-| State        | Meaning                                                                  |
-| ------------ | ------------------------------------------------------------------------ |
-| `queued`     | Initial state upon upload acceptance; worker job enqueued.               |
-| `processing` | Worker has picked up the job and is extracting metadata, tags, category. |
-| `completed`  | Terminal success; metadata, files, tags, and category are persisted.     |
-| `failed`     | Terminal failure; processing encountered an error (`error_message` set). |
+| State        | Meaning                                                                                                |
+| ------------ | ------------------------------------------------------------------------------------------------------ |
+| `queued`     | Initial state upon upload acceptance; worker job enqueued.                                             |
+| `processing` | Worker has picked up the job and is extracting metadata, tags, category.                               |
+| `completed`  | Terminal success; metadata, files, tags, and category are persisted.                                   |
+| `failed`     | Processing or enqueue failed (`error_message` set). Enqueue failure remains recoverable by the worker. |
 
 ---
 

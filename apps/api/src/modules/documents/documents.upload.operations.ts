@@ -6,10 +6,11 @@ import { validateObjectKey, type StorageAdapter } from "@axentra/storage";
 import {
   DOCUMENT_COPY,
   DOCUMENT_ERROR_CODES,
+  PROCESSING_ENQUEUE_FAILURE_MESSAGE,
   type DocumentType,
   type DocumentUploadAcceptedData,
 } from "@axentra/shared";
-import { ConflictError } from "../../http/errors";
+import { ConflictError, DependencyUnavailableError } from "../../http/errors";
 import type { RawUploadFile } from "./documents.schema";
 import { validateUploadBatchConstraints } from "./documents.schema";
 import type { CreateDocumentBatchItem, IDocumentRepository } from "./documents.repository";
@@ -145,26 +146,59 @@ async function enqueueAcceptedDocuments(
   batchItems: ReadonlyArray<CreateDocumentBatchItem>,
 ): Promise<void> {
   const producer = dependencies.queue ?? dependencies.queueProducer;
-  if (!producer) return;
-  for (const item of batchItems) {
+  if (!producer) {
+    await recordEnqueueFailure(dependencies, batchItems);
+    throw new DependencyUnavailableError(
+      DOCUMENT_ERROR_CODES.PROCESSING_UNAVAILABLE,
+      PROCESSING_ENQUEUE_FAILURE_MESSAGE,
+    );
+  }
+
+  const acceptedAt = new Date().toISOString();
+  for (const [index, item] of batchItems.entries()) {
     try {
       await producer.enqueueDocumentProcessing({
-        jobId: crypto.randomUUID(),
+        jobId: item.id,
         documentId: item.id,
         schemaVersion: 1,
-        requestedAt: new Date().toISOString(),
+        requestedAt: acceptedAt,
         storageKey: item.storageKey,
-        enqueuedAt: new Date().toISOString(),
+        enqueuedAt: acceptedAt,
       });
     } catch (queueError) {
-      dependencies.logger.error(
-        {
-          documentId: item.id,
-          storageKey: item.storageKey,
-          error: summarizeError(queueError),
-        },
-        "Failed to enqueue document processing job; document remains queued in database",
+      const pending = batchItems.slice(index);
+      await recordEnqueueFailure(dependencies, pending, queueError);
+      throw new DependencyUnavailableError(
+        DOCUMENT_ERROR_CODES.PROCESSING_UNAVAILABLE,
+        PROCESSING_ENQUEUE_FAILURE_MESSAGE,
       );
     }
   }
+}
+
+async function recordEnqueueFailure(
+  dependencies: UploadOperationDependencies,
+  pendingItems: ReadonlyArray<CreateDocumentBatchItem>,
+  queueError?: unknown,
+): Promise<void> {
+  const documentIds = pendingItems.map((item) => item.id);
+  try {
+    await dependencies.repository.markProcessingEnqueueFailed(
+      documentIds,
+      PROCESSING_ENQUEUE_FAILURE_MESSAGE,
+    );
+  } catch (statusError) {
+    dependencies.logger.error(
+      { documentIds, error: summarizeError(statusError) },
+      "Failed to record processing enqueue failure",
+    );
+  }
+
+  dependencies.logger.error(
+    {
+      documentIds,
+      ...(queueError === undefined ? {} : { error: summarizeError(queueError) }),
+    },
+    "Document processing was not enqueued",
+  );
 }

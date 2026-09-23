@@ -56,7 +56,7 @@ Authenticates credentials and establishes a server-side session.
     }
   }
   ```
-- **Production Guard:** Production credential authentication remains unavailable until the dedicated user database store card is delivered. In production startup (`apps/api/src/server.ts`), `createApp` wires the runtime `authService` session store with a fail-closed authenticator (`() => null`), rejecting credential logins with 401 until the user database is provisioned. Static/hardcoded credentials in tracked code are strictly prohibited.
+- **Identity source:** Runtime login uses `AUTH_LOCAL_IDENTITY_DIRECTORY`, a base64 JSON array of `{ id, email, role, name?, passwordHash }`. `passwordHash` is an Argon2id hash. A matching credential issues `ax_...` and `ax_rt_...` tokens through the existing session store. A missing directory, malformed directory, unknown email, or wrong password returns 401. Plaintext passwords stay out of tracked code. The durable user table remains a later identity-store card.
 
 ### 3. `POST /api/v1/auth/refresh`
 

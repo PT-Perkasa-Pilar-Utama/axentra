@@ -90,8 +90,7 @@ Retrieves extracted document metadata, including author, extraction timestamp, a
 4. **Atomic Persistence & Completion:** Extracted metadata upsert into `document_metadata` and the document status transition to `'completed'` execute inside a single atomic database transaction (`db.transaction`). If any write fails, both are rolled back, and the document is marked as `'failed'` with `error_message`.
 5. **Terminal State:** On successful completion, `documents.processing_status` becomes `'completed'` and `errorMessage` is cleared. On failure, status is updated to `'failed'` with `error_message`.
 
-> [!NOTE]
-> **Dependency Hold (AC-03.01 End-to-End Status):** Automatic triggering of `document.process` upon HTTP upload depends on `BE-S1-02` (persisting file bytes to storage and creating document/file database records on `POST /upload`). While `POST /api/v1/documents/upload` remains unmounted in production configuration to prevent false-success data loss, the worker processing engine and `GET /api/v1/documents/:id/metadata` API are fully implemented, typed, and verified.
+Accepted uploads enqueue `document.process` with `jobId` equal to the document id. If the queue rejects the job, the API returns `503 PROCESSING_UNAVAILABLE` and marks the document `failed` with `Antrean pemrosesan dokumen tidak tersedia`. The worker scans that exact failure at startup and every 30 seconds, enqueues the missing job idempotently, and returns the document to `queued`. The job then moves it through `processing` to `completed`.
 
 ---
 

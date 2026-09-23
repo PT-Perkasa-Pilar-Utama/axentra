@@ -4,6 +4,7 @@ import type { StorageAdapter } from "@axentra/storage";
 import {
   DOCUMENT_COPY,
   DOCUMENT_ERROR_CODES,
+  PROCESSING_ENQUEUE_FAILURE_MESSAGE,
   documentProcessJobName,
   type ApiErrorEnvelope,
   type ApiSuccessEnvelope,
@@ -233,6 +234,10 @@ function createMockRepository(): IDocumentRepository & {
   existingHashes: Set<string>;
   failOnSave: boolean;
   failWithUniqueConstraint: boolean;
+  markProcessingEnqueueFailed: (
+    documentIds: ReadonlyArray<string>,
+    errorMessage: string,
+  ) => Promise<void>;
 } {
   const savedBatches: CreateDocumentBatchItem[][] = [];
   const existingHashes = new Set<string>();
@@ -277,6 +282,7 @@ function createMockRepository(): IDocumentRepository & {
     },
     findDocumentById: async () => null,
     findDocumentFileByDocumentId: async () => null,
+    markProcessingEnqueueFailed: async () => undefined,
   };
   return repo;
 }
@@ -295,6 +301,10 @@ function createMockQueue(): QueueProducer & {
     enqueueDocumentProcess: async (data: DocumentProcessJob) => {
       enqueued.push({ name: documentProcessJobName, data });
       return `job-${enqueued.length}`;
+    },
+    reconcileDocumentProcessing: async (data: DocumentProcessJob) => {
+      enqueued.push({ name: documentProcessJobName, data });
+      return data.jobId;
     },
     close: async () => {},
   };
@@ -828,7 +838,40 @@ describe("POST /api/v1/documents/upload", () => {
       const jobData = queuedJob?.data as DocumentProcessJob;
       expect(jobData.schemaVersion).toBe(1);
       expect(jobData.documentId).toBe(savedItem?.id ?? "");
+      expect(jobData.jobId).toBe(savedItem?.id ?? "");
       expect(jobData.storageKey).toBe(savedItem?.storageKey ?? "");
+    });
+
+    it("returns 503 and records failed status when processing enqueue fails [BE-S1-02]", async () => {
+      const failedIds: string[] = [];
+      repository.markProcessingEnqueueFailed = async (documentIds) => {
+        failedIds.push(...documentIds);
+      };
+      queue.enqueueDocumentProcessing = async () => {
+        throw new Error("redis unavailable");
+      };
+
+      const formData = new FormData();
+      formData.append("files", makePdfFile("laporan.pdf", "queue failure content"));
+      const response = await app.request("/api/v1/documents/upload", {
+        method: "POST",
+        headers: { authorization: "Bearer member-token" },
+        body: formData,
+      });
+
+      expect(response.status).toBe(503);
+      const json = (await response.json()) as ApiErrorEnvelope;
+      expect(json.success).toBe(false);
+      expect(json.error.code).toBe(DOCUMENT_ERROR_CODES.PROCESSING_UNAVAILABLE);
+      expect(json.error.message).toBe(PROCESSING_ENQUEUE_FAILURE_MESSAGE);
+      expect("data" in json).toBe(false);
+      expect(repository.savedBatches.length).toBe(1);
+      const failedDocumentId = repository.savedBatches[0]?.[0]?.id;
+      if (failedDocumentId === undefined) {
+        throw new Error("Expected the failed upload to persist a document id");
+      }
+      expect(failedIds).toEqual([failedDocumentId]);
+      expect(queue.enqueued).toHaveLength(0);
     });
 
     it("accepts multiple valid DOCX files and returns count and details", async () => {

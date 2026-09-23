@@ -83,6 +83,7 @@ export function createInMemoryRepository(): IDocumentRepository {
     },
     findDocumentById: async () => null,
     findDocumentFileByDocumentId: async () => null,
+    markProcessingEnqueueFailed: async () => undefined,
   };
 }
 

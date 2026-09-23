@@ -41,6 +41,10 @@ export async function processDocumentJob(
     return;
   }
 
+  if (doc.processingStatus === "failed") {
+    logger?.warn({ jobId, documentId }, "Document processing previously failed; retrying");
+  }
+
   // 3. Mark document as currently processing
   await repository.markAsProcessing(documentId);
 

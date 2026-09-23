@@ -8,6 +8,7 @@ import {
 import { createApp } from "../../app";
 import type { TokenVerifier } from "../../middleware/auth";
 import { createDocumentService } from "./documents.service";
+import type { QueueProducer } from "@axentra/queue";
 import type { IDocumentRepository, RecentDocumentPage } from "./documents.repository";
 
 const testLogger = createLogger({
@@ -53,6 +54,7 @@ function repositoryWith(page: RecentDocumentPage): IDocumentRepository {
     saveDocumentBatch: async () => [],
     findDocumentById: async () => null,
     findDocumentFileByDocumentId: async () => null,
+    markProcessingEnqueueFailed: async () => undefined,
   };
 }
 
@@ -129,7 +131,13 @@ describe("GET /api/v1/documents — BE-S1-06", () => {
   });
 
   test("lists a file saved by the default upload repository", async () => {
-    const service = createDocumentService();
+    const queue: QueueProducer = {
+      enqueueSystemHealthCheck: async () => "health-job",
+      enqueueDocumentProcessing: async (payload) => payload.jobId,
+      reconcileDocumentProcessing: async (payload) => payload.jobId,
+      close: async () => undefined,
+    };
+    const service = createDocumentService({ queue });
     const bytes = new TextEncoder().encode("%PDF-1.4\n% laporan\n");
 
     await service.uploadDocuments([

@@ -14,6 +14,7 @@ import { jsonError, jsonSuccess } from "../../http/responses";
 import { requireAuth, requireRole } from "../../middleware/auth";
 import { requestContextMiddleware } from "../../middleware/request-context";
 import { createAuthService } from "./auth.service";
+import { createLocalIdentityAuthenticator } from "./local-identity";
 
 const logger = createLogger({
   service: "axentra-api",
@@ -83,7 +84,7 @@ describe("Auth API Module", () => {
       expect(headResponse.status).toBe(401);
     });
 
-    it("rejects login attempts in production when no credentials provider is configured (F2)", async () => {
+    it("rejects login attempts when the runtime has no identity directory (F2)", async () => {
       const response = await productionApp.request("/api/v1/auth/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -487,6 +488,59 @@ describe("Auth API Module", () => {
       // Unauthenticated /me fails closed with 401
       const meRes = await serverApp.request("/api/v1/auth/me");
       expect(meRes.status).toBe(401);
+    });
+
+    it("issues a bearer token from the configured local identity directory [BE-S1-01]", async () => {
+      const directory = Buffer.from(
+        JSON.stringify([
+          {
+            id: TEST_MEMBER.id,
+            email: TEST_MEMBER.email,
+            role: TEST_MEMBER.role,
+            name: TEST_MEMBER.name,
+            passwordHash: await Bun.password.hash("local-member-password"),
+          },
+        ]),
+      ).toString("base64");
+      const authService = createAuthService({
+        authenticator: createLocalIdentityAuthenticator(directory),
+      });
+      const app = createApp({
+        logger,
+        version: "0.1.0",
+        readinessChecks: [],
+        authService,
+      });
+
+      const rejected = await app.request("/api/v1/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: TEST_MEMBER.email,
+          password: "wrong-password",
+        }),
+      });
+      expect(rejected.status).toBe(401);
+
+      const loginRes = await app.request("/api/v1/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: TEST_MEMBER.email,
+          password: "local-member-password",
+        }),
+      });
+      expect(loginRes.status).toBe(200);
+      const loginBody = (await loginRes.json()) as ApiSuccessEnvelope<LoginResponse>;
+      expect(loginBody.data.token).toStartWith("ax_");
+      expect(loginBody.data.user.role).toBe("member_team");
+
+      const meRes = await app.request("/api/v1/auth/me", {
+        headers: { authorization: `Bearer ${loginBody.data.token}` },
+      });
+      expect(meRes.status).toBe(200);
+      const meBody = (await meRes.json()) as ApiSuccessEnvelope<AuthUser>;
+      expect(meBody.data.email).toBe(TEST_MEMBER.email);
     });
   });
 });

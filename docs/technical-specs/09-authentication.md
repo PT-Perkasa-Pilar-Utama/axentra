@@ -12,6 +12,7 @@ Axentra's API and Web surfaces.
 | Route Authorization Middleware | Implemented | `BE-S1-01`: `requireAuth(verifier)` and `requireRole(allowedRole)`               |
 | `/api/v1/auth/me`              | Implemented | `BE-S1-01`: Verified user profile endpoint                                       |
 | Session & Token Lifecycle      | Implemented | `BE-S1-01`: `AuthService` with expiry, rotation, and logout invalidation         |
+| Runtime identity directory     | Implemented | `BE-S1-01`: `AUTH_LOCAL_IDENTITY_DIRECTORY` issues real session tokens           |
 | User persistence table         | Deferred    | Scheduled for dedicated identity store card                                      |
 | Client route gating            | In Progress | Frontend integration with `/api/v1/auth/me`                                      |
 
@@ -62,4 +63,4 @@ Route middleware evaluates:
 ### 5. App and Service Composition
 
 - When `authService` is provided to `createApp({ authService })` without an explicit `tokenVerifier`, `createApp` automatically selects `dependencies.authService.tokenVerifier`. This guarantees that `/api/v1/auth/login`, `/api/v1/auth/me`, and all protected routes share the identical session registry.
-- Production startup in `apps/api/src/server.ts` injects `authService: createAuthService()`, establishing the runtime session store while failing closed for unconfigured credential logins until the dedicated user database store card is delivered.
+- Production startup in `apps/api/src/server.ts` injects `authService: createAuthService({ authenticator })`. The authenticator verifies credentials against `AUTH_LOCAL_IDENTITY_DIRECTORY` and the session store issues the bearer token. Startup fails when that directory is missing or invalid. An unconfigured `createAuthService()` still rejects every login.

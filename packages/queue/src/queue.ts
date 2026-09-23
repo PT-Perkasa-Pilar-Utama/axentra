@@ -16,6 +16,7 @@ export type QueueProducer = {
   enqueueSystemHealthCheck: (payload: SystemHealthCheckJob) => Promise<string>;
   enqueueDocumentProcessing: (payload: DocumentProcessingJob) => Promise<string>;
   enqueueDocumentProcess?: ((payload: DocumentProcessJob) => Promise<string>) | undefined;
+  reconcileDocumentProcessing: (payload: DocumentProcessingJob) => Promise<string>;
   close: () => Promise<void>;
 };
 
@@ -50,6 +51,13 @@ export function createQueueProducer(queueName: string, redisUrl: string): QueueP
 
     async enqueueDocumentProcess(payload: DocumentProcessJob): Promise<string> {
       return this.enqueueDocumentProcessing(payload);
+    },
+
+    async reconcileDocumentProcessing(payload: DocumentProcessingJob): Promise<string> {
+      const validated = documentProcessingJobSchema.parse(payload);
+      const existing = await queue.getJob(validated.jobId);
+      if (existing !== undefined) return existing.id ?? validated.jobId;
+      return this.enqueueDocumentProcessing(validated);
     },
 
     async close(): Promise<void> {

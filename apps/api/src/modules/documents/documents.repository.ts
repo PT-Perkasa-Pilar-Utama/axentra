@@ -47,6 +47,10 @@ export type IDocumentRepository = {
   findDocumentFileByDocumentId: (
     documentId: string,
   ) => Promise<typeof documentFiles.$inferSelect | null>;
+  markProcessingEnqueueFailed: (
+    documentIds: ReadonlyArray<string>,
+    errorMessage: string,
+  ) => Promise<void>;
 };
 
 function isUniqueConstraintError(error: unknown): boolean {
@@ -198,5 +202,20 @@ export class DocumentRepository implements IDocumentRepository {
       .where(eq(documentFiles.documentId, documentId))
       .limit(1);
     return rows[0] ?? null;
+  }
+
+  public async markProcessingEnqueueFailed(
+    documentIds: ReadonlyArray<string>,
+    errorMessage: string,
+  ): Promise<void> {
+    if (documentIds.length === 0) return;
+    await this.db
+      .update(documents)
+      .set({
+        processingStatus: "failed",
+        errorMessage,
+        updatedAt: new Date(),
+      })
+      .where(inArray(documents.id, [...documentIds]));
   }
 }
