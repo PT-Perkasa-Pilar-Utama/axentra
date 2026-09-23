@@ -5,6 +5,7 @@ import { createQueueProducer, createRedisProbe } from "@axentra/queue";
 import { createS3StorageAdapter } from "@axentra/storage";
 import { createApp } from "./app";
 import { createAuthService } from "./modules/auth/auth.service";
+import { createRuntimeAuthenticator } from "./modules/auth/runtime-authenticator";
 import { DocumentRepository } from "./modules/documents/documents.repository";
 import { createDocumentService } from "./modules/documents/documents.service";
 import { DrizzleDocumentMetadataRepository } from "./modules/documents/metadata.repository";
@@ -42,7 +43,11 @@ async function start(): Promise<void> {
   });
   const database = createDatabaseClient(config.DATABASE_URL);
   const redis = createRedisProbe(config.REDIS_URL, config.REDIS_HEALTH_TIMEOUT_MS);
-  const queue = createQueueProducer(config.QUEUE_NAME, config.REDIS_URL);
+  const queue = createQueueProducer(
+    config.QUEUE_NAME,
+    config.REDIS_URL,
+    config.REDIS_HEALTH_TIMEOUT_MS,
+  );
   const storage = createS3StorageAdapter(config);
 
   try {
@@ -61,7 +66,9 @@ async function start(): Promise<void> {
     throw error;
   }
 
-  const authService = createAuthService();
+  const authService = createAuthService({
+    authenticator: createRuntimeAuthenticator(config),
+  });
   const documentRepository = new DocumentRepository(database.db);
   const documentService = createDocumentService({
     repository: documentRepository,

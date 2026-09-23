@@ -33,6 +33,30 @@ describe("Document Worker Processor (Task BE-S1-05 / F2 & F7)", () => {
     requestedAt: new Date().toISOString(),
   };
 
+  it("retries a document left failed by an enqueue outage and marks it completed", async () => {
+    const repository = new InMemoryDocumentProcessingRepository();
+    repository.documents.set(validJob.documentId, {
+      id: validJob.documentId,
+      title: "Laporan Riset.pdf",
+      processingStatus: "failed",
+    });
+    const storageKey = "documents/laporan.pdf";
+    repository.files.set(validJob.documentId, {
+      id: "file-1",
+      documentId: validJob.documentId,
+      storageKey,
+      originalName: "Laporan Riset.pdf",
+      mimeType: "application/pdf",
+    });
+    const pdf = new TextEncoder().encode("%PDF-1.4\n/Author (Dr. Siti Rahma)\n");
+    await processDocumentJob(validJob, {
+      repository,
+      storage: createMockStorage(new Map([[storageKey, pdf]])),
+    });
+
+    expect(repository.documents.get(validJob.documentId)?.processingStatus).toBe("completed");
+  });
+
   it("processes a queued document, extracts author from PDF, and marks completed", async () => {
     const repository = new InMemoryDocumentProcessingRepository();
     repository.documents.set(validJob.documentId, {
