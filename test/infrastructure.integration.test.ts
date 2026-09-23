@@ -323,14 +323,7 @@ describe("infrastructure integration", () => {
     });
 
     expect(response.status).toBe(200);
-    const body = (await response.json()) as {
-      success: boolean;
-      data: {
-        message: string;
-        count: number;
-        files: Array<{ filename: string; documentType: string; size: number }>;
-      };
-    };
+    const body = uploadDocumentSuccessResponseSchema.parse(await response.json());
     expect(body.success).toBe(true);
     expect(body.data.message).toBe("File diterima untuk diproses");
     expect(body.data.count).toBe(1);
@@ -606,6 +599,8 @@ describe("infrastructure integration", () => {
         createdStorageKeys.push(storageKey1);
 
         // 2. Second upload: exact same bytes (different filename), should fail with 409 (AC-02.01 & AC-02.02)
+        const storageOpsIndexBeforeDuplicate = storageOps.length;
+
         const form2 = new FormData();
         form2.append("file", new File([pdfBytes], "copy-renamed.pdf", { type: "application/pdf" }));
 
@@ -647,20 +642,12 @@ describe("infrastructure integration", () => {
         expect(allFileRowsForContent.length).toBe(1);
         expect(allFileRowsForContent[0]?.document_files.storageKey).toBe(storageKey1);
 
-        // 4. Verify storage: verify storage operations tracked the rejected upload and proved it was removed
-        const duplicateAttemptPut = storageOps.find(
-          (op) => op.op === "put" && op.key !== storageKey1,
-        );
-        expect(duplicateAttemptPut).toBeDefined();
-        const duplicateAttemptKey = duplicateAttemptPut?.key;
-        if (duplicateAttemptKey !== undefined) {
-          const duplicateAttemptDelete = storageOps.find(
-            (op) => op.op === "delete" && op.key === duplicateAttemptKey,
-          );
-          expect(duplicateAttemptDelete).toBeDefined();
-          await expect(storage.headObject(duplicateAttemptKey)).rejects.toThrow();
-        }
+        // 4. Verify storage: verify serial duplicate upload pre-check prevents redundant object creation
+        const duplicateAttemptOps = storageOps.slice(storageOpsIndexBeforeDuplicate);
+        const duplicateAttemptPuts = duplicateAttemptOps.filter((op) => op.op === "put");
+        expect(duplicateAttemptPuts.length).toBe(0);
 
+        // Verify the original stored document remains intact and unaltered
         const storedBytes = await storage.getObject(storageKey1);
         expect(Buffer.from(storedBytes)).toEqual(Buffer.from(pdfBytes));
 

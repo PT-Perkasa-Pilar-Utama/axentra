@@ -786,21 +786,37 @@ describe("Task BE-S1-04: Duplicate Detection", () => {
     });
 
     test("compensates and removes uploaded file from storage when saveDocumentBatch fails with ConflictError (F6)", async () => {
+      const storedObjects = new Map<string, Uint8Array>();
+      const putKeys: string[] = [];
       const removedKeys: string[] = [];
       const trackingStorage: StorageAdapter = {
         initialize: async () => {},
         checkHealth: async () => {},
-        putObject: async () => {},
-        getObject: async () => new Uint8Array(),
+        putObject: async (input) => {
+          putKeys.push(input.key);
+          const bytes =
+            typeof input.body === "string" ? new TextEncoder().encode(input.body) : input.body;
+          storedObjects.set(input.key, bytes);
+        },
+        getObject: async (key: string) => {
+          const body = storedObjects.get(key);
+          if (!body) throw new Error(`Object not found in storage: ${key}`);
+          return body;
+        },
         deleteObject: async (key: string) => {
           removedKeys.push(key);
+          storedObjects.delete(key);
         },
-        headObject: async (key: string) => ({
-          key,
-          contentLength: 100,
-          contentType: "application/pdf",
-          checksumSha256: undefined,
-        }),
+        headObject: async (key: string) => {
+          const body = storedObjects.get(key);
+          if (!body) throw new Error(`Object not found in storage: ${key}`);
+          return {
+            key,
+            contentLength: body.length,
+            contentType: "application/pdf",
+            checksumSha256: undefined,
+          };
+        },
         createDownloadUrl: async () => "https://example.com",
         close: async () => {},
       };
@@ -835,8 +851,22 @@ describe("Task BE-S1-04: Duplicate Detection", () => {
         ]),
       ).rejects.toThrow("File ini sudah ada");
 
+      // Verify that putObject actually populated storage before the repository failure
+      expect(putKeys.length).toBe(1);
+      expect(putKeys[0]).toContain("compensate.pdf");
+      const uploadedKey = putKeys[0];
+      expect(uploadedKey).toBeDefined();
+      if (!uploadedKey) throw new Error("Expected uploaded key to be defined");
+
+      // Verify that compensation executed deleteObject for the exact uploaded key
       expect(removedKeys.length).toBe(1);
-      expect(removedKeys[0]).toContain("compensate.pdf");
+      expect(removedKeys[0]).toBe(uploadedKey);
+
+      // Verify that the object was truly removed from storage (not left orphaned)
+      expect(storedObjects.has(uploadedKey)).toBe(false);
+      await expect(trackingStorage.headObject(uploadedKey)).rejects.toThrow(
+        "Object not found in storage",
+      );
     });
   });
 });
