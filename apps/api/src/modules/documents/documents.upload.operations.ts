@@ -15,6 +15,7 @@ import { ConflictError, DependencyUnavailableError } from "../../http/errors";
 import type { RawUploadFile } from "./documents.schema";
 import { validateUploadBatchConstraints } from "./documents.schema";
 import type { CreateDocumentBatchItem, IDocumentRepository } from "./documents.repository";
+import type { IDocumentContentHashRepository } from "./duplicate.repository";
 import { sanitizeFilename } from "./documents.service.helpers";
 
 export type UploadOperationDependencies = {
@@ -23,6 +24,7 @@ export type UploadOperationDependencies = {
   logger: Logger;
   queue?: QueueProducer | undefined;
   queueProducer?: QueueProducer | undefined;
+  contentHashRepository?: IDocumentContentHashRepository | undefined;
 };
 
 export async function persistUploadedDocuments(
@@ -31,7 +33,14 @@ export async function persistUploadedDocuments(
 ): Promise<DocumentUploadAcceptedData> {
   const validatedFiles = validateUploadBatchConstraints(files);
   const hashes = contentHashes(files);
-  const existingHashes = await dependencies.repository.findExistingHashes(hashes);
+  const existingHashes = new Set<string>();
+  if (dependencies.contentHashRepository) {
+    const fromHashRepo = await dependencies.contentHashRepository.findExistingHashes(hashes);
+    for (const h of fromHashRepo) existingHashes.add(h);
+  }
+  const fromRepo = await dependencies.repository.findExistingHashes(hashes);
+  for (const h of fromRepo) existingHashes.add(h);
+
   if (existingHashes.size > 0) {
     throw new ConflictError(
       DOCUMENT_ERROR_CODES.DUPLICATE_DOCUMENT,

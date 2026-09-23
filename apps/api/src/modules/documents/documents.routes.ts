@@ -3,6 +3,7 @@ import type { ApiEnvironment } from "../../environment";
 import type { TokenVerifier } from "../../middleware/auth";
 import { defaultTokenVerifier, requireAuth, requireRole } from "../../middleware/auth";
 import { createDocumentUploadHandler } from "./documents.handler";
+import { createCheckDuplicateHandler } from "./duplicate.handler";
 import { createListRecentDocumentsHandler } from "./documents.list.handler";
 import { createGetDocumentMetadataHandler } from "./metadata.handler";
 import type { DocumentService } from "./documents.service";
@@ -36,6 +37,13 @@ export function createDocumentRoutes(
       createDocumentUploadHandler(dependencies),
     );
   }
+
+  routes.post(
+    "/check-duplicate",
+    requireAuth(verifier),
+    requireRole(["member_team", "head_of_team"]),
+    createCheckDuplicateHandler(dependencies),
+  );
 
   routes.get(
     "/:id/metadata",

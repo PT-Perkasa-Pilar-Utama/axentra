@@ -12,7 +12,12 @@ import type {
   createRedisProbe as CreateRedisProbe,
   createSystemHealthWorker as CreateSystemHealthWorker,
 } from "@axentra/queue";
-import type { SystemHealthCheckJob } from "@axentra/shared";
+import {
+  apiErrorSchema,
+  checkDuplicateSuccessResponseSchema,
+  uploadDocumentSuccessResponseSchema,
+  type SystemHealthCheckJob,
+} from "@axentra/shared";
 import type { createS3StorageAdapter as CreateS3StorageAdapter } from "@axentra/storage";
 import type { DatabaseClient } from "@axentra/db";
 import type { QueueProducer, RedisProbe } from "@axentra/queue";
@@ -44,6 +49,7 @@ describe("infrastructure integration", () => {
   let database: DatabaseClient | undefined;
   let redis: RedisProbe | undefined;
   let storage: StorageAdapter | undefined;
+  const storageOps: Array<{ op: "put" | "delete"; key: string }> = [];
   let producer: QueueProducer | undefined;
   let worker: ReturnType<CreateSystemHealthWorker> | undefined;
   let onJobProcessed: ((payload: SystemHealthCheckJob) => void) | undefined;
@@ -70,6 +76,7 @@ describe("infrastructure integration", () => {
       lifecycle,
       docRepo,
       docService,
+      dupRepo,
     ] = await Promise.all([
       import("@axentra/config"),
       import("@axentra/db"),
@@ -80,6 +87,7 @@ describe("infrastructure integration", () => {
       import("../apps/worker/src/lifecycle"),
       import("../apps/api/src/modules/documents/documents.repository"),
       import("../apps/api/src/modules/documents/documents.service"),
+      import("../apps/api/src/modules/documents/duplicate.repository"),
     ]);
     checkDatabase = db.checkDatabase;
     closeDatabase = db.closeDatabase;
@@ -93,7 +101,18 @@ describe("infrastructure integration", () => {
     const config = loadApiConfigFromRuntime();
     database = createDatabaseClient(config.DATABASE_URL);
     redis = createRedisProbe(config.REDIS_URL, config.REDIS_HEALTH_TIMEOUT_MS);
-    storage = createS3StorageAdapter(config);
+    const rawStorage = createS3StorageAdapter(config);
+    storage = {
+      ...rawStorage,
+      async putObject(input) {
+        storageOps.push({ op: "put", key: input.key });
+        return rawStorage.putObject(input);
+      },
+      async deleteObject(key) {
+        storageOps.push({ op: "delete", key });
+        return rawStorage.deleteObject(key);
+      },
+    };
     await Promise.all([checkDatabase(database), redis.checkHealth(), storage.initialize()]);
 
     const queueName = `axentra-integration-${crypto.randomUUID()}`;
@@ -121,6 +140,7 @@ describe("infrastructure integration", () => {
       repository: new docRepo.DocumentRepository(database.db),
       storage,
       queue: producer,
+      contentHashRepository: new dupRepo.DrizzleDocumentContentHashRepository(database.db),
       logger: createLogger({
         service: "axentra-api",
         environment: config.APP_ENV,
@@ -303,14 +323,7 @@ describe("infrastructure integration", () => {
     });
 
     expect(response.status).toBe(200);
-    const body = (await response.json()) as {
-      success: boolean;
-      data: {
-        message: string;
-        count: number;
-        files: Array<{ filename: string; documentType: string; size: number }>;
-      };
-    };
+    const body = uploadDocumentSuccessResponseSchema.parse(await response.json());
     expect(body.success).toBe(true);
     expect(body.data.message).toBe("File diterima untuk diproses");
     expect(body.data.count).toBe(1);
@@ -394,10 +407,7 @@ describe("infrastructure integration", () => {
       expect(statuses).toEqual([200, 409]);
 
       const conflictRes = res1.status === 409 ? res1 : res2;
-      const conflictBody = (await conflictRes.json()) as {
-        success: boolean;
-        error: { code: string; message: string };
-      };
+      const conflictBody = apiErrorSchema.parse(await conflictRes.json());
       expect(conflictBody.success).toBe(false);
       expect(conflictBody.error.code).toBe("DUPLICATE_DOCUMENT");
       expect(conflictBody.error.message).toBe("File ini sudah ada");
@@ -410,6 +420,62 @@ describe("infrastructure integration", () => {
       const docId = hashRows[0]?.documentId;
       if (docId !== undefined) {
         await database.db.delete(documents).where(eq(documents.id, docId));
+      }
+    },
+  );
+
+  integrationTest(
+    "enforces unique content hash per algorithm database constraint and detects duplicate",
+    async () => {
+      if (database === undefined) {
+        throw new Error("Integration infrastructure was not initialized");
+      }
+      const { documents } = await import("@axentra/db");
+      const { DrizzleDocumentContentHashRepository } =
+        await import("../apps/api/src/modules/documents/duplicate.repository");
+
+      const hashRepo = new DrizzleDocumentContentHashRepository(database.db);
+      const documentId1 = crypto.randomUUID();
+      const documentId2 = crypto.randomUUID();
+      const contentHash = "e".repeat(64);
+
+      await database.db.insert(documents).values([
+        { id: documentId1, title: "Doc 1" },
+        { id: documentId2, title: "Doc 2" },
+      ]);
+
+      try {
+        const saved = await hashRepo.saveContentHash({
+          documentId: documentId1,
+          contentHash,
+        });
+        expect(saved.documentId).toBe(documentId1);
+        expect(saved.contentHash).toBe(contentHash);
+
+        // Verify findByContentHash
+        const found = await hashRepo.findByContentHash(contentHash);
+        expect(found).not.toBeNull();
+        expect(found?.documentId).toBe(documentId1);
+
+        // Verify findExistingHashes
+        const existing = await hashRepo.findExistingHashes([contentHash, "f".repeat(64)]);
+        expect(existing.has(contentHash)).toBe(true);
+        expect(existing.has("f".repeat(64))).toBe(false);
+
+        // Database unique constraint: attempting to insert same content_hash fails
+        let duplicateDbError: unknown;
+        try {
+          await hashRepo.saveContentHash({
+            documentId: documentId2,
+            contentHash,
+          });
+        } catch (error) {
+          duplicateDbError = error;
+        }
+        expect(duplicateDbError).toBeDefined();
+      } finally {
+        await database.db.delete(documents).where(eq(documents.id, documentId1));
+        await database.db.delete(documents).where(eq(documents.id, documentId2));
       }
     },
   );
@@ -473,6 +539,216 @@ describe("infrastructure integration", () => {
         if (storageKey !== undefined) await storage.deleteObject(storageKey);
       } finally {
         await database.db.delete(documents).where(eq(documents.id, docId));
+      }
+    },
+  );
+
+  integrationTest(
+    "detects duplicate file on upload through DocumentRepository, rejects with 409, and prevents duplicate persistence (F6 / AC-02.01, AC-02.02, AC-02.03)",
+    async () => {
+      if (app === undefined || database === undefined || storage === undefined) {
+        throw new Error("Integration infrastructure was not initialized");
+      }
+      const { documents, documentFiles, documentContentHashes } = await import("@axentra/db");
+
+      const fileContent = `%PDF-1.4\n% duplicate-test-${crypto.randomUUID()}\n`;
+      const pdfBytes = new TextEncoder().encode(fileContent);
+      const hash = crypto.createHash("sha256").update(pdfBytes).digest("hex");
+
+      const createdDocIds: string[] = [];
+      const createdStorageKeys: string[] = [];
+      let testError: unknown;
+      const cleanupErrors: Error[] = [];
+
+      try {
+        // 1. First upload: valid file, should succeed (AC-02.03)
+        const form1 = new FormData();
+        form1.append("file", new File([pdfBytes], "original.pdf", { type: "application/pdf" }));
+
+        const res1 = await app.request("/api/v1/documents/upload", {
+          method: "POST",
+          headers: { authorization: "Bearer integration-member-token" },
+          body: form1,
+        });
+
+        expect(res1.status).toBe(200);
+        const body1 = uploadDocumentSuccessResponseSchema.parse(await res1.json());
+        expect(body1.success).toBe(true);
+        expect(body1.data.message).toBe("File diterima untuk diproses");
+
+        // Verify row created in document_content_hashes
+        const hashRows = await database.db
+          .select()
+          .from(documentContentHashes)
+          .where(eq(documentContentHashes.contentHash, hash));
+        expect(hashRows.length).toBe(1);
+        const originalDocId = hashRows[0]?.documentId;
+        expect(originalDocId).toBeDefined();
+        if (originalDocId === undefined) return;
+        createdDocIds.push(originalDocId);
+
+        // Verify storage object
+        const fileRows = await database.db
+          .select()
+          .from(documentFiles)
+          .where(eq(documentFiles.documentId, originalDocId));
+        expect(fileRows.length).toBe(1);
+        const storageKey1 = fileRows[0]?.storageKey;
+        expect(storageKey1).toBeDefined();
+        if (storageKey1 === undefined) return;
+        createdStorageKeys.push(storageKey1);
+
+        // 2. Second upload: exact same bytes (different filename), should fail with 409 (AC-02.01 & AC-02.02)
+        const storageOpsIndexBeforeDuplicate = storageOps.length;
+
+        const form2 = new FormData();
+        form2.append("file", new File([pdfBytes], "copy-renamed.pdf", { type: "application/pdf" }));
+
+        const res2 = await app.request("/api/v1/documents/upload", {
+          method: "POST",
+          headers: { authorization: "Bearer integration-member-token" },
+          body: form2,
+        });
+
+        expect(res2.status).toBe(409);
+        const body2 = apiErrorSchema.parse(await res2.json());
+        expect(body2.success).toBe(false);
+        expect(body2.error.code).toBe("DUPLICATE_DOCUMENT");
+        expect(body2.error.message).toBe("File ini sudah ada");
+
+        // 3. Verify database: observe all rows for this content hash across documents, files, and hashes
+        const allHashRows = await database.db
+          .select()
+          .from(documentContentHashes)
+          .where(eq(documentContentHashes.contentHash, hash));
+        expect(allHashRows.length).toBe(1);
+
+        const allDocRowsForContent = await database.db
+          .select()
+          .from(documents)
+          .innerJoin(documentContentHashes, eq(documents.id, documentContentHashes.documentId))
+          .where(eq(documentContentHashes.contentHash, hash));
+        expect(allDocRowsForContent.length).toBe(1);
+        expect(allDocRowsForContent[0]?.documents.id).toBe(originalDocId);
+
+        const allFileRowsForContent = await database.db
+          .select()
+          .from(documentFiles)
+          .innerJoin(
+            documentContentHashes,
+            eq(documentFiles.documentId, documentContentHashes.documentId),
+          )
+          .where(eq(documentContentHashes.contentHash, hash));
+        expect(allFileRowsForContent.length).toBe(1);
+        expect(allFileRowsForContent[0]?.document_files.storageKey).toBe(storageKey1);
+
+        // 4. Verify storage: verify serial duplicate upload pre-check prevents redundant object creation
+        const duplicateAttemptOps = storageOps.slice(storageOpsIndexBeforeDuplicate);
+        const duplicateAttemptPuts = duplicateAttemptOps.filter((op) => op.op === "put");
+        expect(duplicateAttemptPuts.length).toBe(0);
+
+        // Verify the original stored document remains intact and unaltered
+        const storedBytes = await storage.getObject(storageKey1);
+        expect(Buffer.from(storedBytes)).toEqual(Buffer.from(pdfBytes));
+
+        // 5. Third upload: different file bytes, should succeed
+        const diffPdfBytes = new TextEncoder().encode(
+          `%PDF-1.4\n% different-${crypto.randomUUID()}\n`,
+        );
+        const form3 = new FormData();
+        form3.append(
+          "file",
+          new File([diffPdfBytes], "different.pdf", { type: "application/pdf" }),
+        );
+
+        const res3 = await app.request("/api/v1/documents/upload", {
+          method: "POST",
+          headers: { authorization: "Bearer integration-member-token" },
+          body: form3,
+        });
+
+        expect(res3.status).toBe(200);
+        const body3 = uploadDocumentSuccessResponseSchema.parse(await res3.json());
+        expect(body3.success).toBe(true);
+        expect(body3.data.message).toBe("File diterima untuk diproses");
+
+        const diffHash = crypto.createHash("sha256").update(diffPdfBytes).digest("hex");
+        const diffHashRows = await database.db
+          .select()
+          .from(documentContentHashes)
+          .where(eq(documentContentHashes.contentHash, diffHash));
+        expect(diffHashRows.length).toBe(1);
+        const diffDocId = diffHashRows[0]?.documentId;
+        expect(diffDocId).toBeDefined();
+        if (diffDocId === undefined) return;
+        createdDocIds.push(diffDocId);
+
+        const diffFileRows = await database.db
+          .select()
+          .from(documentFiles)
+          .where(eq(documentFiles.documentId, diffDocId));
+        const storageKeyDiff = diffFileRows[0]?.storageKey;
+        if (storageKeyDiff) createdStorageKeys.push(storageKeyDiff);
+
+        // 6. Test check-duplicate endpoint against production DB
+        const checkJsonRes = await app.request("/api/v1/documents/check-duplicate", {
+          method: "POST",
+          headers: {
+            authorization: "Bearer integration-member-token",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ contentHash: hash }),
+        });
+        expect(checkJsonRes.status).toBe(200);
+        const checkJsonBody = checkDuplicateSuccessResponseSchema.parse(await checkJsonRes.json());
+        expect(checkJsonBody.data.isDuplicate).toBe(true);
+        expect(checkJsonBody.data.existingDocumentId).toBe(originalDocId);
+        expect(checkJsonBody.data.message).toBe("File ini sudah ada");
+
+        const checkForm = new FormData();
+        checkForm.append("file", new File([pdfBytes], "check.pdf", { type: "application/pdf" }));
+        const checkMultipartRes = await app.request("/api/v1/documents/check-duplicate", {
+          method: "POST",
+          headers: { authorization: "Bearer integration-member-token" },
+          body: checkForm,
+        });
+        expect(checkMultipartRes.status).toBe(200);
+        const checkMultiBody = checkDuplicateSuccessResponseSchema.parse(
+          await checkMultipartRes.json(),
+        );
+        expect(checkMultiBody.data.isDuplicate).toBe(true);
+        expect(checkMultiBody.data.existingDocumentId).toBe(originalDocId);
+      } catch (error) {
+        testError = error;
+      } finally {
+        for (const key of createdStorageKeys) {
+          try {
+            await storage.deleteObject(key);
+          } catch (error) {
+            cleanupErrors.push(error instanceof Error ? error : new Error(String(error)));
+          }
+        }
+        for (const docId of createdDocIds) {
+          try {
+            await database.db.delete(documents).where(eq(documents.id, docId));
+          } catch (error) {
+            cleanupErrors.push(error instanceof Error ? error : new Error(String(error)));
+          }
+        }
+      }
+
+      if (testError !== undefined) {
+        if (cleanupErrors.length > 0) {
+          const cleanupDetails = cleanupErrors.map((e) => e.message).join("\n");
+          console.error(`Integration test cleanup also failed with errors:\n${cleanupDetails}`);
+        }
+        throw testError;
+      }
+      if (cleanupErrors.length > 0) {
+        const errorDetails = cleanupErrors.map((e) => e.message).join("\n");
+        throw new Error(
+          `Integration test cleanup failed with ${cleanupErrors.length} errors:\n${errorDetails}`,
+        );
       }
     },
   );

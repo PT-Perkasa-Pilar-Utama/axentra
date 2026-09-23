@@ -97,12 +97,33 @@ export type UploadDocumentResponse = DocumentUploadAcceptedData;
 export const supportedExtensions = SUPPORTED_DOCUMENT_EXTENSIONS;
 export const supportedMimeTypes = SUPPORTED_DOCUMENT_MIME_TYPES;
 
+export const checkDuplicateRequestSchema = z.object({
+  contentHash: z
+    .string()
+    .length(64, "Content hash harus 64 karakter heksadesimal")
+    .regex(/^[a-fA-F0-9]+$/, "Content hash harus berupa heksadesimal yang valid"),
+  hashAlgorithm: z.literal("sha256").default("sha256"),
+});
+export type CheckDuplicateRequest = z.infer<typeof checkDuplicateRequestSchema>;
+
 export const checkDuplicateResponseSchema = z.object({
   isDuplicate: z.boolean(),
   existingDocumentId: z.string().optional(),
   message: z.string().optional(),
 });
 export type CheckDuplicateResponse = z.infer<typeof checkDuplicateResponseSchema>;
+
+export const checkDuplicateSuccessResponseSchema = z.object({
+  success: z.literal(true),
+  data: checkDuplicateResponseSchema,
+});
+export type CheckDuplicateSuccessResponse = z.infer<typeof checkDuplicateSuccessResponseSchema>;
+
+export const uploadDocumentSuccessResponseSchema = z.object({
+  success: z.literal(true),
+  data: documentUploadAcceptedDataSchema,
+});
+export type UploadDocumentSuccessResponse = z.infer<typeof uploadDocumentSuccessResponseSchema>;
 
 export const documentProcessingStatusSchema = z.enum([
   "queued",

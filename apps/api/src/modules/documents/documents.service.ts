@@ -4,6 +4,7 @@ import { createLogger } from "@axentra/observability";
 import type { QueueProducer } from "@axentra/queue";
 import type { StorageAdapter } from "@axentra/storage";
 import {
+  type CheckDuplicateResponse,
   type DocumentMetadataResult,
   type DocumentUploadAcceptedData,
   type PaginationMeta,
@@ -11,12 +12,14 @@ import {
 } from "@axentra/shared";
 import type { RawUploadFile } from "./documents.schema";
 import type { IDocumentRepository } from "./documents.repository";
+import type { IDocumentContentHashRepository } from "./duplicate.repository";
 import type { IMetadataExtractor } from "./metadata.extractor";
 import { DeterministicMetadataExtractor } from "./metadata.extractor";
 import type { IDocumentMetadataRepository, SaveMetadataInput } from "./metadata.repository";
 import { InMemoryDocumentMetadataRepository } from "./metadata.repository";
 import { createInMemoryRepository, createInMemoryStorage } from "./documents.service.helpers";
 import { persistUploadedDocuments } from "./documents.upload.operations";
+import { checkDuplicateOperation, type CheckDuplicateInput } from "./duplicate.operations";
 import {
   extractAndStoreMetadata,
   readStoredMetadata,
@@ -24,7 +27,7 @@ import {
   type ExtractMetadataOptions,
 } from "./documents.metadata.operations";
 
-export type { ExtractMetadataOptions };
+export type { CheckDuplicateInput, ExtractMetadataOptions };
 
 export type DocumentServiceDependencies = {
   repository?: IDocumentRepository | undefined;
@@ -34,6 +37,7 @@ export type DocumentServiceDependencies = {
   metadataRepository?: IDocumentMetadataRepository | undefined;
   metadataExtractor?: IMetadataExtractor | undefined;
   queueProducer?: QueueProducer | undefined;
+  contentHashRepository?: IDocumentContentHashRepository | undefined;
 };
 
 export type RecentDocumentList = {
@@ -44,6 +48,7 @@ export type RecentDocumentList = {
 export type IDocumentService = {
   uploadDocuments(files: ReadonlyArray<RawUploadFile>): Promise<DocumentUploadAcceptedData>;
   validateUpload(files: ReadonlyArray<RawUploadFile>): Promise<DocumentUploadAcceptedData>;
+  checkDuplicate(input: CheckDuplicateInput): Promise<CheckDuplicateResponse>;
   listRecentDocuments(page: number, limit: number): Promise<RecentDocumentList>;
   getDocumentMetadata(documentId: string): Promise<DocumentMetadataResult>;
   extractAndStoreMetadata(
@@ -62,6 +67,7 @@ export class DocumentService implements IDocumentService {
   private readonly metadataRepository: IDocumentMetadataRepository;
   private readonly metadataExtractor: IMetadataExtractor;
   private readonly queueProducer?: QueueProducer | undefined;
+  private readonly contentHashRepository?: IDocumentContentHashRepository | undefined;
 
   public constructor(dependencies: DocumentServiceDependencies = {}) {
     this.repository = dependencies.repository ?? createInMemoryRepository();
@@ -79,6 +85,7 @@ export class DocumentService implements IDocumentService {
     this.metadataRepository =
       dependencies.metadataRepository ?? new InMemoryDocumentMetadataRepository();
     this.metadataExtractor = dependencies.metadataExtractor ?? new DeterministicMetadataExtractor();
+    this.contentHashRepository = dependencies.contentHashRepository;
   }
 
   public async validateUpload(
@@ -97,8 +104,19 @@ export class DocumentService implements IDocumentService {
         logger: this.logger,
         queue: this.queue,
         queueProducer: this.queueProducer,
+        contentHashRepository: this.contentHashRepository,
       },
       files,
+    );
+  }
+
+  public async checkDuplicate(input: CheckDuplicateInput): Promise<CheckDuplicateResponse> {
+    return checkDuplicateOperation(
+      {
+        repository: this.repository,
+        contentHashRepository: this.contentHashRepository,
+      },
+      input,
     );
   }
 
