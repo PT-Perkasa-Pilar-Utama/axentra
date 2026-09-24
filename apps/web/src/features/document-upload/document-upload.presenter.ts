@@ -1,93 +1,49 @@
-import { useState, useCallback } from "react";
+import { useCallback, useState } from "react";
+import type { DragEvent, MouseEvent } from "react";
 import type { DocumentUploadAcceptedData } from "@axentra/shared";
-import {
-  DOCUMENT_COPY,
-  DOCUMENT_ERROR_CODES,
-  MAX_DOCX_BATCH_COUNT,
-  getDocumentExtension,
-  getDocumentTypeFromFilename,
-  isSupportedDocumentExtension,
-  isSupportedDocumentMimeType,
-} from "@axentra/shared";
 import { uploadDocuments as defaultUploadFn } from "./document-upload.api";
-import { ApiClientError } from "../../lib/api-client";
+import {
+  isRecoverableStatus,
+  validateUploadFiles,
+  type UploadNotification,
+  type UploadStatus,
+} from "./document-upload.rules";
+import {
+  applyUploadPresenterEvent,
+  deriveUploadPresenterProps,
+  initialUploadPresenterState,
+  type UploadPresenterState,
+  type UploadPresenterEvent,
+  type ExtendedUploadStatus,
+} from "./document-upload.state";
 
-export type UploadStatus =
-  | "idle"
-  | "uploading"
-  | "success"
-  | "duplicate_error"
-  | "unsupported_error"
-  | "error";
-
-export type UploadNotification = {
-  type: "success" | "error";
-  message: string;
-};
-
-export const UPLOAD_MESSAGES = {
-  SUCCESS: DOCUMENT_COPY.UPLOAD_ACCEPTED,
-  DUPLICATE: DOCUMENT_COPY.DUPLICATE_WARNING,
-  UNSUPPORTED: DOCUMENT_COPY.UNSUPPORTED_TYPE,
-  SINGLE_PDF_ONLY: DOCUMENT_COPY.SINGLE_PDF_ONLY,
-  MIXED_TYPES: DOCUMENT_COPY.MIXED_TYPES_NOT_ALLOWED,
-  EXCEEDS_BATCH_LIMIT: DOCUMENT_COPY.EXCEEDS_DOCX_BATCH_LIMIT,
-  EMPTY_FILES: "Tidak ada file yang dipilih",
-  GENERIC_ERROR: "Gagal mengunggah file",
-} as const;
-
-export function isSupportedFile(file: { name: string; type?: string }): boolean {
-  const ext = getDocumentExtension(file.name);
-  if (!isSupportedDocumentExtension(ext)) {
-    return false;
-  }
-
-  if (file.type && file.type.length > 0) {
-    return isSupportedDocumentMimeType(file.type);
-  }
-
-  return true;
-}
-
-export function validateUploadFiles(files: { name: string; type?: string }[]): {
-  valid: boolean;
-  errorMessage?: string;
-} {
-  if (files.length === 0) {
-    return { valid: false, errorMessage: UPLOAD_MESSAGES.EMPTY_FILES };
-  }
-
-  const hasUnsupported = files.some((f) => !isSupportedFile(f));
-  if (hasUnsupported) {
-    return { valid: false, errorMessage: UPLOAD_MESSAGES.UNSUPPORTED };
-  }
-
-  const hasPdf = files.some((f) => getDocumentTypeFromFilename(f.name) === "pdf");
-  const hasDocx = files.some((f) => getDocumentTypeFromFilename(f.name) === "docx");
-
-  if (hasPdf && hasDocx) {
-    return { valid: false, errorMessage: UPLOAD_MESSAGES.MIXED_TYPES };
-  }
-
-  if (hasPdf && files.length > 1) {
-    return { valid: false, errorMessage: UPLOAD_MESSAGES.SINGLE_PDF_ONLY };
-  }
-
-  if (hasDocx && files.length > MAX_DOCX_BATCH_COUNT) {
-    return { valid: false, errorMessage: UPLOAD_MESSAGES.EXCEEDS_BATCH_LIMIT };
-  }
-
-  return { valid: true };
-}
+export type { UploadStatus, UploadNotification } from "./document-upload.rules";
+export {
+  isSupportedFile,
+  validateUploadFiles,
+  classifyUploadError,
+  isRecoverableStatus,
+  UPLOAD_MESSAGES,
+} from "./document-upload.rules";
 
 export type DocumentUploadPresenter = {
-  status: UploadStatus;
+  status: ExtendedUploadStatus;
   isUploading: boolean;
+  isProcessing: boolean;
+  isBusy: boolean;
   notification: UploadNotification | null;
   uploadedResult: DocumentUploadAcceptedData | null;
-  uploadFiles: (files: File[]) => Promise<void>;
+  pendingFiles: File[];
+  canRetry: boolean;
   dismissNotification: () => void;
-  reset: () => void;
+  uploadAnother: () => void;
+  isDragOver: boolean;
+  isLocked: boolean;
+  handleDragOver: (e: DragEvent<HTMLElement>) => void;
+  handleDragLeave: (e: DragEvent<HTMLElement>) => void;
+  handleDrop: (e: DragEvent<HTMLElement>) => void;
+  handleFilesSelected: (files: FileList | File[] | null) => void;
+  handleRetryClick: (e: MouseEvent<HTMLElement>) => void;
 };
 
 export type DocumentUploadPresenterOptions = {
@@ -101,94 +57,116 @@ export function useDocumentUploadPresenter(
   const uploadFn = options?.uploadFn ?? defaultUploadFn;
   const onSuccess = options?.onSuccess;
 
-  const [status, setStatus] = useState<UploadStatus>("idle");
-  const [notification, setNotification] = useState<UploadNotification | null>(null);
-  const [uploadedResult, setUploadedResult] = useState<DocumentUploadAcceptedData | null>(null);
+  const [state, setState] = useState<UploadPresenterState>(initialUploadPresenterState);
+
+  const dispatch = useCallback((event: UploadPresenterEvent) => {
+    setState((prev) => applyUploadPresenterEvent(prev, event));
+  }, []);
+
+  const { isUploading, isProcessing, isBusy, isLocked, canRetry } =
+    deriveUploadPresenterProps(state);
 
   const dismissNotification = useCallback((): void => {
-    setNotification(null);
-  }, []);
+    dispatch({ type: "DISMISS_NOTIFICATION" });
+  }, [dispatch]);
 
-  const reset = useCallback((): void => {
-    setStatus("idle");
-    setNotification(null);
-    setUploadedResult(null);
-  }, []);
+  const uploadAnother = useCallback((): void => {
+    dispatch({ type: "UPLOAD_ANOTHER" });
+  }, [dispatch]);
 
   const uploadFiles = useCallback(
     async (files: File[]): Promise<void> => {
-      const validation = validateUploadFiles(files);
-      if (!validation.valid) {
-        setStatus("unsupported_error");
-        setNotification({
-          type: "error",
-          message: validation.errorMessage ?? UPLOAD_MESSAGES.UNSUPPORTED,
-        });
-        return;
-      }
+      dispatch({ type: "FILES_SELECTED", files });
 
-      setStatus("uploading");
-      setNotification(null);
+      const validation = validateUploadFiles(files);
+      if (!validation.valid) return;
 
       try {
         const result = await uploadFn(files);
-        setUploadedResult(result);
-        setStatus("success");
-        setNotification({
-          type: "success",
-          message: result.message ?? UPLOAD_MESSAGES.SUCCESS,
-        });
+        dispatch({ type: "UPLOAD_SUCCEEDED", result });
         onSuccess?.(result);
       } catch (error) {
-        if (
-          error instanceof ApiClientError &&
-          (error.code === DOCUMENT_ERROR_CODES.DUPLICATE_DOCUMENT ||
-            error.code === "DUPLICATE_FILE" ||
-            error.code === "CONFLICT" ||
-            error.status === 409 ||
-            error.message.toLowerCase().includes("sudah ada") ||
-            error.message.toLowerCase().includes("already exists"))
-        ) {
-          setStatus("duplicate_error");
-          setNotification({
-            type: "error",
-            message: UPLOAD_MESSAGES.DUPLICATE,
-          });
-          return;
-        }
-
-        if (
-          error instanceof ApiClientError &&
-          (error.code === DOCUMENT_ERROR_CODES.UNSUPPORTED_FILE_TYPE || error.status === 415)
-        ) {
-          setStatus("unsupported_error");
-          setNotification({
-            type: "error",
-            message: error.message || UPLOAD_MESSAGES.UNSUPPORTED,
-          });
-          return;
-        }
-
-        const message =
-          error instanceof Error && error.message ? error.message : UPLOAD_MESSAGES.GENERIC_ERROR;
-
-        setStatus("error");
-        setNotification({
-          type: "error",
-          message,
-        });
+        dispatch({ type: "UPLOAD_FAILED", error });
       }
     },
-    [uploadFn, onSuccess],
+    [uploadFn, onSuccess, dispatch],
+  );
+
+  const retry = useCallback(async (): Promise<void> => {
+    if (!isRecoverableStatus(state.status as UploadStatus) || state.pendingFiles.length === 0)
+      return;
+    await uploadFiles(state.pendingFiles);
+  }, [state.status, state.pendingFiles, uploadFiles]);
+
+  const handleDragOver = useCallback(
+    (e: DragEvent<HTMLElement>): void => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!isLocked) dispatch({ type: "DRAG_OVER" });
+    },
+    [isLocked, dispatch],
+  );
+
+  const handleDragLeave = useCallback(
+    (e: DragEvent<HTMLElement>): void => {
+      e.preventDefault();
+      e.stopPropagation();
+      dispatch({ type: "DRAG_LEAVE" });
+    },
+    [dispatch],
+  );
+
+  const handleDrop = useCallback(
+    (e: DragEvent<HTMLElement>): void => {
+      e.preventDefault();
+      e.stopPropagation();
+      dispatch({ type: "DRAG_LEAVE" });
+      if (isLocked) return;
+
+      const droppedFiles = Array.from(e.dataTransfer.files);
+      if (droppedFiles.length > 0) {
+        void uploadFiles(droppedFiles);
+      }
+    },
+    [isLocked, uploadFiles, dispatch],
+  );
+
+  const handleFilesSelected = useCallback(
+    (files: FileList | File[] | null): void => {
+      const selectedFiles = files ? Array.from(files) : [];
+      if (selectedFiles.length > 0) {
+        void uploadFiles(selectedFiles);
+      }
+    },
+    [uploadFiles],
+  );
+
+  const handleRetryClick = useCallback(
+    (e: MouseEvent<HTMLElement>): void => {
+      e.stopPropagation();
+      if (isLocked) return;
+      void retry();
+    },
+    [isLocked, retry],
   );
 
   return {
-    status,
-    isUploading: status === "uploading",
-    notification,
-    uploadedResult,
-    uploadFiles,
+    status: state.status,
+    isUploading,
+    isProcessing,
+    isBusy,
+    notification: state.notification,
+    uploadedResult: state.uploadedResult,
+    pendingFiles: state.pendingFiles,
+    canRetry,
     dismissNotification,
-    reset,
+    uploadAnother,
+    isDragOver: state.isDragOver,
+    isLocked,
+    handleDragOver,
+    handleDragLeave,
+    handleDrop,
+    handleFilesSelected,
+    handleRetryClick,
   };
 }

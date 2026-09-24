@@ -55,12 +55,14 @@ export function setUnauthorizedHandler(handler: (() => void) | null): void {
 export function mergeRequestHeaders(input?: HeadersInit): Headers {
   const headers = new Headers(input);
   if (!headers.has("accept")) headers.set("accept", "application/json");
+
   if (!headers.has("authorization")) {
     const token = authTokenGetter ? authTokenGetter() : null;
     if (token) {
       headers.set("authorization", `Bearer ${token}`);
     }
   }
+
   return headers;
 }
 
