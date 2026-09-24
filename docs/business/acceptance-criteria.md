@@ -10,7 +10,7 @@ Full Given/When/Then bodies live in the per-phase files under
 
 | Group      | User Stories               | AC Count |
 | ---------- | -------------------------- | -------- |
-| Foundation | Technical foundation       | 6        |
+| Foundation | Technical foundation       | 7        |
 | Sprint 1   | US-01, US-02, US-03        | 8        |
 | Sprint 2   | US-04, US-05, US-06, US-07 | 12       |
 | Sprint 3   | US-08, US-09, US-10        | 3        |
@@ -26,6 +26,7 @@ Full Given/When/Then bodies live in the per-phase files under
 - AC-FND-04 - Worker starts and shuts down safely.
 - AC-FND-05 - Local infrastructure runs through Docker Compose.
 - AC-FND-06 - Quality gates pass.
+- AC-FND-07 - Inspect local PostgreSQL with Drizzle Studio.
 
 ## Sprint 1
 

@@ -19,11 +19,11 @@ download permission.
 
 ## Non-Goals
 
-- No authentication flow is implemented in v0.1.0.
-- No RBAC business rules are implemented in v0.1.0.
+- No authentication flow is included in Foundation v1.0.0.
+- No RBAC business rules are included in Foundation v1.0.0.
 - No document upload, OCR, AI, search, preview, download, audit business flow, or domain schema
-  is implemented in v0.1.0.
-- No production deployment target is assigned in v0.1.0.
+  is included in Foundation v1.0.0.
+- No production deployment target is assigned in Foundation v1.0.0.
 
 ## Current Operational Surface
 

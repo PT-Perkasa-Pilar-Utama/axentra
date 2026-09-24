@@ -1,6 +1,6 @@
 # Axentra Architecture
 
-**Version:** 0.1.0  
+**Version:** 1.0.0<br>
 **Status:** Foundation active
 
 Axentra is a Bun workspace modular monolith with three deployable processes: Web, API, and
