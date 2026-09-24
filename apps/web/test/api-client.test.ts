@@ -1,6 +1,22 @@
-import { describe, expect, test, beforeEach } from "bun:test";
+import { describe, expect, spyOn, test, beforeEach } from "bun:test";
+import { z } from "zod";
 import { clearAuthToken, getAuthToken, setAuthToken } from "../src/lib/auth-token.store";
-import { mergeRequestHeaders } from "../src/lib/api-client";
+import { mergeRequestHeaders, apiRequest, isSuccessEnvelope } from "../src/lib/api-client";
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function createMockFetch(
+  handler: (input: RequestInfo | URL, init?: RequestInit | undefined) => Promise<Response>,
+) {
+  return Object.assign(handler, {
+    preconnect: (
+      _url: string | URL,
+      _options?: { dns?: boolean; tcp?: boolean; http?: boolean; https?: boolean } | undefined,
+    ): void => {},
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Reset store sebelum setiap test agar tidak ada state yang bocor antar test
@@ -8,6 +24,56 @@ import { mergeRequestHeaders } from "../src/lib/api-client";
 
 beforeEach(() => {
   clearAuthToken();
+});
+
+// ---------------------------------------------------------------------------
+// API response contract — F12
+// ---------------------------------------------------------------------------
+
+describe("API response contract", () => {
+  test("requires data on successful envelopes", () => {
+    expect(isSuccessEnvelope({ success: true })).toBe(false);
+    expect(isSuccessEnvelope({ success: true, data: null })).toBe(true);
+  });
+
+  test("rejects a successful envelope with invalid endpoint data", async () => {
+    const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
+      createMockFetch(async (_input: RequestInfo | URL, _init?: RequestInit) => {
+        return new Response(JSON.stringify({ success: true, data: { status: 42 } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+    try {
+      await expect(apiRequest("/health", z.object({ status: z.string() }))).rejects.toMatchObject({
+        code: "INVALID_RESPONSE",
+      });
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  test("classifies a caller abort separately from a request timeout", async () => {
+    const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
+      createMockFetch(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.signal?.aborted) throw new DOMException("Aborted", "AbortError");
+        return new Response(JSON.stringify({ success: true, data: { status: "ok" } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+    const controller = new AbortController();
+    controller.abort();
+    try {
+      await expect(
+        apiRequest("/health", z.object({ status: z.string() }), { signal: controller.signal }),
+      ).rejects.toMatchObject({ code: "REQUEST_CANCELLED" });
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
