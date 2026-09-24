@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import { useForm, type UseFormReturn } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { loginRequestSchema } from "@axentra/shared";
 import type { LoginRequest, LoginResponse } from "@axentra/shared";
 import { login as defaultLoginFn } from "./login.api";
 import { ApiClientError } from "../../lib/api-client";
@@ -22,7 +23,7 @@ export const LOGIN_MESSAGES = {
   GENERIC_ERROR: "Terjadi kesalahan saat masuk",
 } as const;
 
-export const loginFormSchema = z.object({
+export const loginFormSchema = loginRequestSchema.extend({
   email: z
     .string()
     .trim()
