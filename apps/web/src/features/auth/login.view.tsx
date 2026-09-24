@@ -17,17 +17,14 @@ export type PerkasaLoginFormProps = {
 
 export function PerkasaLoginForm({ presenter }: PerkasaLoginFormProps): React.JSX.Element {
   const {
-    email,
-    setEmail,
-    password,
-    setPassword,
-    rememberMe,
-    setRememberMe,
+    form: {
+      register,
+      formState: { errors },
+    },
     showPassword,
     toggleShowPassword,
     isSubmitting,
     errorMessage,
-    fieldErrors,
     dismissError,
     handleSubmit,
   } = presenter;
@@ -75,7 +72,7 @@ export function PerkasaLoginForm({ presenter }: PerkasaLoginFormProps): React.JS
       <form onSubmit={(e) => void handleSubmit(e)} noValidate className="space-y-5">
         <div>
           <label htmlFor="email" className="mb-1.5 block text-xs font-semibold text-slate-700">
-            Email address
+            Alamat email
           </label>
           <div className="relative">
             <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
@@ -90,32 +87,30 @@ export function PerkasaLoginForm({ presenter }: PerkasaLoginFormProps): React.JS
             </div>
             <input
               id="email"
-              name="email"
               type="email"
               autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@company.com"
+              placeholder="nama@perusahaan.com"
               disabled={isSubmitting}
-              aria-invalid={Boolean(fieldErrors.email)}
-              aria-describedby={fieldErrors.email ? "email-error" : undefined}
+              aria-invalid={Boolean(errors.email)}
+              aria-describedby={errors.email ? "email-error" : undefined}
               className={`w-full rounded-lg border py-2.5 pl-10 pr-3.5 text-sm text-slate-800 placeholder-slate-400 transition-colors focus:outline-none focus:ring-2 focus:ring-[#5b9a42]/30 ${
-                fieldErrors.email
+                errors.email
                   ? "border-red-300 focus:border-red-500 focus:ring-red-200"
                   : "border-slate-200 focus:border-[#5b9a42]"
               }`}
+              {...register("email")}
             />
           </div>
-          {fieldErrors.email && (
+          {errors.email?.message && (
             <p id="email-error" className="mt-1 text-xs text-red-600 font-medium">
-              {fieldErrors.email}
+              {errors.email.message}
             </p>
           )}
         </div>
 
         <div>
           <label htmlFor="password" className="mb-1.5 block text-xs font-semibold text-slate-700">
-            Password
+            Kata sandi
           </label>
           <div className="relative">
             <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
@@ -130,20 +125,18 @@ export function PerkasaLoginForm({ presenter }: PerkasaLoginFormProps): React.JS
             </div>
             <input
               id="password"
-              name="password"
               type={showPassword ? "text" : "password"}
               autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter your password"
+              placeholder="Masukkan kata sandi"
               disabled={isSubmitting}
-              aria-invalid={Boolean(fieldErrors.password)}
-              aria-describedby={fieldErrors.password ? "password-error" : undefined}
+              aria-invalid={Boolean(errors.password)}
+              aria-describedby={errors.password ? "password-error" : undefined}
               className={`w-full rounded-lg border py-2.5 pl-10 pr-10 text-sm text-slate-800 placeholder-slate-400 transition-colors focus:outline-none focus:ring-2 focus:ring-[#5b9a42]/30 ${
-                fieldErrors.password
+                errors.password
                   ? "border-red-300 focus:border-red-500 focus:ring-red-200"
                   : "border-slate-200 focus:border-[#5b9a42]"
               }`}
+              {...register("password")}
             />
             <button
               type="button"
@@ -179,9 +172,9 @@ export function PerkasaLoginForm({ presenter }: PerkasaLoginFormProps): React.JS
               )}
             </button>
           </div>
-          {fieldErrors.password && (
+          {errors.password?.message && (
             <p id="password-error" className="mt-1 text-xs text-red-600 font-medium">
-              {fieldErrors.password}
+              {errors.password.message}
             </p>
           )}
         </div>
@@ -191,13 +184,11 @@ export function PerkasaLoginForm({ presenter }: PerkasaLoginFormProps): React.JS
             <input
               type="checkbox"
               id="remember-me"
-              name="rememberMe"
-              checked={rememberMe}
-              onChange={(e) => setRememberMe(e.target.checked)}
               disabled={isSubmitting}
               className="h-4 w-4 rounded border-slate-300 text-[#5b9a42] accent-[#5b9a42] focus:ring-[#5b9a42]"
+              {...register("rememberMe")}
             />
-            <span>Remember me</span>
+            <span>Ingat saya</span>
           </label>
         </div>
 
@@ -210,7 +201,7 @@ export function PerkasaLoginForm({ presenter }: PerkasaLoginFormProps): React.JS
             <span>Memproses...</span>
           ) : (
             <>
-              <span>Sign in</span>
+              <span>Masuk</span>
               <span aria-hidden="true">&rarr;</span>
             </>
           )}
