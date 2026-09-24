@@ -46,102 +46,197 @@ export type DocumentUploadPresenterOptions = {
   onSuccess?: (result: DocumentUploadAcceptedData) => void;
 };
 
+// ---------------------------------------------------------------------------
+// State machine — pure, tidak bergantung React, dapat ditest langsung
+// ---------------------------------------------------------------------------
+
+export type UploadPresenterState = {
+  status: UploadStatus;
+  notification: UploadNotification | null;
+  uploadedResult: DocumentUploadAcceptedData | null;
+  pendingFiles: File[];
+  isDragOver: boolean;
+};
+
+export type UploadPresenterEvent =
+  | { type: "FILES_SELECTED"; files: File[] }
+  | { type: "UPLOAD_SUCCEEDED"; result: DocumentUploadAcceptedData }
+  | { type: "UPLOAD_FAILED"; error: unknown }
+  | { type: "UPLOAD_ANOTHER" }
+  | { type: "DISMISS_NOTIFICATION" }
+  | { type: "DRAG_OVER" }
+  | { type: "DRAG_LEAVE" };
+
+export function initialUploadPresenterState(): UploadPresenterState {
+  return {
+    status: "idle",
+    notification: null,
+    uploadedResult: null,
+    pendingFiles: [],
+    isDragOver: false,
+  };
+}
+
+export function applyUploadPresenterEvent(
+  state: UploadPresenterState,
+  event: UploadPresenterEvent,
+): UploadPresenterState {
+  switch (event.type) {
+    case "FILES_SELECTED": {
+      const validation = validateUploadFiles(event.files);
+      if (!validation.valid) {
+        return {
+          ...state,
+          status: "unsupported_error",
+          pendingFiles: event.files,
+          notification: {
+            type: "error",
+            message: validation.errorMessage ?? UPLOAD_MESSAGES.UNSUPPORTED,
+          },
+        };
+      }
+      return {
+        ...state,
+        status: "uploading",
+        pendingFiles: event.files,
+        notification: null,
+        uploadedResult: null,
+      };
+    }
+
+    case "UPLOAD_SUCCEEDED": {
+      return {
+        ...state,
+        status: "processing",
+        uploadedResult: event.result,
+        // API hanya mengonfirmasi file diterima & diantre untuk worker, bukan
+        // status pemrosesan final - jadi kita berhenti jujur di "processing"
+        // dan TIDAK berpindah ke "success" tanpa sinyal status asli.
+        notification: {
+          type: "success",
+          message: event.result.message ?? UPLOAD_MESSAGES.SUCCESS,
+        },
+      };
+    }
+
+    case "UPLOAD_FAILED": {
+      const classified = classifyUploadError(event.error);
+      return {
+        ...state,
+        status: classified.status,
+        notification: { type: "error", message: classified.message },
+      };
+    }
+
+    case "UPLOAD_ANOTHER": {
+      return initialUploadPresenterState();
+    }
+
+    case "DISMISS_NOTIFICATION": {
+      return { ...state, notification: null };
+    }
+
+    case "DRAG_OVER": {
+      return { ...state, isDragOver: true };
+    }
+
+    case "DRAG_LEAVE": {
+      return { ...state, isDragOver: false };
+    }
+  }
+}
+
+export function deriveUploadPresenterProps(state: UploadPresenterState): {
+  isUploading: boolean;
+  isProcessing: boolean;
+  isBusy: boolean;
+  isLocked: boolean;
+  canRetry: boolean;
+} {
+  const isUploading = state.status === "uploading";
+  const isProcessing = state.status === "processing";
+  // Hanya "uploading" yang mengunci area. Saat "processing", file sudah
+  // diterima dan area harus tetap terbuka agar tombol "Unggah Dokumen Lain"
+  // tidak muncul di dalam container yang terlihat disabled (lihat F2).
+  const isBusy = isUploading;
+  const isLocked = isBusy;
+  const canRetry = isRecoverableStatus(state.status) && state.pendingFiles.length > 0;
+  return { isUploading, isProcessing, isBusy, isLocked, canRetry };
+}
+
+// ---------------------------------------------------------------------------
+// Hook — thin wrapper di atas state machine, hanya mengurus React glue
+// ---------------------------------------------------------------------------
+
 export function useDocumentUploadPresenter(
   options?: DocumentUploadPresenterOptions,
 ): DocumentUploadPresenter {
   const uploadFn = options?.uploadFn ?? defaultUploadFn;
   const onSuccess = options?.onSuccess;
 
-  const [status, setStatus] = useState<UploadStatus>("idle");
-  const [notification, setNotification] = useState<UploadNotification | null>(null);
-  const [uploadedResult, setUploadedResult] = useState<DocumentUploadAcceptedData | null>(null);
-  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
-  const [isDragOver, setIsDragOver] = useState(false);
+  const [state, setState] = useState<UploadPresenterState>(initialUploadPresenterState);
 
-  const isProcessing = status === "processing";
-  const isUploading = status === "uploading";
-  // Hanya "uploading" yang mengunci area. Saat "processing", file sudah
-  // diterima dan area harus tetap terbuka agar tombol "Unggah Dokumen Lain"
-  // tidak muncul di dalam container yang terlihat disabled (lihat F2).
-  const isBusy = isUploading;
-  const isLocked = isBusy;
-  const canRetry = isRecoverableStatus(status) && pendingFiles.length > 0;
+  const dispatch = useCallback((event: UploadPresenterEvent) => {
+    setState((prev) => applyUploadPresenterEvent(prev, event));
+  }, []);
+
+  const { isUploading, isProcessing, isBusy, isLocked, canRetry } =
+    deriveUploadPresenterProps(state);
 
   const dismissNotification = useCallback((): void => {
-    setNotification(null);
-  }, []);
+    dispatch({ type: "DISMISS_NOTIFICATION" });
+  }, [dispatch]);
 
   const uploadAnother = useCallback((): void => {
-    setStatus("idle");
-    setNotification(null);
-    setUploadedResult(null);
-    setPendingFiles([]);
-  }, []);
+    dispatch({ type: "UPLOAD_ANOTHER" });
+  }, [dispatch]);
 
   const uploadFiles = useCallback(
     async (files: File[]): Promise<void> => {
-      setPendingFiles(files);
+      dispatch({ type: "FILES_SELECTED", files });
 
       const validation = validateUploadFiles(files);
-      if (!validation.valid) {
-        setStatus("unsupported_error");
-        setNotification({
-          type: "error",
-          message: validation.errorMessage ?? UPLOAD_MESSAGES.UNSUPPORTED,
-        });
-        return;
-      }
-
-      setStatus("uploading");
-      setNotification(null);
-      setUploadedResult(null);
+      if (!validation.valid) return;
 
       try {
         const result = await uploadFn(files);
-        setUploadedResult(result);
-        // API hanya mengonfirmasi file diterima & diantre untuk worker, bukan
-        // status pemrosesan final - jadi kita berhenti jujur di "processing"
-        // dan TIDAK berpindah ke "success" tanpa sinyal status asli.
-        setStatus("processing");
-        setNotification({
-          type: "success",
-          message: result.message ?? UPLOAD_MESSAGES.SUCCESS,
-        });
+        dispatch({ type: "UPLOAD_SUCCEEDED", result });
         onSuccess?.(result);
       } catch (error) {
-        const classified = classifyUploadError(error);
-        setStatus(classified.status);
-        setNotification({ type: "error", message: classified.message });
+        dispatch({ type: "UPLOAD_FAILED", error });
       }
     },
-    [uploadFn, onSuccess],
+    [uploadFn, onSuccess, dispatch],
   );
 
   const retry = useCallback(async (): Promise<void> => {
-    if (!isRecoverableStatus(status) || pendingFiles.length === 0) return;
-    await uploadFiles(pendingFiles);
-  }, [status, pendingFiles, uploadFiles]);
+    if (!isRecoverableStatus(state.status) || state.pendingFiles.length === 0) return;
+    await uploadFiles(state.pendingFiles);
+  }, [state.status, state.pendingFiles, uploadFiles]);
 
   const handleDragOver = useCallback(
     (e: DragEvent<HTMLElement>): void => {
       e.preventDefault();
       e.stopPropagation();
-      if (!isLocked) setIsDragOver(true);
+      if (!isLocked) dispatch({ type: "DRAG_OVER" });
     },
-    [isLocked],
+    [isLocked, dispatch],
   );
 
-  const handleDragLeave = useCallback((e: DragEvent<HTMLElement>): void => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragOver(false);
-  }, []);
+  const handleDragLeave = useCallback(
+    (e: DragEvent<HTMLElement>): void => {
+      e.preventDefault();
+      e.stopPropagation();
+      dispatch({ type: "DRAG_LEAVE" });
+    },
+    [dispatch],
+  );
 
   const handleDrop = useCallback(
     (e: DragEvent<HTMLElement>): void => {
       e.preventDefault();
       e.stopPropagation();
-      setIsDragOver(false);
+      dispatch({ type: "DRAG_LEAVE" });
       if (isLocked) return;
 
       const droppedFiles = Array.from(e.dataTransfer.files);
@@ -149,7 +244,7 @@ export function useDocumentUploadPresenter(
         void uploadFiles(droppedFiles);
       }
     },
-    [isLocked, uploadFiles],
+    [isLocked, uploadFiles, dispatch],
   );
 
   const handleFilesSelected = useCallback(
@@ -172,17 +267,17 @@ export function useDocumentUploadPresenter(
   );
 
   return {
-    status,
+    status: state.status,
     isUploading,
     isProcessing,
     isBusy,
-    notification,
-    uploadedResult,
-    pendingFiles,
+    notification: state.notification,
+    uploadedResult: state.uploadedResult,
+    pendingFiles: state.pendingFiles,
     canRetry,
     dismissNotification,
     uploadAnother,
-    isDragOver,
+    isDragOver: state.isDragOver,
     isLocked,
     handleDragOver,
     handleDragLeave,
