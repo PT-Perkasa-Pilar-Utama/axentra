@@ -204,9 +204,33 @@ describe("login presenter interaction & error mapping (F3)", () => {
     });
   });
 
-  test("rejects invalid input before loginFn and maps validation errors", () => {
-    const validation = validateLoginInput({ email: "", password: "" });
+  test("rejects invalid input before loginFn and maps validation errors", async () => {
+    let loginFnCalled = false;
 
+    const { presenter } = renderPresenterHarness({
+      initialEmail: "",
+      loginFn: async () => {
+        loginFnCalled = true;
+        return {
+          user: {
+            id: "usr-1",
+            email: "user@perkasa.co.id",
+            role: "member_team",
+            name: "Aiman",
+          },
+          token: "mock-token",
+        };
+      },
+    });
+
+    // Submitting form with empty inputs through React Hook Form boundary
+    await presenter.handleSubmit();
+
+    // Proves loginFn is NOT called on invalid input
+    expect(loginFnCalled).toBe(false);
+
+    // Direct validation helper also returns errors
+    const validation = validateLoginInput({ email: "", password: "" });
     expect(validation.valid).toBe(false);
     expect(validation.errors.email).toBe(LOGIN_MESSAGES.EMAIL_REQUIRED);
     expect(validation.errors.password).toBe(LOGIN_MESSAGES.PASSWORD_REQUIRED);
