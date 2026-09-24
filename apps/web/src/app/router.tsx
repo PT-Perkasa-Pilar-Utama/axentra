@@ -12,20 +12,16 @@ export const router = createBrowserRouter([
     element: <FoundationPage />,
   },
   {
-    path: "/dashboard",
-    element: <MemberTeamDashboardPage />,
-  },
-  {
     path: "/login",
     element: <LoginPage />,
   },
   {
-    path: "/",
-    element: <FoundationPage />,
-  },
-  {
     element: <ProtectedRoute />,
     children: [
+      {
+        path: "/dashboard",
+        element: <MemberTeamDashboardPage />,
+      },
       {
         path: "/upload",
         element: <DocumentUploadPage />,

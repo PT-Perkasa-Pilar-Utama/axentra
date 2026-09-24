@@ -1,6 +1,5 @@
 import { loadWebConfig } from "@axentra/config/web";
 import type { ZodType } from "zod";
-import { getAuthToken } from "./auth-token.store";
 
 const requestTimeoutMs = 10000;
 
@@ -61,13 +60,7 @@ export function mergeRequestHeaders(input?: HeadersInit): Headers {
     const token = authTokenGetter ? authTokenGetter() : null;
     if (token) {
       headers.set("authorization", `Bearer ${token}`);
-      return headers;
     }
-  }
-
-  const token = getAuthToken();
-  if (token !== null && !headers.has("authorization")) {
-    headers.set("authorization", `Bearer ${token}`);
   }
 
   return headers;

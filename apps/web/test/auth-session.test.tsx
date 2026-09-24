@@ -386,6 +386,67 @@ describe("FE-S1-06: Login Success Behavior and Routing (F3)", () => {
     expect(destinationHtml).not.toContain("Masuk");
   });
 
+  test("redirects to dashboard when login succeeds without a saved destination", async () => {
+    let capturedPresenter: LoginPresenter | undefined;
+
+    const mockLoginResponse: LoginResponse = {
+      user: mockMemberUser,
+      token: "ax_dashboard_token",
+      refreshToken: "ax_dashboard_rt",
+    };
+
+    const mockLoginFn = async (_payload: LoginRequest): Promise<LoginResponse> => {
+      return mockLoginResponse;
+    };
+
+    const router = createMemoryRouter(
+      [
+        {
+          path: "/login",
+          element: (
+            <LoginPage
+              initialEmail="user@perkasa.co.id"
+              loginFn={mockLoginFn}
+              navigate={(to, opts) => {
+                void router.navigate(to, opts);
+              }}
+              onPresenterReady={(presenter) => {
+                capturedPresenter = presenter;
+              }}
+            />
+          ),
+        },
+        {
+          path: "/dashboard",
+          element: <div>Halaman Dashboard Berhasil</div>,
+        },
+      ],
+      {
+        initialEntries: ["/login"],
+      },
+    );
+
+    renderToString(
+      <AuthSessionProvider initialSession={null}>
+        <RouterProvider router={router} />
+      </AuthSessionProvider>,
+    );
+
+    if (!capturedPresenter) {
+      throw new Error("Presenter failed to initialize");
+    }
+
+    const submitSuccess = await capturedPresenter.submitValues({
+      email: "user@perkasa.co.id",
+      password: "ValidPassword123",
+      rememberMe: false,
+    });
+
+    expect(submitSuccess).toBe(true);
+    expect(getAuthToken()).toBe("ax_dashboard_token");
+    expect(router.state.location.pathname).toBe("/dashboard");
+  });
+
   test("loginSession stores session in memory and updates isAuthenticated", () => {
     let capturedContext: ReturnType<typeof useAuthSession> | undefined;
 
@@ -453,6 +514,22 @@ describe("FE-S1-06: ProtectedRoute and RBAC", () => {
     );
 
     expect(html).toContain("Protected Content");
+  });
+
+  test("protects the dashboard route from unauthenticated users", () => {
+    const html = renderToString(
+      <MemoryRouter initialEntries={["/dashboard"]}>
+        <AuthSessionProvider initialSession={null}>
+          <Routes>
+            <Route element={<ProtectedRoute />}>
+              <Route path="/dashboard" element={<div>Dashboard Content</div>} />
+            </Route>
+          </Routes>
+        </AuthSessionProvider>
+      </MemoryRouter>,
+    );
+
+    expect(html).not.toContain("Dashboard Content");
   });
 
   test("shows 403 Akses Dibatasi when user role is not allowed", () => {

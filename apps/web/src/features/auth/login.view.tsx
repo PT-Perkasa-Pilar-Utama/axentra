@@ -20,7 +20,7 @@ export function LoginPage(props: LoginPageProps = {}): React.JSX.Element {
   const location = useLocation();
 
   const destination =
-    (location.state as { from?: { pathname: string } })?.from?.pathname || "/upload";
+    (location.state as { from?: { pathname: string } })?.from?.pathname || "/dashboard";
 
   useEffect(() => {
     if (sessionContext?.isAuthenticated) {

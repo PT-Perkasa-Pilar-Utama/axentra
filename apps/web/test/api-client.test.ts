@@ -1,7 +1,12 @@
 import { describe, expect, spyOn, test, beforeEach } from "bun:test";
 import { z } from "zod";
 import { clearAuthToken, getAuthToken, setAuthToken } from "../src/lib/auth-token.store";
-import { mergeRequestHeaders, apiRequest, isSuccessEnvelope } from "../src/lib/api-client";
+import {
+  mergeRequestHeaders,
+  apiRequest,
+  isSuccessEnvelope,
+  setAuthTokenGetter,
+} from "../src/lib/api-client";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -24,6 +29,7 @@ function createMockFetch(
 
 beforeEach(() => {
   clearAuthToken();
+  setAuthTokenGetter(null);
 });
 
 // ---------------------------------------------------------------------------
@@ -108,20 +114,20 @@ describe("auth-token.store", () => {
 // ---------------------------------------------------------------------------
 
 describe("mergeRequestHeaders — F8 bearer credential", () => {
-  test("menyertakan Authorization header saat token tersedia di store", () => {
-    setAuthToken("ax_abc123");
+  test("menyertakan Authorization header saat token tersedia di session getter", () => {
+    setAuthTokenGetter(() => "ax_abc123");
     const headers = mergeRequestHeaders();
     expect(headers.get("authorization")).toBe("Bearer ax_abc123");
   });
 
-  test("tidak menyertakan Authorization header saat store kosong", () => {
-    // store sudah di-clear oleh beforeEach
+  test("tidak menyertakan Authorization header saat session getter kosong", () => {
+    setAuthTokenGetter(() => null);
     const headers = mergeRequestHeaders();
     expect(headers.get("authorization")).toBeNull();
   });
 
   test("tidak menimpa Authorization header yang sudah di-set eksplisit oleh caller", () => {
-    setAuthToken("ax_dari_store");
+    setAuthTokenGetter(() => "ax_dari_session");
     const headers = mergeRequestHeaders({
       authorization: "Bearer ax_dari_caller",
     });
@@ -129,19 +135,16 @@ describe("mergeRequestHeaders — F8 bearer credential", () => {
   });
 
   test("tetap menyertakan accept: application/json bersama Authorization", () => {
-    setAuthToken("ax_abc123");
+    setAuthTokenGetter(() => "ax_abc123");
     const headers = mergeRequestHeaders();
     expect(headers.get("accept")).toBe("application/json");
     expect(headers.get("authorization")).toBe("Bearer ax_abc123");
   });
 
-  test("tidak menyimpan token ke localStorage atau sessionStorage", () => {
-    setAuthToken("ax_abc123");
-    // Bun tidak menyediakan localStorage/sessionStorage — keberadaan token
-    // hanya bisa dibuktikan via getAuthToken(), bukan via storage API.
-    // Test ini memastikan getAuthToken() adalah satu-satunya sumber token.
-    expect(getAuthToken()).toBe("ax_abc123");
-    expect(typeof localStorage).toBe("undefined");
-    expect(typeof sessionStorage).toBe("undefined");
+  test("menggunakan getter sesi sebagai satu-satunya sumber bearer token", () => {
+    setAuthTokenGetter(() => "ax_abc123");
+    const headers = mergeRequestHeaders();
+    expect(headers.get("authorization")).toBe("Bearer ax_abc123");
+    expect(getAuthToken()).toBeNull();
   });
 });
