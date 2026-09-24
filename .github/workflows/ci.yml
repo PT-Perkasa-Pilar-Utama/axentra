@@ -107,6 +107,16 @@ jobs:
       S3_FORCE_PATH_STYLE: true
     steps:
       - uses: actions/checkout@v5
+
+      - name: Load integration authentication fixture
+        run: |
+          identity_line="$(grep '^AUTH_LOCAL_IDENTITY_DIRECTORY=' .env.example)"
+          if [ -z "$identity_line" ]; then
+            echo "AUTH_LOCAL_IDENTITY_DIRECTORY is missing from .env.example"
+            exit 1
+          fi
+          echo "$identity_line" >> "$GITHUB_ENV"
+
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
