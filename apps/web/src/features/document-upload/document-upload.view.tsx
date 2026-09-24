@@ -20,6 +20,7 @@ const toastIconPaths = {
   success: [...fileOutlinePaths, "m9 15 2 2 4-4"],
   error: [...fileOutlinePaths, "m14.5 12.5-5 5", "m9.5 12.5 5 5"],
 } as const;
+import { UserSessionBadge } from "../auth/user-session-badge.view";
 
 export type DocumentUploadNotificationViewProps = {
   presenter: DocumentUploadPresenter;
@@ -211,6 +212,14 @@ export function DocumentUploadPage({
         <p className="text-sm text-gray-500 mt-1">
           Unggah file PDF atau batch file DOCX untuk diproses ke dalam sistem manajemen dokumen.
         </p>
+      <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Unggah Dokumen</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Unggah file PDF atau batch file DOCX untuk diproses ke dalam sistem manajemen dokumen.
+          </p>
+        </div>
+        <UserSessionBadge />
       </div>
       <DocumentUploadAreaView presenter={presenter} disabled={disabled} />
     </main>
