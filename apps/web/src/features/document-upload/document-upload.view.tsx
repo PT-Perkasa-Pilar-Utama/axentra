@@ -4,6 +4,7 @@ import {
   useDocumentUploadPresenter,
   type DocumentUploadPresenter,
 } from "./document-upload.presenter";
+import { UserSessionBadge } from "../auth/user-session-badge.view";
 
 export type DocumentUploadNotificationViewProps = {
   presenter: DocumentUploadPresenter;
@@ -196,11 +197,14 @@ export function DocumentUploadPage(): React.JSX.Element {
 
   return (
     <main className="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Unggah Dokumen</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Unggah file PDF atau batch file DOCX untuk diproses ke dalam sistem manajemen dokumen.
-        </p>
+      <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Unggah Dokumen</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Unggah file PDF atau batch file DOCX untuk diproses ke dalam sistem manajemen dokumen.
+          </p>
+        </div>
+        <UserSessionBadge />
       </div>
       <DocumentUploadAreaView presenter={presenter} />
     </main>
