@@ -23,11 +23,33 @@ export type AuthSessionContextValue = {
 
 const AuthSessionContext = createContext<AuthSessionContextValue | null>(null);
 
+export function createUnauthorizedHandler(
+  onUnauthorized?: (currentPath?: string) => void,
+): () => void {
+  return () => {
+    clearSession();
+    const currentPath =
+      typeof window !== "undefined" ? window.location.pathname + window.location.search : "/";
+
+    if (onUnauthorized) {
+      onUnauthorized(currentPath);
+    } else if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+      const target = `/login?from=${encodeURIComponent(currentPath)}`;
+      if (window.location.assign) {
+        window.location.assign(target);
+      } else {
+        window.location.href = target;
+      }
+    }
+  };
+}
+
 export type AuthSessionProviderProps = {
   children?: React.ReactNode;
   initialSession?: AuthSession | null;
   logoutApiFn?: () => Promise<{ message: string }>;
   getMeApiFn?: () => Promise<AuthUser>;
+  onUnauthorized?: (currentPath?: string) => void;
 };
 
 export function AuthSessionProvider({
@@ -35,6 +57,7 @@ export function AuthSessionProvider({
   initialSession,
   logoutApiFn = defaultLogoutApi,
   getMeApiFn = getAuthMe,
+  onUnauthorized,
 }: AuthSessionProviderProps): React.JSX.Element {
   const [session, setSession] = useState<AuthSession | null>(() => {
     if (initialSession !== undefined) return initialSession;
@@ -43,9 +66,9 @@ export function AuthSessionProvider({
   const [isLoading, setIsLoading] = useState(false);
 
   const handleUnauthorized = useCallback((): void => {
-    clearSession();
     setSession(null);
-  }, []);
+    createUnauthorizedHandler(onUnauthorized)();
+  }, [onUnauthorized]);
 
   useEffect(() => {
     setAuthTokenGetter(getAuthToken);

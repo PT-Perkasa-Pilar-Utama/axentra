@@ -21,7 +21,14 @@ const queryClient = new QueryClient({
 createRoot(rootElement).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <AuthSessionProvider>
+      <AuthSessionProvider
+        onUnauthorized={(currentPath) => {
+          void router.navigate("/login", {
+            state: { from: { pathname: currentPath || "/" } },
+            replace: true,
+          });
+        }}
+      >
         <RouterProvider router={router} />
       </AuthSessionProvider>
     </QueryClientProvider>

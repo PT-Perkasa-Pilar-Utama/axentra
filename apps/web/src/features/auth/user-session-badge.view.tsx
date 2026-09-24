@@ -1,7 +1,13 @@
 import type React from "react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
+import type { UserRole } from "@axentra/shared";
 import { useOptionalAuthSession } from "./auth-session.context";
+
+export const USER_ROLE_LABELS: Record<UserRole, string> = {
+  member_team: "Anggota Tim",
+  head_of_team: "Ketua Tim",
+};
 
 export function UserSessionBadge(): React.JSX.Element | null {
   const sessionContext = useOptionalAuthSession();
@@ -11,7 +17,7 @@ export function UserSessionBadge(): React.JSX.Element | null {
   if (!sessionContext?.isAuthenticated || !sessionContext.user) return null;
 
   const { user, logoutSession } = sessionContext;
-  const roleLabel = user.role === "head_of_team" ? "Head of Team" : "Member Team";
+  const roleLabel = USER_ROLE_LABELS[user.role] ?? user.role;
   const userInitials = (user.name || user.email)
     .split(/[\s@._]+/)
     .filter(Boolean)

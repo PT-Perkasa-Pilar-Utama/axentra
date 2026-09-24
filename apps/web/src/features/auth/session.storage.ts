@@ -14,79 +14,40 @@ export const AUTH_SESSION_STORAGE_KEY = "axentra_auth_session";
 
 let inMemorySession: AuthSession | null = null;
 
-function getStorage(type: "local" | "session"): Storage | null {
+function purgeWebStorage(): void {
   try {
-    if (type === "local") {
-      if (typeof localStorage !== "undefined") return localStorage;
-      if (typeof globalThis.localStorage !== "undefined") return globalThis.localStorage;
-    } else {
-      if (typeof sessionStorage !== "undefined") return sessionStorage;
-      if (typeof globalThis.sessionStorage !== "undefined") return globalThis.sessionStorage;
+    if (typeof localStorage !== "undefined") {
+      localStorage.removeItem(AUTH_SESSION_STORAGE_KEY);
     }
   } catch {
-    return null;
+    // Ignore storage restriction
   }
-  return null;
+
+  try {
+    if (typeof sessionStorage !== "undefined") {
+      sessionStorage.removeItem(AUTH_SESSION_STORAGE_KEY);
+    }
+  } catch {
+    // Ignore storage restriction
+  }
 }
 
 export function saveSession(session: AuthSession): void {
+  // Sensitive bearer and refresh tokens MUST remain in memory only per security specs
+  // (docs/technical-specs/09-authentication.md & docs/api-specs/02-authentication.md).
   inMemorySession = session;
-  const local = getStorage("local");
-  const sess = getStorage("session");
-
-  try {
-    const serialized = JSON.stringify(session);
-    if (session.rememberMe) {
-      local?.setItem(AUTH_SESSION_STORAGE_KEY, serialized);
-      sess?.removeItem(AUTH_SESSION_STORAGE_KEY);
-    } else {
-      sess?.setItem(AUTH_SESSION_STORAGE_KEY, serialized);
-      local?.removeItem(AUTH_SESSION_STORAGE_KEY);
-    }
-  } catch {
-    // Storage quota or security restrictions fallback to in-memory
-  }
+  purgeWebStorage();
 }
 
 export function loadSession(): AuthSession | null {
-  if (inMemorySession) return inMemorySession;
-
-  const local = getStorage("local");
-  const sess = getStorage("session");
-
-  try {
-    const raw = sess?.getItem(AUTH_SESSION_STORAGE_KEY) ?? local?.getItem(AUTH_SESSION_STORAGE_KEY);
-
-    if (!raw) return null;
-
-    const parsed = JSON.parse(raw);
-    const validated = authSessionSchema.safeParse(parsed);
-    if (validated.success) {
-      inMemorySession = validated.data;
-      return validated.data;
-    }
-
-    clearSession();
-    return null;
-  } catch {
-    return null;
-  }
+  return inMemorySession;
 }
 
 export function clearSession(): void {
   inMemorySession = null;
-  const local = getStorage("local");
-  const sess = getStorage("session");
-
-  try {
-    sess?.removeItem(AUTH_SESSION_STORAGE_KEY);
-    local?.removeItem(AUTH_SESSION_STORAGE_KEY);
-  } catch {
-    // Ignore storage clear errors
-  }
+  purgeWebStorage();
 }
 
 export function getAuthToken(): string | null {
-  const session = inMemorySession ?? loadSession();
-  return session ? session.token : null;
+  return inMemorySession ? inMemorySession.token : null;
 }
