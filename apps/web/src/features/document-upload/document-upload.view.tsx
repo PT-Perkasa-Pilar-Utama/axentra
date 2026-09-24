@@ -33,7 +33,7 @@ export function DocumentUploadNotificationView({
 
   const isSuccess = notification.type === "success";
   const iconPaths = isSuccess ? toastIconPaths.success : toastIconPaths.error;
-  const statusLabel = isSuccess ? "Upload berhasil." : "Upload gagal.";
+  const statusLabel = isSuccess ? "Unggah berhasil." : "Unggah gagal.";
 
   return (
     <div

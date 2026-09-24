@@ -89,6 +89,33 @@ describe("applyUploadPresenterEvent — pure state transitions", () => {
     expect(state.notification?.message).toBe(UPLOAD_MESSAGES.UNSUPPORTED);
   });
 
+  test("FILES_SELECTED dengan batch campuran PDF + DOCX → status validation_error", () => {
+    const state = from({
+      type: "FILES_SELECTED",
+      files: [
+        pdf("a.pdf"),
+        new File(["content"], "b.docx", {
+          type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        }),
+      ],
+    });
+    expect(state.status).toBe("validation_error");
+    expect(state.notification?.message).toBe(UPLOAD_MESSAGES.MIXED_TYPES);
+  });
+
+  test("FILES_SELECTED dengan lebih dari 10 file DOCX → status validation_error", () => {
+    const files = Array.from(
+      { length: 11 },
+      (_, index) =>
+        new File(["content"], `doc-${index}.docx`, {
+          type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        }),
+    );
+    const state = from({ type: "FILES_SELECTED", files });
+    expect(state.status).toBe("validation_error");
+    expect(state.notification?.message).toBe(UPLOAD_MESSAGES.EXCEEDS_BATCH_LIMIT);
+  });
+
   test("UPLOAD_SUCCEEDED → status processing, bukan success", () => {
     const uploading = from({ type: "FILES_SELECTED", files: [pdf()] });
     const state = from({ type: "UPLOAD_SUCCEEDED", result: makeAcceptedResult() }, uploading);
@@ -145,7 +172,48 @@ describe("DocumentUpload Presenter & View Integration (F9)", () => {
     expect(screen.getByTestId("upload-processing-state")).not.toBeNull();
   });
 
-  test("kegagalan upload menampilkan retry state dan dapat di-retry langsung dari view", async () => {
+  test("file JPG tidak didukung dan tidak memanggil upload", async () => {
+    const uploadFn = mock(async () => makeAcceptedResult());
+    render(<TestIntegration uploadFn={uploadFn} />);
+
+    const fileInput = screen.getByTestId("upload-file-input");
+
+    await act(async () => {
+      fireEvent.change(fileInput, { target: { files: [jpg()] } });
+    });
+
+    expect(uploadFn).not.toHaveBeenCalled();
+    expect(screen.getByTestId("upload-notification")).not.toBeNull();
+    expect(screen.getByTestId("notification-message").textContent).toBe(
+      UPLOAD_MESSAGES.UNSUPPORTED,
+    );
+    expect(screen.getByTestId("upload-empty-prompt")).not.toBeNull();
+  });
+
+  test("unggahan berhasil menampilkan pesan diterima dan kembali ke prompt setelah Unggah Dokumen Lain", async () => {
+    const uploadFn = mock(async () => makeAcceptedResult());
+    render(<TestIntegration uploadFn={uploadFn} />);
+
+    const fileInput = screen.getByTestId("upload-file-input");
+
+    await act(async () => {
+      fireEvent.change(fileInput, { target: { files: [pdf()] } });
+    });
+
+    expect(screen.getByTestId("upload-processing-state")).not.toBeNull();
+    expect(screen.getByTestId("notification-message").textContent).toBe(
+      "File diterima untuk diproses",
+    );
+
+    const anotherButton = screen.getByTestId("upload-another-button");
+    await act(async () => {
+      fireEvent.click(anotherButton);
+    });
+
+    expect(screen.getByTestId("upload-empty-prompt")).not.toBeNull();
+  });
+
+  test("kegagalan upload menampilkan retry state, mempertahankan nama file, dan dapat di-retry langsung dari view", async () => {
     let callCount = 0;
     const uploadFn = mock(async () => {
       callCount++;
@@ -159,11 +227,12 @@ describe("DocumentUpload Presenter & View Integration (F9)", () => {
 
     // 1. Upload pertama disimulasikan gagal
     await act(async () => {
-      fireEvent.change(fileInput, { target: { files: [pdf()] } });
+      fireEvent.change(fileInput, { target: { files: [pdf("gagal.pdf")] } });
     });
 
     expect(uploadFn).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("upload-retry-state")).not.toBeNull();
+    expect(screen.getByTestId("upload-retained-files").textContent).toContain("gagal.pdf");
 
     // 2. Klik tombol retry yang dirender di view
     const retryButton = screen.getByTestId("upload-retry-button");
