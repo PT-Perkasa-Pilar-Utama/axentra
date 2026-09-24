@@ -2,7 +2,7 @@
 
 ## Axentra: Document Management System
 
-**Version:** 0.1.0  
+**Version:** 1.0.0<br>
 **Status:** Foundation active  
 **Phase:** Foundation
 

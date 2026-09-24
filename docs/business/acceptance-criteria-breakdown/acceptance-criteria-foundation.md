@@ -57,3 +57,12 @@ Given dependencies are installed
 When a developer runs bun run complete-check
 Then type-check, lint, format check, unit tests, and builds pass
 ```
+
+## AC-FND-07 - Inspect Local PostgreSQL with Drizzle Studio
+
+```gherkin
+Given local PostgreSQL is running and .env contains DATABASE_URL
+When a developer runs bun run db:studio from the repository root
+Then Drizzle Studio starts with the packages/db schema and local database configuration
+And it binds only to 127.0.0.1 and prints the local address for the database explorer
+```

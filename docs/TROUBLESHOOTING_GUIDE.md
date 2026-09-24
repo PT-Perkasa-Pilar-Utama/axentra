@@ -2,7 +2,7 @@
 
 ## Axentra: Document Management System
 
-**Version:** 0.1.0  
+**Version:** 1.0.0<br>
 **Date:** 2026-09-16  
 **Author:** Arya Isnaidi (Tech Lead)  
 **Status:** Living Document

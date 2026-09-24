@@ -2,7 +2,7 @@
 
 ## Axentra: Document Management System
 
-**Version:** 0.1.0  
+**Version:** 1.0.0<br>
 **Date:** 2026-09-16  
 **Author:** Arya Isnaidi (Tech Lead)  
 **Status:** Draft for Sprint Planning
@@ -94,6 +94,12 @@ assign ongoing backend delivery to the Tech Lead. Sami remains the primary Backe
 supports assigned Backend cards as implementation support. Sprint 1 assigns Arya BE-S1-03,
 BE-S1-05, and BE-S1-06, while Arya retains Tech Lead review and acceptance sign-off for the
 overall release.
+
+## Foundation Maintenance
+
+| Card ID | Board Card Title             | Task Description                                                              | AC        | PIC  | Est  | Docs                                                   |
+| ------- | ---------------------------- | ----------------------------------------------------------------------------- | --------- | ---- | ---- | ------------------------------------------------------ |
+| FND-09  | Add database studio shortcut | Expose a root command for local PostgreSQL inspection through Drizzle Studio. | AC-FND-07 | Arya | 0.2d | ONBOARDING_GUIDE.md, acceptance-criteria-foundation.md |
 
 ## Sprint 1: Upload, Duplicate Detection, Metadata
 
