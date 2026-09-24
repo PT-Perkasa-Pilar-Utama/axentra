@@ -237,7 +237,7 @@ bun --env-file=.env packages/db/src/migrate.ts
 
 For containerized runtime, the command must be exposed as an equivalent migration entrypoint.
 
-Foundation v1.0.0 has no business tables, but the migration gate still runs to verify the Drizzle
+Foundation v0.1.0 has no business tables, but the migration gate still runs to verify the Drizzle
 boundary.
 
 ### 5.4 Object Storage Setup

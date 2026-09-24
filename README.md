@@ -1,7 +1,7 @@
 # Axentra
 
 Axentra is an internal Document Management System. This repository currently contains
-**Axentra Foundation v1.0.0**: the approved engineering base for the Web, API, Worker,
+**Axentra Foundation v0.1.0**: the approved engineering base for the Web, API, Worker,
 database, queue, storage, observability, documentation, and CI workflow.
 
 Business features from US-01 through US-13 are intentionally not implemented in this
@@ -53,7 +53,7 @@ This starts PostgreSQL, Redis, and MinIO.
 bun run db:migrate
 ```
 
-Foundation v1.0.0 intentionally has no business tables, so migration generation reports no
+Foundation v0.1.0 intentionally has no business tables, so migration generation reports no
 schema changes until a reviewed sprint task adds a domain schema.
 
 ### 5. Start the application processes
@@ -189,7 +189,7 @@ bun run db:migrate
 
 ## API Surface
 
-Foundation v1.0.0 exposes only operational health endpoints:
+Foundation v0.1.0 exposes only operational health endpoints:
 
 | Method | Path                   | Purpose                                            |
 | ------ | ---------------------- | -------------------------------------------------- |
@@ -225,7 +225,7 @@ domain workflows are excluded until their sprint scope is reviewed and approved.
 | [docs/TROUBLESHOOTING_GUIDE.md](docs/TROUBLESHOOTING_GUIDE.md)               | Local troubleshooting runbook                                         |
 
 Business, API, and technical docs may describe planned scope, but implementation remains limited
-to Foundation v1.0.0 until the related sprint is approved.
+to Foundation v0.1.0 until the related sprint is approved.
 
 ---
 

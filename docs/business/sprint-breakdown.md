@@ -1,7 +1,7 @@
 # Sprint Breakdown
 
 The BA workbook does not define sprint numbers. This document proposes implementation sequencing
-from the approved user stories and acceptance criteria. Foundation v1.0.0 is already implemented;
+from the approved user stories and acceptance criteria. Foundation v0.1.0 is already implemented;
 all BA features below are planned.
 
 ## Sprint Overview

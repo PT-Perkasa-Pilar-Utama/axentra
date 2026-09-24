@@ -1,5 +1,4 @@
 import { describe, expect, it } from "bun:test";
-import type { DocumentProcessingJob } from "@axentra/shared";
 import { NotFoundError } from "../../http/errors";
 import { createDocumentService } from "./documents.service";
 import { InMemoryDocumentMetadataRepository } from "./metadata.repository";
@@ -126,7 +125,6 @@ describe("DocumentService - Metadata Operations (Task BE-S1-05)", () => {
         enqueuedPayload = payload;
         return "job-12345";
       },
-      reconcileDocumentProcessing: async (payload: DocumentProcessingJob) => payload.jobId,
       close: async () => undefined,
     };
 

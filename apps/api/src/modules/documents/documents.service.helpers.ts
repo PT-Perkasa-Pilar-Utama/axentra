@@ -6,7 +6,7 @@ import {
   type DocumentMetadataResult,
   type RecentDocument,
 } from "@axentra/shared";
-import { ConflictError, PayloadTooLargeError } from "../../http/errors";
+import { ConflictError } from "../../http/errors";
 import type {
   CreateDocumentBatchItem,
   IDocumentRepository,
@@ -34,7 +34,6 @@ export function sanitizeFilename(filename: string): string {
 
 export function createInMemoryRepository(): IDocumentRepository {
   const existingHashes = new Set<string>();
-  const hashToDocId = new Map<string, string>();
   const savedBatches: CreateDocumentBatchItem[][] = [];
   const recentDocuments: RecentDocument[] = [];
   return {
@@ -44,11 +43,6 @@ export function createInMemoryRepository(): IDocumentRepository {
         if (existingHashes.has(h)) found.add(h);
       }
       return found;
-    },
-    findByContentHash: async (contentHash: string) => {
-      const docId = hashToDocId.get(contentHash);
-      if (!docId) return null;
-      return { documentId: docId, contentHash };
     },
     listRecentDocuments: async (page, limit): Promise<RecentDocumentPage> => {
       const start = (page - 1) * limit;
@@ -69,7 +63,6 @@ export function createInMemoryRepository(): IDocumentRepository {
       savedBatches.push([...items]);
       for (const item of items) {
         existingHashes.add(item.contentHash);
-        hashToDocId.set(item.contentHash, item.id);
         recentDocuments.unshift({
           id: item.id,
           filename: item.originalName,
@@ -90,30 +83,7 @@ export function createInMemoryRepository(): IDocumentRepository {
     },
     findDocumentById: async () => null,
     findDocumentFileByDocumentId: async () => null,
-    markProcessingEnqueueFailed: async () => undefined,
   };
-}
-
-/**
- * Creates a bounded stream that counts incoming bytes and aborts immediately
- * with PayloadTooLargeError as soon as total bytes exceed maxBytes.
- */
-export function createBoundedStream(
-  source: ReadableStream<Uint8Array>,
-  maxBytes: number,
-): ReadableStream<Uint8Array> {
-  let totalBytes = 0;
-  const transform = new TransformStream<Uint8Array, Uint8Array>({
-    transform(chunk, controller) {
-      totalBytes += chunk.byteLength;
-      if (totalBytes > maxBytes) {
-        controller.error(new PayloadTooLargeError(DOCUMENT_COPY.FILE_TOO_LARGE));
-        return;
-      }
-      controller.enqueue(chunk);
-    },
-  });
-  return source.pipeThrough(transform);
 }
 
 export function createInMemoryStorage(): StorageAdapter {

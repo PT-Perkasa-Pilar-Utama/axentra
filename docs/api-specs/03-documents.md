@@ -2,7 +2,7 @@
 
 Source: BA user stories US-01, US-02, US-03, US-07, US-08, US-09, US-10.
 
-These APIs are planned and not implemented in Foundation v1.0.0.
+These APIs are planned and not implemented in Foundation v0.1.0.
 
 ## Planned Endpoints
 
@@ -115,7 +115,6 @@ Status: Implemented (BE-S1-02).
 - `403 FORBIDDEN`: Non-member role (e.g. `head_of_team`).
 - `409 DUPLICATE_DOCUMENT`: Content identical to existing document or intra-batch duplicate.
 - `413 PAYLOAD_TOO_LARGE`: Individual or aggregate size exceeds 50 MB.
-- `503 PROCESSING_UNAVAILABLE`: One or more stored files in the batch could not be placed on the processing queue. The queue command is bounded by `REDIS_HEALTH_TIMEOUT_MS`, so an unavailable Redis returns this response instead of waiting indefinitely. The error message is `Antrean pemrosesan dokumen tidak tersedia`. `error.details` lists every persisted file: `field` is the document id and `message` is `queued <filename>` or `failed <filename>`. `queued` means that file already has a runnable job. `failed` means that file was not enqueued and is marked failed with the same message. If that status write also fails, the API returns `500` and those rows stay `queued`, where recovery still finds them. The worker re-enqueues both states, replaces a retained completed or failed queue job, and processing then reaches `completed` or a non-enqueue `failed` state. A `200` means every file in the batch has a runnable queue job. Retrying the same bytes returns `409 DUPLICATE_DOCUMENT`; use the document ids in `details` to reconcile the original request.
 
 #### Constraints and Limits
 

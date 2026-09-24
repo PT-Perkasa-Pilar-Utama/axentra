@@ -1,6 +1,6 @@
 # Autocomplete Strategy
 
-Autocomplete is not implemented in Foundation v1.0.0.
+Autocomplete is not implemented in Foundation v0.1.0.
 
 This document exists to reserve the technical approach for future DMS master-data fields such as
 document category and Smart Tag filtering.

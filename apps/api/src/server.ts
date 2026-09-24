@@ -5,10 +5,8 @@ import { createQueueProducer, createRedisProbe } from "@axentra/queue";
 import { createS3StorageAdapter } from "@axentra/storage";
 import { createApp } from "./app";
 import { createAuthService } from "./modules/auth/auth.service";
-import { createRuntimeAuthenticator } from "./modules/auth/runtime-authenticator";
 import { DocumentRepository } from "./modules/documents/documents.repository";
 import { createDocumentService } from "./modules/documents/documents.service";
-import { DrizzleDocumentContentHashRepository } from "./modules/documents/duplicate.repository";
 import { DrizzleDocumentMetadataRepository } from "./modules/documents/metadata.repository";
 
 const closeResourcesWithinDeadline = async (
@@ -44,11 +42,7 @@ async function start(): Promise<void> {
   });
   const database = createDatabaseClient(config.DATABASE_URL);
   const redis = createRedisProbe(config.REDIS_URL, config.REDIS_HEALTH_TIMEOUT_MS);
-  const queue = createQueueProducer(
-    config.QUEUE_NAME,
-    config.REDIS_URL,
-    config.REDIS_HEALTH_TIMEOUT_MS,
-  );
+  const queue = createQueueProducer(config.QUEUE_NAME, config.REDIS_URL);
   const storage = createS3StorageAdapter(config);
 
   try {
@@ -67,9 +61,7 @@ async function start(): Promise<void> {
     throw error;
   }
 
-  const authService = createAuthService({
-    authenticator: createRuntimeAuthenticator(config),
-  });
+  const authService = createAuthService();
   const documentRepository = new DocumentRepository(database.db);
   const documentService = createDocumentService({
     repository: documentRepository,
@@ -77,7 +69,6 @@ async function start(): Promise<void> {
     queue,
     logger,
     metadataRepository: new DrizzleDocumentMetadataRepository(database.db),
-    contentHashRepository: new DrizzleDocumentContentHashRepository(database.db),
   });
 
   const app = createApp({

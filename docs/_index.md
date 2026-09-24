@@ -3,7 +3,7 @@
 ## Axentra: Document Management System
 
 This folder mirrors the documentation layout used by previous internal projects while keeping the
-content specific to Axentra Foundation v1.0.0.
+content specific to Axentra Foundation v0.1.0.
 
 ## Start Here
 

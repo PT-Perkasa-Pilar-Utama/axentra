@@ -1,9 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  createRedisProbe,
-  queueCommandConnectionOptions,
-  redisConnectionOptions,
-} from "../src/connection";
+import { createRedisProbe, redisConnectionOptions } from "../src/connection";
 
 describe("Redis connection boundary", () => {
   test("parses Redis URLs including TLS and database selection", () => {
@@ -15,15 +11,6 @@ describe("Redis connection boundary", () => {
     expect(options.username).toBe("queue-user");
     expect(options.password).toBe("queue-pass");
     expect(options.tls).toEqual({});
-  });
-
-  test("bounds queue commands when Redis is unavailable", () => {
-    const options = queueCommandConnectionOptions("redis://127.0.0.1:6399/0", 1500);
-
-    expect(options.connectTimeout).toBe(1500);
-    expect(options.commandTimeout).toBe(1500);
-    expect(options.maxRetriesPerRequest).toBe(1);
-    expect(options.enableOfflineQueue).toBe(false);
   });
 
   test("bounds an unavailable Redis health probe", async () => {

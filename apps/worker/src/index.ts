@@ -1,7 +1,7 @@
 import { loadWorkerConfigFromRuntime } from "@axentra/config";
 import { checkDatabase, closeDatabase, createDatabaseClient } from "@axentra/db";
 import { createLogger, jobLogger, summarizeError } from "@axentra/observability";
-import { createQueueProducer, createQueueWorker, createRedisProbe } from "@axentra/queue";
+import { createQueueWorker, createRedisProbe } from "@axentra/queue";
 import { createS3StorageAdapter } from "@axentra/storage";
 import type { DocumentProcessingJob, SystemHealthCheckJob } from "@axentra/shared";
 import { closeResourcesWithinDeadline, closeWorkerWithinDeadline } from "./lifecycle";
@@ -9,7 +9,6 @@ import {
   DrizzleDocumentProcessingRepository,
   processDocumentJob,
 } from "./processors/document.processor";
-import { startProcessingRecovery } from "./processors/processing-recovery";
 
 async function start(): Promise<void> {
   const config = loadWorkerConfigFromRuntime();
@@ -36,16 +35,6 @@ async function start(): Promise<void> {
   }
 
   const documentProcessingRepository = new DrizzleDocumentProcessingRepository(database.db);
-  const recoveryQueue = createQueueProducer(
-    config.QUEUE_NAME,
-    config.REDIS_URL,
-    config.REDIS_HEALTH_TIMEOUT_MS,
-  );
-  const stopProcessingRecovery = startProcessingRecovery({
-    repository: documentProcessingRepository,
-    queue: recoveryQueue,
-    logger,
-  });
 
   const handleSystemHealthCheck = async (payload: SystemHealthCheckJob): Promise<void> => {
     jobLogger(logger, payload.jobId).info(
@@ -84,14 +73,8 @@ async function start(): Promise<void> {
       }),
       new Promise((resolve) => setTimeout(resolve, config.WORKER_SHUTDOWN_TIMEOUT_MS)),
     ]);
-    stopProcessingRecovery();
     await closeResourcesWithinDeadline(
-      [
-        () => closeDatabase(database),
-        () => redis.close(),
-        () => storage.close(),
-        () => recoveryQueue.close(),
-      ],
+      [() => closeDatabase(database), () => redis.close(), () => storage.close()],
       config.WORKER_SHUTDOWN_TIMEOUT_MS,
       (cleanupError) =>
         logger.warn({ error: summarizeError(cleanupError) }, "Worker cleanup failed"),
@@ -116,14 +99,8 @@ async function start(): Promise<void> {
     if (workerCloseMode === "forced") {
       logger.warn("Worker exceeded graceful shutdown deadline; active jobs were cancelled");
     }
-    stopProcessingRecovery();
     const resourcesClosed = await closeResourcesWithinDeadline(
-      [
-        () => closeDatabase(database),
-        () => redis.close(),
-        () => storage.close(),
-        () => recoveryQueue.close(),
-      ],
+      [() => closeDatabase(database), () => redis.close(), () => storage.close()],
       config.WORKER_SHUTDOWN_TIMEOUT_MS,
       (cleanupError) =>
         logger.warn({ error: summarizeError(cleanupError) }, "Worker cleanup failed"),

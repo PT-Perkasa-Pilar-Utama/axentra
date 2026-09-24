@@ -2,7 +2,7 @@
 
 Source: BA user stories US-04, US-05, US-06.
 
-These APIs are planned and not implemented in Foundation v1.0.0.
+These APIs are planned and not implemented in Foundation v0.1.0.
 
 ## Planned Endpoints
 

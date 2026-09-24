@@ -10,54 +10,40 @@ import {
   type DocumentProcessingJob,
   type SystemHealthCheckJob,
 } from "@axentra/shared";
-import { queueCommandConnectionOptions, redisConnectionOptions } from "./connection";
-import { reconcileRetainedDocumentJob } from "./reconciliation";
+import { redisConnectionOptions } from "./connection";
 
 export type QueueProducer = {
   enqueueSystemHealthCheck: (payload: SystemHealthCheckJob) => Promise<string>;
   enqueueDocumentProcessing: (payload: DocumentProcessingJob) => Promise<string>;
   enqueueDocumentProcess?: ((payload: DocumentProcessJob) => Promise<string>) | undefined;
-  reconcileDocumentProcessing: (payload: DocumentProcessingJob) => Promise<string>;
   close: () => Promise<void>;
 };
 
-export function createQueueProducer(
-  queueName: string,
-  redisUrl: string,
-  commandTimeoutMs = 1500,
-): QueueProducer {
-  const queue = new Queue(queueName, {
-    connection: queueCommandConnectionOptions(redisUrl, commandTimeoutMs),
-  });
+export function createQueueProducer(queueName: string, redisUrl: string): QueueProducer {
+  const queue = new Queue(queueName, { connection: redisConnectionOptions(redisUrl) });
   return {
     async enqueueSystemHealthCheck(payload: SystemHealthCheckJob): Promise<string> {
       const validated = systemHealthCheckJobSchema.parse(payload);
-      const job = await withCommandDeadline(
-        queue.add(systemHealthCheckJobName, validated, {
-          jobId: validated.jobId,
-          attempts: 3,
-          backoff: { type: "exponential", delay: 1000 },
-          removeOnComplete: 100,
-          removeOnFail: 500,
-        }),
-        commandTimeoutMs,
-      );
+      const job = await queue.add(systemHealthCheckJobName, validated, {
+        jobId: validated.jobId,
+        attempts: 3,
+        backoff: { type: "exponential", delay: 1000 },
+        removeOnComplete: 100,
+        removeOnFail: 500,
+      });
       if (job.id === undefined) throw new Error("Queue did not return a job identifier");
       return job.id;
     },
 
     async enqueueDocumentProcessing(payload: DocumentProcessingJob): Promise<string> {
       const validated = documentProcessingJobSchema.parse(payload);
-      const job = await withCommandDeadline(
-        queue.add(documentProcessingJobName, validated, {
-          jobId: validated.jobId,
-          attempts: 3,
-          backoff: { type: "exponential", delay: 1000 },
-          removeOnComplete: 100,
-          removeOnFail: 500,
-        }),
-        commandTimeoutMs,
-      );
+      const job = await queue.add(documentProcessingJobName, validated, {
+        jobId: validated.jobId,
+        attempts: 3,
+        backoff: { type: "exponential", delay: 1000 },
+        removeOnComplete: 100,
+        removeOnFail: 500,
+      });
       if (job.id === undefined) throw new Error("Queue did not return a job identifier");
       return job.id;
     },
@@ -66,40 +52,10 @@ export function createQueueProducer(
       return this.enqueueDocumentProcessing(payload);
     },
 
-    async reconcileDocumentProcessing(payload: DocumentProcessingJob): Promise<string> {
-      const validated = documentProcessingJobSchema.parse(payload);
-      return reconcileRetainedDocumentJob(
-        validated,
-        (jobId) => withCommandDeadline(queue.getJob(jobId), commandTimeoutMs),
-        (next) => this.enqueueDocumentProcessing(next),
-      );
-    },
-
     async close(): Promise<void> {
       await queue.close();
     },
   };
-}
-
-async function withCommandDeadline<T>(operation: Promise<T>, timeoutMs: number): Promise<T> {
-  void observeQueueCommand(operation);
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_resolve, reject) => {
-    timer = setTimeout(() => reject(new Error("Queue command timed out")), timeoutMs);
-  });
-  try {
-    return await Promise.race([operation, timeout]);
-  } finally {
-    if (timer !== undefined) clearTimeout(timer);
-  }
-}
-
-async function observeQueueCommand(operation: Promise<unknown>): Promise<void> {
-  try {
-    await operation;
-  } catch {
-    // The deadline owns the caller-facing failure. A late rejection stays contained.
-  }
 }
 
 export type SystemHealthJobHandler = (payload: SystemHealthCheckJob) => Promise<void>;

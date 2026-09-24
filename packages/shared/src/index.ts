@@ -55,9 +55,7 @@ export {
   systemHealthCheckJobSchema,
 } from "./queue";
 export type {
-  CheckDuplicateRequest,
   CheckDuplicateResponse,
-  CheckDuplicateSuccessResponse,
   DocumentErrorCode,
   DocumentProcessingStatus,
   DocumentType,
@@ -66,12 +64,10 @@ export type {
   SupportedDocumentExtension,
   SupportedDocumentMimeType,
   UploadDocumentResponse,
-  UploadDocumentSuccessResponse,
 } from "./documents";
 export {
   DOCUMENT_COPY,
   DOCUMENT_ERROR_CODES,
-  PROCESSING_ENQUEUE_FAILURE_MESSAGE,
   DOCUMENT_MIME_ALLOWLIST_BY_TYPE,
   DOCUMENT_TYPES,
   MAX_AGGREGATE_UPLOAD_SIZE_BYTES,
@@ -79,9 +75,7 @@ export {
   MAX_DOCX_BATCH_COUNT,
   SUPPORTED_DOCUMENT_EXTENSIONS,
   SUPPORTED_DOCUMENT_MIME_TYPES,
-  checkDuplicateRequestSchema,
   checkDuplicateResponseSchema,
-  checkDuplicateSuccessResponseSchema,
   documentProcessingStatusSchema,
   documentUploadAcceptedDataSchema,
   documentUploadFileMetaSchema,
@@ -92,5 +86,4 @@ export {
   supportedExtensions,
   supportedMimeTypes,
   uploadDocumentResponseSchema,
-  uploadDocumentSuccessResponseSchema,
 } from "./documents";

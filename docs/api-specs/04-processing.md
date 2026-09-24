@@ -90,7 +90,8 @@ Retrieves extracted document metadata, including author, extraction timestamp, a
 4. **Atomic Persistence & Completion:** Extracted metadata upsert into `document_metadata` and the document status transition to `'completed'` execute inside a single atomic database transaction (`db.transaction`). If any write fails, both are rolled back, and the document is marked as `'failed'` with `error_message`.
 5. **Terminal State:** On successful completion, `documents.processing_status` becomes `'completed'` and `errorMessage` is cleared. On failure, status is updated to `'failed'` with `error_message`.
 
-Accepted uploads enqueue `document.process` with `jobId` equal to the document id. If any queue write in the batch fails, the API returns `503 PROCESSING_UNAVAILABLE` with one `error.details` entry per persisted file. `field` is the document id. `message` is `queued <filename>` when that file already has a job and `failed <filename>` when it does not. Files not yet accepted are marked `failed` with `Antrean pemrosesan dokumen tidak tersedia`. A failed status write leaves the row `queued` and the request returns `500`. The worker scans non-deleted `queued` rows and enqueue-failed rows at startup and every 30 seconds. A retained completed or failed BullMQ job is removed and replaced. A waiting, delayed, prioritized, or active job is left in place, and a failed document row returns to `queued`. The replacement job then moves the document through `processing` to `completed`.
+> [!NOTE]
+> **Dependency Hold (AC-03.01 End-to-End Status):** Automatic triggering of `document.process` upon HTTP upload depends on `BE-S1-02` (persisting file bytes to storage and creating document/file database records on `POST /upload`). While `POST /api/v1/documents/upload` remains unmounted in production configuration to prevent false-success data loss, the worker processing engine and `GET /api/v1/documents/:id/metadata` API are fully implemented, typed, and verified.
 
 ---
 

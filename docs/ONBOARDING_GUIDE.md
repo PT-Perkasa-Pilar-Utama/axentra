@@ -9,7 +9,7 @@
 
 For new developers joining Axentra. Read this before writing code.
 
-Axentra is currently at **Foundation v1.0.0**. The repository contains the approved engineering
+Axentra is currently at **Foundation v0.1.0**. The repository contains the approved engineering
 base for Web, API, Worker, database boundary, queue, storage, observability, CI, and documentation.
 Business features from US-01 through US-13 are planned but intentionally not implemented in the
 foundation release.
@@ -152,7 +152,7 @@ This starts:
 bun run db:migrate
 ```
 
-Foundation v1.0.0 intentionally has no business tables. Business schema appears only after a
+Foundation v0.1.0 intentionally has no business tables. Business schema appears only after a
 reviewed sprint task adds it.
 
 ### 3.5 Start app processes

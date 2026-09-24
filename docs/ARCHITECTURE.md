@@ -14,7 +14,7 @@ React Web -> Hono API on Bun -> PostgreSQL
 
 ## Decision
 
-Foundation v1.0.0 establishes runtime and package boundaries before business features are added.
+Foundation v0.1.0 establishes runtime and package boundaries before business features are added.
 The current system exposes only operational health endpoints and a Web foundation shell.
 
 ## Package Boundaries

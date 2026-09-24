@@ -1,7 +1,7 @@
 # Acceptance Criteria - Foundation
 
 Foundation acceptance criteria are technical implementation criteria created for Axentra
-Foundation v1.0.0. They are not part of the BA workbook.
+Foundation v0.1.0. They are not part of the BA workbook.
 
 ## AC-FND-01 - Workspace and Process Boundaries Exist
 
