@@ -1,5 +1,5 @@
 import { describe, expect, beforeEach, spyOn, test } from "bun:test";
-import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router";
+import { createMemoryRouter, MemoryRouter, Route, Routes, RouterProvider } from "react-router";
 import type { AuthUser, LoginRequest, LoginResponse } from "@axentra/shared";
 import { z } from "zod";
 import { apiRequest, setAuthTokenGetter, setUnauthorizedHandler } from "../src/lib/api-client";
@@ -15,6 +15,7 @@ import { AuthSessionProvider, useAuthSession } from "../src/features/auth/auth-s
 import { ProtectedRoute } from "../src/features/auth/protected-route.view";
 import { UserSessionBadge, USER_ROLE_LABELS } from "../src/features/auth/user-session-badge.view";
 import { LoginPage } from "../src/features/auth/login.view";
+import type { LoginPresenter } from "../src/features/auth/login.presenter";
 import { renderToString } from "react-dom/server";
 
 function createMockStorage(): Storage {
@@ -76,66 +77,10 @@ const mockHeadUser: AuthUser = {
   name: "Siti Rahma",
 };
 
-function NavigationBridge(props: {
-  initialSession: AuthSession | null;
-  onRedirect: (route: string, state: unknown) => void;
-}) {
-  const navigate = useNavigate();
-  const location = useLocation();
-
-  return (
-    <AuthSessionProvider
-      initialSession={props.initialSession}
-      onUnauthorized={(currentPath) => {
-        const targetPath = currentPath && currentPath !== "/" ? currentPath : location.pathname;
-        const redirectState = { from: { pathname: targetPath } };
-        props.onRedirect("/login", redirectState);
-        void navigate("/login", {
-          state: redirectState,
-          replace: true,
-        });
-      }}
-    >
-      <Routes>
-        <Route path="/protected-dashboard" element={<div>Protected Dashboard View</div>} />
-        <Route path="/login" element={<div>Halaman Login Perkasa</div>} />
-      </Routes>
-    </AuthSessionProvider>
-  );
-}
-
 function TestConsumer(props: { onRender: (ctx: ReturnType<typeof useAuthSession>) => void }) {
   const context = useAuthSession();
   props.onRender(context);
   return <div>{context.isAuthenticated ? "Logged In" : "Logged Out"}</div>;
-}
-
-function DestinationTracker(props: { onDestination: (dest: string) => void }) {
-  const location = useLocation();
-  const destination =
-    (location.state as { from?: { pathname: string } })?.from?.pathname || "/upload";
-
-  const loginFn = async (payload: LoginRequest): Promise<LoginResponse> => ({
-    user: {
-      id: "usr-1",
-      email: payload.email,
-      role: "member_team",
-      name: "Aiman",
-    },
-    token: "ax_new_session_token",
-  });
-
-  const handleSuccess = (_response: LoginResponse, _rememberMe: boolean) => {
-    props.onDestination(destination);
-  };
-
-  props.onDestination(destination);
-
-  return (
-    <AuthSessionProvider initialSession={null}>
-      <LoginPage initialEmail="user@perkasa.co.id" loginFn={loginFn} onSuccess={handleSuccess} />
-    </AuthSessionProvider>
-  );
 }
 
 describe("FE-S1-06: In-Memory Token Storage (F1)", () => {
@@ -258,13 +203,16 @@ describe("FE-S1-06: 401 Redirect and Session Cleared (F2, F3)", () => {
   });
 
   test("mounts provider and router, receives 401 from API, clears session, and observes redirect to /login with preserved location (F3)", async () => {
-    let observedRoute = "";
-    let observedState: unknown = null;
-
-    const onRedirect = (route: string, state: unknown) => {
-      observedRoute = route;
-      observedState = state;
-    };
+    Object.defineProperty(globalThis, "window", {
+      value: {
+        location: {
+          pathname: "/protected-dashboard",
+          search: "",
+        },
+      },
+      writable: true,
+      configurable: true,
+    });
 
     const initialSession: AuthSession = {
       user: mockMemberUser,
@@ -272,14 +220,39 @@ describe("FE-S1-06: 401 Redirect and Session Cleared (F2, F3)", () => {
       rememberMe: false,
     };
 
-    const html = renderToString(
-      <MemoryRouter initialEntries={["/protected-dashboard"]}>
-        <NavigationBridge initialSession={initialSession} onRedirect={onRedirect} />
-      </MemoryRouter>,
+    const router = createMemoryRouter(
+      [
+        {
+          path: "/protected-dashboard",
+          element: <div>Protected Dashboard View</div>,
+        },
+        {
+          path: "/login",
+          element: <div>Halaman Login Perkasa</div>,
+        },
+      ],
+      {
+        initialEntries: ["/protected-dashboard"],
+      },
     );
 
-    expect(html).toContain("Protected Dashboard View");
+    const initialHtml = renderToString(
+      <AuthSessionProvider
+        initialSession={initialSession}
+        onUnauthorized={(currentPath) => {
+          void router.navigate("/login", {
+            state: { from: { pathname: currentPath || "/" } },
+            replace: true,
+          });
+        }}
+      >
+        <RouterProvider router={router} />
+      </AuthSessionProvider>,
+    );
+
+    expect(initialHtml).toContain("Protected Dashboard View");
     expect(getAuthToken()).toBe("ax_expiring_token");
+    expect(router.state.location.pathname).toBe("/protected-dashboard");
 
     const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
       createMockFetch(async () => {
@@ -303,12 +276,21 @@ describe("FE-S1-06: 401 Redirect and Session Cleared (F2, F3)", () => {
 
       // Proves token cleared from in-memory session
       expect(getAuthToken()).toBeNull();
-      // Proves navigation redirect to /login observed
-      expect(observedRoute).toBe("/login");
+      // Proves router location updated to /login using production redirect path
+      expect(router.state.location.pathname).toBe("/login");
       // Proves preserved location state contains attempted path
-      expect(observedState).toEqual({
+      expect(router.state.location.state).toEqual({
         from: { pathname: "/protected-dashboard" },
       });
+
+      // Proves rendered HTML becomes the login route
+      const after401Html = renderToString(
+        <AuthSessionProvider>
+          <RouterProvider router={router} />
+        </AuthSessionProvider>,
+      );
+      expect(after401Html).toContain("Halaman Login Perkasa");
+      expect(after401Html).not.toContain("Protected Dashboard View");
     } finally {
       fetchSpy.mockRestore();
     }
@@ -320,42 +302,88 @@ describe("FE-S1-06: Login Success Behavior and Routing (F3)", () => {
     clearSession();
   });
 
-  test("submits login with credentials and observes navigation to saved destination (F3)", () => {
-    let recordedDestination = "";
+  test("submits login with credentials and observes navigation to saved destination (F3)", async () => {
+    let capturedPresenter: LoginPresenter | undefined;
 
-    const onDestination = (dest: string) => {
-      recordedDestination = dest;
-    };
-
-    const html = renderToString(
-      <MemoryRouter
-        initialEntries={[
-          { pathname: "/login", state: { from: { pathname: "/custom-destination" } } },
-        ]}
-      >
-        <DestinationTracker onDestination={onDestination} />
-      </MemoryRouter>,
-    );
-
-    expect(html).toContain("PERKASA");
-    expect(html).toContain("Masuk");
-
-    const mockResponse: LoginResponse = {
+    const mockLoginResponse: LoginResponse = {
       user: mockMemberUser,
       token: "ax_new_session_token",
       refreshToken: "ax_new_rt",
     };
 
-    saveSession({
-      user: mockResponse.user,
-      token: mockResponse.token,
+    const mockLoginFn = async (_payload: LoginRequest): Promise<LoginResponse> => {
+      return mockLoginResponse;
+    };
+
+    const router = createMemoryRouter(
+      [
+        {
+          path: "/login",
+          element: (
+            <LoginPage
+              initialEmail="user@perkasa.co.id"
+              loginFn={mockLoginFn}
+              navigate={(to, opts) => {
+                void router.navigate(to, opts);
+              }}
+              onPresenterReady={(presenter) => {
+                capturedPresenter = presenter;
+              }}
+            />
+          ),
+        },
+        {
+          path: "/custom-destination",
+          element: <div>Halaman Custom Destination Berhasil</div>,
+        },
+      ],
+      {
+        initialEntries: [
+          { pathname: "/login", state: { from: { pathname: "/custom-destination" } } },
+        ],
+      },
+    );
+
+    const initialHtml = renderToString(
+      <AuthSessionProvider initialSession={null}>
+        <RouterProvider router={router} />
+      </AuthSessionProvider>,
+    );
+
+    expect(initialHtml).toContain("PERKASA");
+    expect(initialHtml).toContain("Masuk");
+    expect(router.state.location.pathname).toBe("/login");
+    expect(router.state.location.state).toEqual({
+      from: { pathname: "/custom-destination" },
+    });
+    expect(capturedPresenter).toBeDefined();
+    if (!capturedPresenter) {
+      throw new Error("Presenter failed to initialize");
+    }
+
+    // Submit form with valid credentials
+    const submitSuccess = await capturedPresenter.submitValues({
+      email: "user@perkasa.co.id",
+      password: "ValidPassword123",
       rememberMe: true,
     });
 
+    expect(submitSuccess).toBe(true);
     expect(getAuthToken()).toBe("ax_new_session_token");
     expect(localStorage.getItem(AUTH_SESSION_STORAGE_KEY)).toBeNull();
-    // Proves the saved destination was observed from router location state
-    expect(recordedDestination).toBe("/custom-destination");
+    expect(sessionStorage.getItem(AUTH_SESSION_STORAGE_KEY)).toBeNull();
+
+    // Proves router navigated to the saved destination from state.from
+    expect(router.state.location.pathname).toBe("/custom-destination");
+
+    // Proves rendered HTML becomes the custom destination view
+    const destinationHtml = renderToString(
+      <AuthSessionProvider>
+        <RouterProvider router={router} />
+      </AuthSessionProvider>,
+    );
+    expect(destinationHtml).toContain("Halaman Custom Destination Berhasil");
+    expect(destinationHtml).not.toContain("Masuk");
   });
 
   test("loginSession stores session in memory and updates isAuthenticated", () => {

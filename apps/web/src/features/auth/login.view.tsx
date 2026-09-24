@@ -8,9 +8,15 @@ import { useOptionalAuthSession } from "./auth-session.context";
 
 export { PerkasaLogo, PerkasaBackgroundDecorations, PerkasaLoginForm };
 
-export function LoginPage(props: UseLoginPresenterOptions = {}): React.JSX.Element {
+export type LoginPageProps = UseLoginPresenterOptions & {
+  navigate?: (to: string, options?: { replace?: boolean; state?: unknown }) => void;
+  onPresenterReady?: (presenter: ReturnType<typeof useLoginPresenter>) => void;
+};
+
+export function LoginPage(props: LoginPageProps = {}): React.JSX.Element {
   const sessionContext = useOptionalAuthSession();
-  const navigate = useNavigate();
+  const defaultNavigate = useNavigate();
+  const navigate = props.navigate ?? defaultNavigate;
   const location = useLocation();
 
   const destination =
@@ -30,6 +36,8 @@ export function LoginPage(props: UseLoginPresenterOptions = {}): React.JSX.Eleme
       void navigate(destination, { replace: true });
     },
   });
+
+  props.onPresenterReady?.(presenter);
 
   return (
     <main className="relative flex min-h-screen w-full items-center justify-center bg-[#f4f7f4] px-4 py-8 overflow-hidden">
