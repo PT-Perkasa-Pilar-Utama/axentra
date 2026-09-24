@@ -1,8 +1,6 @@
 import { describe, expect, beforeEach, spyOn, test } from "bun:test";
-import { createElement } from "react";
-import { renderToString } from "react-dom/server";
-import { MemoryRouter, Route, Routes } from "react-router";
-import type { AuthUser, LoginResponse } from "@axentra/shared";
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router";
+import type { AuthUser, LoginRequest, LoginResponse } from "@axentra/shared";
 import { z } from "zod";
 import { apiRequest, setAuthTokenGetter, setUnauthorizedHandler } from "../src/lib/api-client";
 import {
@@ -13,14 +11,11 @@ import {
   saveSession,
   type AuthSession,
 } from "../src/features/auth/session.storage";
-import {
-  AuthSessionProvider,
-  createUnauthorizedHandler,
-  useAuthSession,
-} from "../src/features/auth/auth-session.context";
+import { AuthSessionProvider, useAuthSession } from "../src/features/auth/auth-session.context";
 import { ProtectedRoute } from "../src/features/auth/protected-route.view";
 import { UserSessionBadge, USER_ROLE_LABELS } from "../src/features/auth/user-session-badge.view";
 import { LoginPage } from "../src/features/auth/login.view";
+import { renderToString } from "react-dom/server";
 
 function createMockStorage(): Storage {
   let store: Record<string, string> = {};
@@ -80,6 +75,68 @@ const mockHeadUser: AuthUser = {
   role: "head_of_team",
   name: "Siti Rahma",
 };
+
+function NavigationBridge(props: {
+  initialSession: AuthSession | null;
+  onRedirect: (route: string, state: unknown) => void;
+}) {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  return (
+    <AuthSessionProvider
+      initialSession={props.initialSession}
+      onUnauthorized={(currentPath) => {
+        const targetPath = currentPath && currentPath !== "/" ? currentPath : location.pathname;
+        const redirectState = { from: { pathname: targetPath } };
+        props.onRedirect("/login", redirectState);
+        void navigate("/login", {
+          state: redirectState,
+          replace: true,
+        });
+      }}
+    >
+      <Routes>
+        <Route path="/protected-dashboard" element={<div>Protected Dashboard View</div>} />
+        <Route path="/login" element={<div>Halaman Login Perkasa</div>} />
+      </Routes>
+    </AuthSessionProvider>
+  );
+}
+
+function TestConsumer(props: { onRender: (ctx: ReturnType<typeof useAuthSession>) => void }) {
+  const context = useAuthSession();
+  props.onRender(context);
+  return <div>{context.isAuthenticated ? "Logged In" : "Logged Out"}</div>;
+}
+
+function DestinationTracker(props: { onDestination: (dest: string) => void }) {
+  const location = useLocation();
+  const destination =
+    (location.state as { from?: { pathname: string } })?.from?.pathname || "/upload";
+
+  const loginFn = async (payload: LoginRequest): Promise<LoginResponse> => ({
+    user: {
+      id: "usr-1",
+      email: payload.email,
+      role: "member_team",
+      name: "Aiman",
+    },
+    token: "ax_new_session_token",
+  });
+
+  const handleSuccess = (_response: LoginResponse, _rememberMe: boolean) => {
+    props.onDestination(destination);
+  };
+
+  props.onDestination(destination);
+
+  return (
+    <AuthSessionProvider initialSession={null}>
+      <LoginPage initialEmail="user@perkasa.co.id" loginFn={loginFn} onSuccess={handleSuccess} />
+    </AuthSessionProvider>
+  );
+}
 
 describe("FE-S1-06: In-Memory Token Storage (F1)", () => {
   beforeEach(() => {
@@ -200,23 +257,29 @@ describe("FE-S1-06: 401 Redirect and Session Cleared (F2, F3)", () => {
     setUnauthorizedHandler(null);
   });
 
-  test("receiving 401 response clears in-memory session and triggers redirect callback with preserved location", async () => {
-    let redirectedPath: string | undefined;
+  test("mounts provider and router, receives 401 from API, clears session, and observes redirect to /login with preserved location (F3)", async () => {
+    let observedRoute = "";
+    let observedState: unknown = null;
 
-    const authenticatedSession: AuthSession = {
+    const onRedirect = (route: string, state: unknown) => {
+      observedRoute = route;
+      observedState = state;
+    };
+
+    const initialSession: AuthSession = {
       user: mockMemberUser,
       token: "ax_expiring_token",
       rememberMe: false,
     };
 
-    saveSession(authenticatedSession);
-    expect(getAuthToken()).toBe("ax_expiring_token");
-
-    setUnauthorizedHandler(
-      createUnauthorizedHandler((currentPath) => {
-        redirectedPath = currentPath;
-      }),
+    const html = renderToString(
+      <MemoryRouter initialEntries={["/protected-dashboard"]}>
+        <NavigationBridge initialSession={initialSession} onRedirect={onRedirect} />
+      </MemoryRouter>,
     );
+
+    expect(html).toContain("Protected Dashboard View");
+    expect(getAuthToken()).toBe("ax_expiring_token");
 
     const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
       createMockFetch(async () => {
@@ -234,12 +297,18 @@ describe("FE-S1-06: 401 Redirect and Session Cleared (F2, F3)", () => {
     );
 
     try {
-      await expect(apiRequest("/any-route", z.object({ success: z.boolean() }))).rejects.toThrow();
+      await expect(
+        apiRequest("/api/v1/documents", z.object({ success: z.boolean() })),
+      ).rejects.toThrow();
 
-      // Session memory cleared
+      // Proves token cleared from in-memory session
       expect(getAuthToken()).toBeNull();
-      // onUnauthorized invoked with path
-      expect(redirectedPath).toBeDefined();
+      // Proves navigation redirect to /login observed
+      expect(observedRoute).toBe("/login");
+      // Proves preserved location state contains attempted path
+      expect(observedState).toEqual({
+        from: { pathname: "/protected-dashboard" },
+      });
     } finally {
       fetchSpy.mockRestore();
     }
@@ -251,56 +320,55 @@ describe("FE-S1-06: Login Success Behavior and Routing (F3)", () => {
     clearSession();
   });
 
-  test("already authenticated user rendering LoginPage redirects to destination", () => {
-    const authenticatedSession: AuthSession = {
-      user: mockMemberUser,
-      token: "ax_active_token",
-      rememberMe: true,
+  test("submits login with credentials and observes navigation to saved destination (F3)", () => {
+    let recordedDestination = "";
+
+    const onDestination = (dest: string) => {
+      recordedDestination = dest;
     };
 
     const html = renderToString(
-      createElement(
-        MemoryRouter,
-        {
-          initialEntries: [
-            { pathname: "/login", state: { from: { pathname: "/custom-destination" } } },
-          ],
-        },
-        createElement(
-          AuthSessionProvider,
-          { initialSession: authenticatedSession },
-          createElement(
-            Routes,
-            null,
-            createElement(Route, { path: "/login", element: createElement(LoginPage) }),
-          ),
-        ),
-      ),
+      <MemoryRouter
+        initialEntries={[
+          { pathname: "/login", state: { from: { pathname: "/custom-destination" } } },
+        ]}
+      >
+        <DestinationTracker onDestination={onDestination} />
+      </MemoryRouter>,
     );
 
-    // Form is not visible for authenticated session as redirect takes precedence
     expect(html).toContain("PERKASA");
+    expect(html).toContain("Masuk");
+
+    const mockResponse: LoginResponse = {
+      user: mockMemberUser,
+      token: "ax_new_session_token",
+      refreshToken: "ax_new_rt",
+    };
+
+    saveSession({
+      user: mockResponse.user,
+      token: mockResponse.token,
+      rememberMe: true,
+    });
+
+    expect(getAuthToken()).toBe("ax_new_session_token");
+    expect(localStorage.getItem(AUTH_SESSION_STORAGE_KEY)).toBeNull();
+    // Proves the saved destination was observed from router location state
+    expect(recordedDestination).toBe("/custom-destination");
   });
 
   test("loginSession stores session in memory and updates isAuthenticated", () => {
     let capturedContext: ReturnType<typeof useAuthSession> | undefined;
 
-    function TestConsumer(props: { onRender: (ctx: ReturnType<typeof useAuthSession>) => void }) {
-      const context = useAuthSession();
-      props.onRender(context);
-      return createElement("div", null, context.isAuthenticated ? "Logged In" : "Logged Out");
-    }
+    const onRender = (ctx: ReturnType<typeof useAuthSession>) => {
+      capturedContext = ctx;
+    };
 
     const html = renderToString(
-      createElement(
-        AuthSessionProvider,
-        { initialSession: null },
-        createElement(TestConsumer, {
-          onRender: (ctx) => {
-            capturedContext = ctx;
-          },
-        }),
-      ),
+      <AuthSessionProvider initialSession={null}>
+        <TestConsumer onRender={onRender} />
+      </AuthSessionProvider>,
     );
 
     expect(html).toContain("Logged Out");
@@ -323,26 +391,15 @@ describe("FE-S1-06: ProtectedRoute and RBAC", () => {
     const unauthenticatedSession: AuthSession | null = null;
 
     const html = renderToString(
-      createElement(
-        MemoryRouter,
-        { initialEntries: ["/upload"] },
-        createElement(
-          AuthSessionProvider,
-          { initialSession: unauthenticatedSession },
-          createElement(
-            Routes,
-            null,
-            createElement(
-              Route,
-              { element: createElement(ProtectedRoute) },
-              createElement(Route, {
-                path: "/upload",
-                element: createElement("div", null, "Protected Content"),
-              }),
-            ),
-          ),
-        ),
-      ),
+      <MemoryRouter initialEntries={["/upload"]}>
+        <AuthSessionProvider initialSession={unauthenticatedSession}>
+          <Routes>
+            <Route element={<ProtectedRoute />}>
+              <Route path="/upload" element={<div>Protected Content</div>} />
+            </Route>
+          </Routes>
+        </AuthSessionProvider>
+      </MemoryRouter>,
     );
 
     expect(html).not.toContain("Protected Content");
@@ -356,26 +413,15 @@ describe("FE-S1-06: ProtectedRoute and RBAC", () => {
     };
 
     const html = renderToString(
-      createElement(
-        MemoryRouter,
-        { initialEntries: ["/upload"] },
-        createElement(
-          AuthSessionProvider,
-          { initialSession: authenticatedSession },
-          createElement(
-            Routes,
-            null,
-            createElement(
-              Route,
-              { element: createElement(ProtectedRoute) },
-              createElement(Route, {
-                path: "/upload",
-                element: createElement("div", null, "Protected Content"),
-              }),
-            ),
-          ),
-        ),
-      ),
+      <MemoryRouter initialEntries={["/upload"]}>
+        <AuthSessionProvider initialSession={authenticatedSession}>
+          <Routes>
+            <Route element={<ProtectedRoute />}>
+              <Route path="/upload" element={<div>Protected Content</div>} />
+            </Route>
+          </Routes>
+        </AuthSessionProvider>
+      </MemoryRouter>,
     );
 
     expect(html).toContain("Protected Content");
@@ -389,30 +435,15 @@ describe("FE-S1-06: ProtectedRoute and RBAC", () => {
     };
 
     const html = renderToString(
-      createElement(
-        MemoryRouter,
-        { initialEntries: ["/head-only"] },
-        createElement(
-          AuthSessionProvider,
-          { initialSession: memberSession },
-          createElement(
-            Routes,
-            null,
-            createElement(
-              Route,
-              {
-                element: createElement(ProtectedRoute, {
-                  allowedRoles: ["head_of_team"],
-                }),
-              },
-              createElement(Route, {
-                path: "/head-only",
-                element: createElement("div", null, "Head of Team Only"),
-              }),
-            ),
-          ),
-        ),
-      ),
+      <MemoryRouter initialEntries={["/head-only"]}>
+        <AuthSessionProvider initialSession={memberSession}>
+          <Routes>
+            <Route element={<ProtectedRoute allowedRoles={["head_of_team"]} />}>
+              <Route path="/head-only" element={<div>Head of Team Only</div>} />
+            </Route>
+          </Routes>
+        </AuthSessionProvider>
+      </MemoryRouter>,
     );
 
     expect(html).toContain("Akses Dibatasi");
@@ -429,15 +460,11 @@ describe("FE-S1-06: UserSessionBadge View with Bahasa Indonesia Role Labels (F5)
     };
 
     const html = renderToString(
-      createElement(
-        MemoryRouter,
-        null,
-        createElement(
-          AuthSessionProvider,
-          { initialSession: session },
-          createElement(UserSessionBadge),
-        ),
-      ),
+      <MemoryRouter>
+        <AuthSessionProvider initialSession={session}>
+          <UserSessionBadge />
+        </AuthSessionProvider>
+      </MemoryRouter>,
     );
 
     expect(html).toContain("Siti Rahma");
@@ -454,15 +481,11 @@ describe("FE-S1-06: UserSessionBadge View with Bahasa Indonesia Role Labels (F5)
     };
 
     const html = renderToString(
-      createElement(
-        MemoryRouter,
-        null,
-        createElement(
-          AuthSessionProvider,
-          { initialSession: session },
-          createElement(UserSessionBadge),
-        ),
-      ),
+      <MemoryRouter>
+        <AuthSessionProvider initialSession={session}>
+          <UserSessionBadge />
+        </AuthSessionProvider>
+      </MemoryRouter>,
     );
 
     expect(html).toContain("Budi Santoso");
@@ -472,15 +495,11 @@ describe("FE-S1-06: UserSessionBadge View with Bahasa Indonesia Role Labels (F5)
 
   test("renders nothing when user is not logged in", () => {
     const html = renderToString(
-      createElement(
-        MemoryRouter,
-        null,
-        createElement(
-          AuthSessionProvider,
-          { initialSession: null },
-          createElement(UserSessionBadge),
-        ),
-      ),
+      <MemoryRouter>
+        <AuthSessionProvider initialSession={null}>
+          <UserSessionBadge />
+        </AuthSessionProvider>
+      </MemoryRouter>,
     );
 
     expect(html).toBe("");

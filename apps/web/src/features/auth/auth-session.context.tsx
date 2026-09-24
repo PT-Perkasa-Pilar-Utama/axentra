@@ -60,7 +60,14 @@ export function AuthSessionProvider({
   onUnauthorized,
 }: AuthSessionProviderProps): React.JSX.Element {
   const [session, setSession] = useState<AuthSession | null>(() => {
-    if (initialSession !== undefined) return initialSession;
+    if (initialSession !== undefined) {
+      if (initialSession) {
+        saveSession(initialSession);
+      } else {
+        clearSession();
+      }
+      return initialSession;
+    }
     return loadSession();
   });
   const [isLoading, setIsLoading] = useState(false);
@@ -70,15 +77,15 @@ export function AuthSessionProvider({
     createUnauthorizedHandler(onUnauthorized)();
   }, [onUnauthorized]);
 
-  useEffect(() => {
-    setAuthTokenGetter(getAuthToken);
-    setUnauthorizedHandler(handleUnauthorized);
+  setAuthTokenGetter(getAuthToken);
+  setUnauthorizedHandler(handleUnauthorized);
 
+  useEffect(() => {
     return () => {
       setAuthTokenGetter(null);
       setUnauthorizedHandler(null);
     };
-  }, [handleUnauthorized]);
+  }, []);
 
   const loginSession = useCallback((response: LoginResponse, rememberMe: boolean): void => {
     const newSession: AuthSession = {
