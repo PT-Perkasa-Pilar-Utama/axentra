@@ -42,6 +42,7 @@ if (typeof globalThis.localStorage === "undefined") {
   Object.defineProperty(globalThis, "localStorage", {
     value: createMockStorage(),
     writable: true,
+    configurable: true,
   });
 }
 
@@ -49,6 +50,7 @@ if (typeof globalThis.sessionStorage === "undefined") {
   Object.defineProperty(globalThis, "sessionStorage", {
     value: createMockStorage(),
     writable: true,
+    configurable: true,
   });
 }
 
@@ -75,6 +77,13 @@ const mockHeadUser: AuthUser = {
   email: "head@axentra.local",
   role: "head_of_team",
   name: "Siti Rahma",
+};
+
+const mockAdminUser: AuthUser = {
+  id: "usr-003",
+  email: "admin@axentra.local",
+  role: "admin",
+  name: "Admin Perkasa",
 };
 
 function TestConsumer(props: { onRender: (ctx: ReturnType<typeof useAuthSession>) => void }) {
@@ -596,6 +605,26 @@ describe("FE-S1-06: UserSessionBadge View with Bahasa Indonesia Role Labels (F5)
     expect(html).toContain("Budi Santoso");
     expect(html).toContain("Anggota Tim");
     expect(USER_ROLE_LABELS.member_team).toBe("Anggota Tim");
+  });
+
+  test("renders Bahasa Indonesia role label for admin (Administrator)", () => {
+    const session: AuthSession = {
+      user: mockAdminUser,
+      token: "ax_admin_token",
+      rememberMe: false,
+    };
+
+    const html = renderToString(
+      <MemoryRouter>
+        <AuthSessionProvider initialSession={session}>
+          <UserSessionBadge />
+        </AuthSessionProvider>
+      </MemoryRouter>,
+    );
+
+    expect(html).toContain("Admin Perkasa");
+    expect(html).toContain("Administrator");
+    expect(USER_ROLE_LABELS.admin).toBe("Administrator");
   });
 
   test("renders nothing when user is not logged in", () => {

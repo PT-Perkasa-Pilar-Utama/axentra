@@ -1,6 +1,8 @@
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 // Registrasi DOM harus berjalan paling pertama sebelum file RTL dieksekusi
-GlobalRegistrator.register();
+if (!GlobalRegistrator.isRegistered) {
+  GlobalRegistrator.register();
+}
 
 // Memaksa Bun mengenali 'document' di scope global
 globalThis.document = window.document;
