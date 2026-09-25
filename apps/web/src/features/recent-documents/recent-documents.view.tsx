@@ -47,23 +47,22 @@ export function RecentDocumentsView({ presenter }: RecentDocumentsViewProps): Re
   const hasItems = !presenter.isLoading && !presenter.isError && presenter.items.length > 0;
 
   return (
-    <section aria-label="Semua dokumen" className="mt-6">
-      {/* Header row: section title + pagination */}
-      <div className="flex items-center justify-between rounded-t-2xl border border-b-0 border-gray-200 bg-white px-4 py-3">
+    <section aria-label="Semua dokumen">
+      <div className="mb-3 flex items-center justify-between gap-4">
         <h2 className="text-sm font-semibold text-gray-900">Semua Dokumen</h2>
-        {/* Pagination — limited to page 1 for Sprint 1; full pagination in later sprint. */}
         <nav aria-label="Navigasi halaman" className="flex items-center gap-1 text-gray-500">
           <button
             type="button"
             disabled
             aria-label="Halaman sebelumnya"
-            className="rounded p-1 disabled:opacity-40 hover:bg-gray-100"
+            title="Halaman sebelumnya belum tersedia"
+            className="rounded p-1 text-gray-400 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <ChevronLeftIcon />
           </button>
           <span
             aria-current="page"
-            className="min-w-[1.5rem] text-center text-xs font-medium text-gray-700"
+            className="flex h-8 min-w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-xs font-medium text-gray-700"
           >
             1
           </span>
@@ -71,7 +70,8 @@ export function RecentDocumentsView({ presenter }: RecentDocumentsViewProps): Re
             type="button"
             disabled
             aria-label="Halaman berikutnya"
-            className="rounded p-1 disabled:opacity-40 hover:bg-gray-100"
+            title="Halaman berikutnya belum tersedia"
+            className="rounded p-1 text-[#65a448] hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <ChevronRightIcon />
           </button>
@@ -81,7 +81,7 @@ export function RecentDocumentsView({ presenter }: RecentDocumentsViewProps): Re
       {/* Loading state */}
       {presenter.isLoading && (
         <div
-          className="flex items-center justify-center gap-2 rounded-b-2xl border border-gray-200 bg-white py-12 text-sm text-gray-500"
+          className="flex min-h-48 items-center justify-center gap-2 rounded-2xl border border-[#e1e5e9] bg-white py-12 text-sm text-gray-500"
           role="status"
           aria-label="Memuat daftar dokumen"
         >
@@ -95,7 +95,7 @@ export function RecentDocumentsView({ presenter }: RecentDocumentsViewProps): Re
 
       {/* Error state */}
       {presenter.isError && !presenter.isLoading && (
-        <div className="flex flex-col items-center gap-3 rounded-b-2xl border border-gray-200 bg-white py-12">
+        <div className="flex min-h-48 flex-col items-center justify-center gap-3 rounded-2xl border border-[#e1e5e9] bg-white py-12">
           <p className="text-sm text-rose-600">Gagal memuat dokumen.</p>
           <button
             type="button"
@@ -109,34 +109,38 @@ export function RecentDocumentsView({ presenter }: RecentDocumentsViewProps): Re
 
       {/* Empty state */}
       {presenter.isEmpty && (
-        <p className="rounded-b-2xl border border-gray-200 bg-white py-12 text-center text-sm text-gray-500">
+        <p className="flex min-h-48 items-center justify-center rounded-2xl border border-[#e1e5e9] bg-white px-4 py-12 text-center text-sm text-gray-500">
           {emptyMessage}
         </p>
       )}
 
       {/* Document list */}
       {hasItems && (
-        <ul
-          aria-label="Daftar dokumen"
-          className="divide-y divide-gray-100 rounded-b-2xl border border-t-0 border-gray-200 bg-white"
-        >
+        <ul aria-label="Daftar dokumen" className="space-y-1.5">
           {presenter.items.map((item) => (
-            <li key={item.id} className="flex items-center gap-3 px-4 py-3">
-              {/* Checkbox — bulk download interaction belongs to FE-S3-03 (Aiman). */}
+            <li
+              key={item.id}
+              className="grid min-h-[4.5rem] grid-cols-[1.25rem_minmax(0,1fr)] items-center gap-x-5 rounded-2xl border border-[#e1e5e9] bg-white px-5 py-3 md:grid-cols-[1.25rem_minmax(0,1fr)_minmax(10rem,auto)_minmax(6rem,auto)] md:px-8"
+            >
               <input
                 type="checkbox"
                 aria-label={`Pilih ${item.filename}`}
-                className="h-4 w-4 shrink-0 rounded border-gray-300 accent-[#6fa84f]"
+                className="h-5 w-5 shrink-0 rounded border-gray-300 accent-[#65a448]"
                 readOnly
               />
 
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-gray-900">{item.filename}</p>
+                <p className="truncate text-sm font-medium text-[#535a63]">{item.filename}</p>
+                <p className="mt-1 text-xs text-gray-500 md:hidden">
+                  {item.statusLabel} · {item.dateLabel}
+                </p>
               </div>
 
-              <div className="shrink-0 text-right">
-                <p className="text-xs font-medium text-gray-700">{item.statusLabel}</p>
-                <p className="text-xs text-gray-500">{item.dateLabel}</p>
+              <p className="hidden text-sm font-medium text-[#535a63] md:block">
+                {item.statusLabel}
+              </p>
+              <div className="hidden shrink-0 text-right md:block">
+                <p className="text-xs text-[#9aa2ad]">{item.dateLabel}</p>
               </div>
             </li>
           ))}

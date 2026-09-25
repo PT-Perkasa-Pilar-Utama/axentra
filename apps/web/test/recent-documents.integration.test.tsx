@@ -134,6 +134,9 @@ describe("Recent documents refresh after processing", () => {
       renderDashboard(queryClient);
     });
 
+    expect(screen.getByRole("heading", { name: "Dashboard" })).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "Navigasi utama" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Dashboard" })).toBeTruthy();
     expect(await screen.findByText("Tidak ada hasil yang ditemukan")).toBeTruthy();
 
     stage.current = "queued";
@@ -144,6 +147,7 @@ describe("Recent documents refresh after processing", () => {
 
     expect(await screen.findByText("laporan.pdf")).toBeTruthy();
     expect(screen.getByText("Dalam Antrean")).toBeTruthy();
+    expect(screen.getAllByTestId("upload-notification")).toHaveLength(1);
 
     stage.current = "completed";
     await act(async () => {

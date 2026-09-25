@@ -39,7 +39,7 @@ export function DocumentUploadNotificationView({
   return (
     <div
       data-testid="upload-notification"
-      className={`upload-notification fixed left-1/2 top-20 z-50 flex w-full max-w-md -translate-x-1/2 items-center gap-4 px-6 py-4 rounded-xl text-sm text-gray-900 shadow-md transition-all ${
+      className={`upload-notification fixed z-50 flex w-full max-w-md items-center gap-4 rounded-xl px-6 py-4 text-sm text-gray-900 shadow-md transition-all ${
         isSuccess ? "bg-[#c9f0dc]" : "bg-[#f0a7a7]"
       }`}
       role="alert"
