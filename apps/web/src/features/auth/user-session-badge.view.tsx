@@ -7,6 +7,7 @@ import { useOptionalAuthSession } from "./auth-session.context";
 export const USER_ROLE_LABELS: Record<UserRole, string> = {
   member_team: "Anggota Tim",
   head_of_team: "Ketua Tim",
+  admin: "Administrator",
 };
 
 export function UserSessionBadge(): React.JSX.Element | null {
