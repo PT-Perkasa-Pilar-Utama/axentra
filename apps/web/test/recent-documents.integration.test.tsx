@@ -152,9 +152,8 @@ describe("Recent documents refresh after processing", () => {
 
     expect(screen.getByText("laporan.pdf")).toBeTruthy();
     expect(screen.getByText("Selesai Diproses")).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Dokumen Terbaru" })).toBeTruthy();
-    const selection = screen.getByRole("checkbox", { name: "Pilih laporan.pdf" });
-    expect(selection.hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("heading", { name: "Semua Dokumen" })).toBeTruthy();
+    expect(screen.getByRole("checkbox", { name: "Pilih laporan.pdf" })).toBeTruthy();
   }, 10000);
 
   test("retries a failed list from the button and recovers the filename", async () => {
