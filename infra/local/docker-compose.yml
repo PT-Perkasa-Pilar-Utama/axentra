@@ -35,7 +35,7 @@ services:
       retries: 12
 
   minio:
-    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+    image: ghcr.io/coollabsio/minio:latest
     container_name: axentra-minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
@@ -48,7 +48,7 @@ services:
     volumes:
       - axentra_minio_data:/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ["CMD", "mc", "ready", "local"]
       interval: 5s
       timeout: 5s
       retries: 12

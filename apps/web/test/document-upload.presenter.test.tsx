@@ -1,12 +1,5 @@
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
-// Registrasi DOM harus berjalan paling pertama sebelum file RTL dieksekusi
-GlobalRegistrator.register();
-
-// Memaksa Bun mengenali 'document' di scope global
-globalThis.document = window.document;
-global.document = window.document;
-
-import { describe, expect, test, mock, afterEach, afterAll } from "bun:test";
+import { describe, expect, test, mock, afterEach } from "bun:test";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React from "react";
 import type { DocumentUploadAcceptedData } from "@axentra/shared";
 import { UPLOAD_MESSAGES } from "../src/features/document-upload/document-upload.rules";
@@ -19,23 +12,11 @@ import {
   type UploadPresenterState,
 } from "../src/features/document-upload/document-upload.state";
 
-// 1. Kita ambil tipenya saja agar lolos linter (tanpa memicu hoisting eksekusi)
-import type * as TestingLibraryReact from "@testing-library/react";
-
-// 2. Kita gunakan require untuk memaksa RTL dieksekusi SETELAH DOM siap,
-// lalu di-cast as typeof agar tidak dianggap 'any' oleh oxlint.
-const rtl = require("@testing-library/react") as typeof TestingLibraryReact;
-const { render, fireEvent, act, cleanup, screen } = rtl;
+import { render, fireEvent, act, cleanup, screen } from "@testing-library/react";
 
 // Bersihkan state komponen RTL setelah setiap tes
 afterEach(() => {
   cleanup();
-});
-
-// PENTING: Copot Happy DOM setelah semua tes frontend selesai,
-// agar object global seperti FormData tidak tumpang tindih dan merusak tes Backend!
-afterAll(() => {
-  GlobalRegistrator.unregister();
 });
 
 // ---------------------------------------------------------------------------
@@ -145,7 +126,20 @@ describe("applyUploadPresenterEvent — pure state transitions", () => {
 function TestIntegration({
   uploadFn,
 }: {
-  uploadFn?: (files: File[]) => Promise<DocumentUploadAcceptedData>;
+  uploadFn?: ((files: File[]) => Promise<DocumentUploadAcceptedData>) | undefined;
+}) {
+  const client = new QueryClient();
+  return (
+    <QueryClientProvider client={client}>
+      <InnerTest uploadFn={uploadFn} />
+    </QueryClientProvider>
+  );
+}
+
+function InnerTest({
+  uploadFn,
+}: {
+  uploadFn?: ((files: File[]) => Promise<DocumentUploadAcceptedData>) | undefined;
 }) {
   const options = uploadFn ? { uploadFn } : undefined;
   const presenter = useDocumentUploadPresenter(options);
