@@ -130,31 +130,14 @@ export function RecentDocumentsView({ presenter }: RecentDocumentsViewProps): Re
                 readOnly
               />
 
-              {/* Filename + size */}
-              <div className="w-44 min-w-0 shrink-0">
+              <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-gray-900">{item.filename}</p>
-                {item.sizeLabel != null && (
-                  <p className="text-xs text-gray-500">{item.sizeLabel}</p>
-                )}
               </div>
 
-              {/* Tag chips — populated by FE-S2-01 (Azis) in Sprint 2. */}
-              <div className="flex min-w-0 flex-1 flex-wrap gap-1" aria-label="Tag">
-                {item.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="rounded-full border border-gray-300 px-2.5 py-0.5 text-xs text-gray-700"
-                  >
-                    {tag}
-                  </span>
-                ))}
+              <div className="shrink-0 text-right">
+                <p className="text-xs font-medium text-gray-700">{item.statusLabel}</p>
+                <p className="text-xs text-gray-500">{item.dateLabel}</p>
               </div>
-
-              {/* Category — populated by FE-S2-03 (Aiman) in Sprint 2. */}
-              <div className="w-24 shrink-0 text-sm text-gray-700">{item.category}</div>
-
-              {/* Upload date */}
-              <div className="w-24 shrink-0 text-right text-xs text-gray-500">{item.dateLabel}</div>
             </li>
           ))}
         </ul>

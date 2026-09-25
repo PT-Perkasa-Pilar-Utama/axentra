@@ -1,14 +1,3 @@
-// Ensure Happy DOM is available for tests; register if not already.
-const { GlobalRegistrator } = require("@happy-dom/global-registrator");
-try {
-  GlobalRegistrator.register();
-} catch {
-  // ignore if already registered in this process
-}
-// Use unknown to avoid `any` lint rule, then narrow to expected shape.
-const _win = globalThis as unknown as { window?: { document?: Document } };
-globalThis.document = _win.window?.document ?? globalThis.document;
-
 import { describe, expect, test, mock, afterEach } from "bun:test";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React from "react";
@@ -23,12 +12,7 @@ import {
   type UploadPresenterState,
 } from "../src/features/document-upload/document-upload.state";
 
-// 1. Kita ambil tipenya saja agar lolos linter (tanpa memicu hoisting eksekusi)
-import type * as TestingLibraryReact from "@testing-library/react";
-
-// 2. require dipakai agar type-safe tanpa dianggap 'any' oleh oxlint.
-const rtl = require("@testing-library/react") as typeof TestingLibraryReact;
-const { render, fireEvent, act, cleanup, screen } = rtl;
+import { render, fireEvent, act, cleanup, screen } from "@testing-library/react";
 
 // Bersihkan state komponen RTL setelah setiap tes
 afterEach(() => {

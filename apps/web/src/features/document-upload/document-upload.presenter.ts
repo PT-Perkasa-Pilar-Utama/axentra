@@ -90,18 +90,7 @@ export function useDocumentUploadPresenter(
         dispatch({ type: "UPLOAD_SUCCEEDED", result });
         onSuccess?.(result);
 
-        // Invalidate recent documents so the dashboard refreshes, and force
-        // any currently-mounted/active query to refetch immediately.
-        try {
-          await queryClient.invalidateQueries({ queryKey: [...RECENT_DOCUMENTS_QUERY_KEY] });
-          await queryClient.refetchQueries({
-            queryKey: [...RECENT_DOCUMENTS_QUERY_KEY],
-            exact: false,
-            type: "active",
-          });
-        } catch {
-          // best-effort — a failed refresh shouldn't fail the upload flow
-        }
+        await queryClient.invalidateQueries({ queryKey: [...RECENT_DOCUMENTS_QUERY_KEY] });
       } catch (error) {
         dispatch({ type: "UPLOAD_FAILED", error });
       }
