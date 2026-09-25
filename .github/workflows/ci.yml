@@ -135,7 +135,7 @@ jobs:
           --publish 9000:9000
           --env MINIO_ROOT_USER=local-minio-user
           --env MINIO_ROOT_PASSWORD=local-minio-password
-          quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+          ghcr.io/coollabsio/minio:latest
           server /data
       - name: Wait for MinIO
         run: |
