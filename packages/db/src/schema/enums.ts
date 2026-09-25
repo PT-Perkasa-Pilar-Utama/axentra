@@ -7,4 +7,4 @@ export const processingStatusEnum = pgEnum("processing_status", [
   "failed",
 ]);
 
-export const userRoleEnum = pgEnum("user_role", ["member_team", "head_of_team"]);
+export const userRoleEnum = pgEnum("user_role", ["member_team", "head_of_team", "admin"]);

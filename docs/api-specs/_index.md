@@ -2,7 +2,7 @@
 
 ## Axentra: Document Management System
 
-**Version:** 0.1.0  
+**Version:** 1.0.0<br>
 **Base URL:** `/api/v1`  
 **Status:** Foundation active, BA feature APIs planned
 
@@ -35,7 +35,7 @@ TECHNICAL GET  /auth/me
 ### Documents
 
 ```text
-PLANNED GET    /documents
+OK      GET    /documents
 PLANNED POST   /documents/upload
 PLANNED POST   /documents/check-duplicate
 PLANNED GET    /documents/:id

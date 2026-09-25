@@ -2,10 +2,10 @@
 
 ## Axentra: Document Management System
 
-**Version:** 0.1.0  
+**Version:** 1.0.0<br>
 **Date:** 2026-09-16  
 **Author:** Arya Isnaidi (Tech Lead)  
-**Status:** Planned - E2E suite is not implemented in Foundation v0.1.0
+**Status:** Planned - E2E suite is not implemented in Foundation v1.0.0
 
 This document defines the E2E layer that will complement `bun test`, integration tests, and the
 standard verification gate. Bun tests exercise modules and infrastructure boundaries; E2E tests
@@ -37,7 +37,7 @@ Every business E2E flow must map back to numbered acceptance criteria in
 
 ## 1. Current Status
 
-Foundation v0.1.0 does not include a browser E2E suite yet.
+Foundation v1.0.0 does not include a browser E2E suite yet.
 
 Current verification commands:
 

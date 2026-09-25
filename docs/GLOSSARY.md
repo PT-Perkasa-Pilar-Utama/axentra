@@ -2,7 +2,7 @@
 
 ## Axentra: Document Management System
 
-**Version:** 0.1.0  
+**Version:** 1.0.0<br>
 **Date:** 2026-09-16  
 **Author:** Arya Isnaidi (Tech Lead)  
 **Status:** Living Document
@@ -133,7 +133,7 @@ Planned table area: `processing_jobs`, `ocr_results`.
 ### OCR
 
 Optical Character Recognition. Planned integration for extracting text from documents when needed.
-Deferred in Foundation v0.1.0.
+Deferred in Foundation v1.0.0.
 
 ### AI Extraction
 
@@ -294,7 +294,7 @@ Role-Based Access Control. Axentra must enforce RBAC in the API, not only in the
 
 ### Authentication
 
-Login/session capability. Deferred in Foundation v0.1.0 and required before protected business APIs
+Login/session capability. Deferred in Foundation v1.0.0 and required before protected business APIs
 are exposed.
 
 ### Authorization
@@ -449,7 +449,7 @@ bun run complete-check
 | ------------- | ------------------------------------------------------ |
 | `Implemented` | Exists in code and is covered by verification.         |
 | `Planned`     | Approved or expected but not implemented yet.          |
-| `Deferred`    | Intentionally postponed outside Foundation v0.1.0.     |
+| `Deferred`    | Intentionally postponed outside Foundation v1.0.0.     |
 | `Blocked`     | Cannot proceed until dependency or decision is solved. |
 
 ### Processing Status

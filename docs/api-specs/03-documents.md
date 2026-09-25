@@ -2,7 +2,7 @@
 
 Source: BA user stories US-01, US-02, US-03, US-07, US-08, US-09, US-10.
 
-These APIs are planned and not implemented in Foundation v0.1.0.
+These APIs are planned and not implemented in Foundation v1.0.0.
 
 ## Planned Endpoints
 
@@ -17,18 +17,118 @@ POST /api/v1/documents/bulk-download
 GET  /api/v1/documents/:id/related
 ```
 
+## Recent Document List
+
+### `GET /api/v1/documents`
+
+Status: Implemented (BE-S1-06).
+
+Returns documents that have a stored file, newest `created_at` first. Soft-deleted documents are omitted. Sprint 1 items do not include `tags` or `category`.
+
+**Authorization:**
+
+- Requires authenticated session (`Bearer <token>`).
+- Allows `member_team` and `head_of_team`.
+
+**Query:**
+
+- `page` — integer, default `1`, minimum `1`, maximum `1000`.
+- `limit` — integer, default `20`, minimum `1`, maximum `100`.
+
+**Success Response (`200 OK`):**
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "11111111-1111-4111-8111-111111111111",
+      "filename": "laporan.pdf",
+      "processingStatus": "completed",
+      "createdAt": "2026-09-22T00:00:00.000Z"
+    }
+  ],
+  "meta": {
+    "page": 1,
+    "limit": 20,
+    "total": 1
+  }
+}
+```
+
+`processingStatus` is `queued`, `processing`, `completed`, or `failed`. `filename` is `document_files.original_name`.
+
+**Error Responses:**
+
+- `400 VALIDATION_ERROR`: `page` or `limit` is not an integer inside the bounds above.
+- `401 UNAUTHORIZED`: Missing or rejected bearer token.
+
 ## Upload
 
 ### `POST /api/v1/documents/upload`
 
-Planned behavior:
+Status: Implemented (BE-S1-02).
 
-- Accept drag-and-drop upload from Member Team.
-- Accept one PDF file.
-- Accept multiple DOCX files.
-- Reject unsupported files such as `.JPG`.
-- Return `File diterima untuk diproses` when accepted.
-- Trigger duplicate detection and processing workflow.
+**Authorization:**
+
+- Requires authenticated session (`Bearer <token>`).
+- Enforces role `member_team`. Head of Team is rejected with `403 FORBIDDEN`.
+
+**Request:**
+
+- `Content-Type: multipart/form-data`
+- Body field: `files` (one or more binary file parts). Also accepts `file`.
+
+**Constraints:**
+
+- Supported formats: PDF (`.pdf`), DOCX (`.docx`).
+- Single PDF only per upload batch.
+- Up to 10 DOCX files per upload batch.
+- Mixing PDF and DOCX in a single batch is rejected (`400 VALIDATION_ERROR`).
+- Maximum file size: 50 MB per file, 50 MB aggregate per request (`413 PAYLOAD_TOO_LARGE`).
+- Non-empty files only (`400 VALIDATION_ERROR`).
+- Content hash duplicate check: rejects duplicate content with `409 DUPLICATE_DOCUMENT` (`"File ini sudah ada"`).
+
+**Success Response (`200 OK`):**
+
+```json
+{
+  "success": true,
+  "data": {
+    "message": "File diterima untuk diproses",
+    "count": 1,
+    "files": [
+      {
+        "filename": "laporan.pdf",
+        "size": 1048576,
+        "documentType": "pdf"
+      }
+    ]
+  }
+}
+```
+
+**Error Responses:**
+
+- `400 VALIDATION_ERROR` / `UNSUPPORTED_FILE_TYPE`: Invalid request, unsupported extension/MIME, mixed types, or exceeded batch limit.
+- `401 UNAUTHORIZED`: Missing, forged, or expired bearer token.
+- `403 FORBIDDEN`: Non-member role (e.g. `head_of_team`).
+- `409 DUPLICATE_DOCUMENT`: Content identical to existing document or intra-batch duplicate.
+- `413 PAYLOAD_TOO_LARGE`: Individual or aggregate size exceeds 50 MB.
+- `503 PROCESSING_UNAVAILABLE`: One or more stored files in the batch could not be placed on the processing queue. The queue command is bounded by `REDIS_HEALTH_TIMEOUT_MS`, so an unavailable Redis returns this response instead of waiting indefinitely. The error message is `Antrean pemrosesan dokumen tidak tersedia`. `error.details` lists every persisted file: `field` is the document id and `message` is `queued <filename>` or `failed <filename>`. `queued` means that file already has a runnable job. `failed` means that file was not enqueued and is marked failed with the same message. If that status write also fails, the API returns `500` and those rows stay `queued`, where recovery still finds them. The worker re-enqueues both states, replaces a retained completed or failed queue job, and processing then reaches `completed` or a non-enqueue `failed` state. A `200` means every file in the batch has a runnable queue job. Retrying the same bytes returns `409 DUPLICATE_DOCUMENT`; use the document ids in `details` to reconcile the original request.
+
+#### Constraints and Limits
+
+- **Role required**: `member_team` (`401 Unauthorized` if unauthenticated, `403 Forbidden` if wrong role).
+- **Single file limit**: Maximum 50 MB (`MAX_DOCUMENT_FILE_SIZE_BYTES = 52_428_800` bytes). Rejection status `413 Payload Too Large`.
+- **Aggregate upload limit**: Maximum 50 MB per request (`MAX_AGGREGATE_UPLOAD_SIZE_BYTES = 52_428_800` bytes). Rejection status `413 Payload Too Large`.
+- **Batch limit (DOCX)**: Maximum 10 DOCX files per upload (`MAX_DOCX_BATCH_COUNT = 10`). Rejection status `400 Bad Request`.
+- **PDF constraint**: Single PDF only per upload (`400 Bad Request` if multiple PDFs are uploaded).
+- **No mixed types**: Cannot mix PDF and DOCX in a single upload request (`400 Bad Request`).
+- **Allowed formats**:
+  - PDF: Extension `.pdf`, MIME `application/pdf`, header magic bytes `%PDF-`.
+  - DOCX: Extension `.docx`, MIME `application/vnd.openxmlformats-officedocument.wordprocessingml.document`, OOXML zip structure (`[Content_Types].xml` or `word/`).
+- **Unsupported formats**: All other extensions (e.g. `.jpg`, `.png`, `.txt`) return `415 Unsupported Media Type` with message `Tipe file tidak didukung`.
 
 ## Duplicate Check
 

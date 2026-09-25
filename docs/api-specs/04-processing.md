@@ -2,46 +2,115 @@
 
 Source: BA user stories US-03, US-04, US-05.
 
-These APIs are planned and not implemented in Foundation v0.1.0.
+## Endpoints Summary
 
-## Planned Endpoints
+| Endpoint                           | Method | Status      | Task                |
+| ---------------------------------- | ------ | ----------- | ------------------- |
+| `/api/v1/documents/:id/metadata`   | GET    | Implemented | BE-S1-05 (Sprint 1) |
+| `/api/v1/documents/:id/smart-tags` | GET    | Planned     | US-04 (Sprint 2)    |
+| `/api/v1/documents/:id/category`   | GET    | Planned     | US-05 (Sprint 2)    |
 
-```text
-GET /api/v1/documents/:id/metadata
-GET /api/v1/documents/:id/smart-tags
-GET /api/v1/documents/:id/category
+---
+
+## 1. Document Metadata API
+
+### `GET /api/v1/documents/:id/metadata`
+
+Retrieves extracted document metadata, including author, extraction timestamp, and raw extractor payload.
+
+- **Authorization:** Bearer token required. Allowed roles: `member_team`, `head_of_team`.
+- **Path Parameters:**
+  - `id` (string, UUID): Valid UUID identifying the document.
+
+#### Success Response (`200 OK`)
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "11111111-1111-4111-8111-111111111111",
+    "documentId": "22222222-2222-4222-8222-222222222222",
+    "author": "Dr. Siti Rahma",
+    "rawMetadata": {
+      "extractor": "worker-deterministic",
+      "method": "docx_xml_core",
+      "detected": true
+    },
+    "extractedAt": "2026-09-21T05:30:00.000Z",
+    "createdAt": "2026-09-21T05:30:00.000Z",
+    "updatedAt": "2026-09-21T05:30:00.000Z"
+  }
+}
 ```
 
-## Metadata Extraction
+#### Error Responses
 
-Planned behavior:
+- **`400 Bad Request`** (`VALIDATION_ERROR`):
+  ```json
+  {
+    "success": false,
+    "error": {
+      "code": "VALIDATION_ERROR",
+      "message": "ID dokumen harus berupa UUID yang valid"
+    }
+  }
+  ```
+- **`401 Unauthorized`** (`UNAUTHORIZED`): Token is missing or invalid.
+- **`403 Forbidden`** (`FORBIDDEN`): User role is not permitted.
+- **`404 Not Found`** (`NOT_FOUND`):
+  - When document does not exist: `"Dokumen tidak ditemukan"`
+  - When document exists but metadata is not yet extracted: `"Metadata dokumen tidak ditemukan"`
 
-- System processes uploaded documents.
-- Metadata such as author is extracted automatically.
-- Member Team can see extracted metadata on document detail.
+---
 
-## Smart Tags
+## 2. Processing Lifecycle & Queue Integration
 
-Planned behavior:
+### Queue Job: `document.process`
 
-- System generates relevant Smart Tags from document content.
-- Maximum 3 tags are shown on each document card/detail.
-- Top Tags bar updates when a new tag appears and is not already represented.
+- **Queue Name:** Configured via `QUEUE_NAME` (default: `axentra-jobs`).
+- **Job Name:** `document.process`
+- **Payload Schema:**
+  ```json
+  {
+    "jobId": "33333333-3333-4333-8333-333333333333",
+    "documentId": "22222222-2222-4222-8222-222222222222",
+    "schemaVersion": 1,
+    "requestedAt": "2026-09-21T05:30:00.000Z"
+  }
+  ```
 
-## Auto Category
+### Processing Steps
 
-Planned behavior:
+1. **State Transition:** The worker transitions `documents.processing_status` to `'processing'`.
+2. **File Loading:** Worker retrieves the `document_files` record and downloads the stored object via `StorageAdapter.getObject(storageKey)`.
+3. **Extraction:**
+   - **PDF:** Extracts author from PDF Info dictionary (`/Author (...)` or hex-encoded `/Author <...>`).
+   - **DOCX:** Safely parses ZIP Central Directory, locates `docProps/core.xml`, decompresses raw DEFLATE bytes with bounded size (512 KiB limit), and parses `<dc:creator>` or `<cp:lastModifiedBy>`.
+   - **Fallback:** Deterministic `null` when no author metadata is detected.
+4. **Atomic Persistence & Completion:** Extracted metadata upsert into `document_metadata` and the document status transition to `'completed'` execute inside a single atomic database transaction (`db.transaction`). If any write fails, both are rolled back, and the document is marked as `'failed'` with `error_message`.
+5. **Terminal State:** On successful completion, `documents.processing_status` becomes `'completed'` and `errorMessage` is cleared. On failure, status is updated to `'failed'` with `error_message`.
 
-- System assigns category based on document content.
-- Example: content containing `Reporting` creates or maps to category `Reporting`.
-- Multiple documents can be categorized into different categories based on content.
-- New categories do not receive download permission by default.
+Accepted uploads enqueue `document.process` with `jobId` equal to the document id. If any queue write in the batch fails, the API returns `503 PROCESSING_UNAVAILABLE` with one `error.details` entry per persisted file. `field` is the document id. `message` is `queued <filename>` when that file already has a job and `failed <filename>` when it does not. Files not yet accepted are marked `failed` with `Antrean pemrosesan dokumen tidak tersedia`. A failed status write leaves the row `queued` and the request returns `500`. The worker scans non-deleted `queued` rows and enqueue-failed rows at startup and every 30 seconds. A retained completed or failed BullMQ job is removed and replaced. A waiting, delayed, prioritized, or active job is left in place, and a failed document row returns to `queued`. The replacement job then moves the document through `processing` to `completed`.
 
-## Processing State
+---
 
-Canonical processing states across database, queue, API, and Web:
+## 3. Planned Endpoints (Future Sprints)
 
-- `queued`
-- `processing`
-- `completed`
-- `failed`
+### Smart Tags (`GET /api/v1/documents/:id/smart-tags`) — Planned US-04
+
+- Generates relevant Smart Tags from document content (max 3 tags per document).
+
+### Auto Category (`GET /api/v1/documents/:id/category`) — Planned US-05
+
+- Assigns category based on document content.
+
+---
+
+## 4. Processing State Vocabulary
+
+Persisted `processing_status` enum across database, queue, API, and Web:
+
+- `queued`: Upload accepted and queued for worker processing.
+- `processing`: Worker is currently extracting metadata and tags.
+- `completed`: Processing succeeded; metadata and tags persisted.
+- `failed`: Processing failed; `error_message` records cause.

@@ -1,5 +1,5 @@
 {
-  "id": "b606f039-6e99-400c-b547-ffa2c90d99ab",
+  "id": "c8b4a5e5-2e83-4099-8b90-1e9472530720",
   "prevId": "b16907a8-8083-40bc-b784-eca3ae61a2f0",
   "version": "7",
   "dialect": "postgresql",
@@ -858,7 +858,8 @@
       "schema": "public",
       "values": [
         "member_team",
-        "head_of_team"
+        "head_of_team",
+        "admin"
       ]
     }
   },

@@ -41,9 +41,28 @@ export function isSuccessEnvelope<T>(value: unknown): value is { success: true; 
   );
 }
 
+let authTokenGetter: (() => string | null) | null = null;
+let unauthorizedHandler: (() => void) | null = null;
+
+export function setAuthTokenGetter(getter: (() => string | null) | null): void {
+  authTokenGetter = getter;
+}
+
+export function setUnauthorizedHandler(handler: (() => void) | null): void {
+  unauthorizedHandler = handler;
+}
+
 export function mergeRequestHeaders(input?: HeadersInit): Headers {
   const headers = new Headers(input);
   if (!headers.has("accept")) headers.set("accept", "application/json");
+
+  if (!headers.has("authorization")) {
+    const token = authTokenGetter ? authTokenGetter() : null;
+    if (token) {
+      headers.set("authorization", `Bearer ${token}`);
+    }
+  }
+
   return headers;
 }
 
@@ -70,11 +89,19 @@ export async function apiRequest<T>(
       throw new ApiClientError("INVALID_RESPONSE", "Respons server tidak valid", response.status);
     }
     if (!response.ok || isErrorEnvelope(payload)) {
+      if (
+        response.status === 401 ||
+        (isErrorEnvelope(payload) &&
+          (payload.error.code === "UNAUTHORIZED" || payload.error.code === "UNAUTHENTICATED"))
+      ) {
+        unauthorizedHandler?.();
+      }
       if (isErrorEnvelope(payload)) {
         throw new ApiClientError(payload.error.code, payload.error.message, response.status);
       }
       throw new ApiClientError("INVALID_RESPONSE", "Respons server tidak valid", response.status);
     }
+
     if (!isSuccessEnvelope<T>(payload)) {
       throw new ApiClientError("INVALID_RESPONSE", "Respons server tidak valid", response.status);
     }

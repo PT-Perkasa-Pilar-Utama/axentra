@@ -61,6 +61,14 @@ export function createS3StorageAdapter(configuration: StorageConfig): StorageAda
     }
   }
 
+  function normalizeChecksumSha256(checksum: string | undefined): string | undefined {
+    if (checksum === undefined) return undefined;
+    if (/^[0-9a-fA-F]{64}$/.test(checksum)) {
+      return Buffer.from(checksum, "hex").toString("base64");
+    }
+    return checksum;
+  }
+
   async function putObject(input: PutObjectInput): Promise<void> {
     await client.send(
       new PutObjectCommand({
@@ -68,7 +76,7 @@ export function createS3StorageAdapter(configuration: StorageConfig): StorageAda
         Key: validateObjectKey(input.key),
         Body: input.body,
         ContentType: input.contentType,
-        ChecksumSHA256: input.checksumSha256,
+        ChecksumSHA256: normalizeChecksumSha256(input.checksumSha256),
       }),
     );
   }

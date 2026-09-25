@@ -9,6 +9,11 @@ const apiEnvironmentSchema = baseServerSchema
     API_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(15000),
     DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
     REDIS_URL: z.url({ protocol: /^redis(s)?$/ }),
+    QUEUE_NAME: z.string().min(1).default("axentra-jobs"),
+    AUTH_LOCAL_IDENTITY_DIRECTORY: z.preprocess(
+      (value) => (value === undefined || value === "" ? undefined : value),
+      z.string().min(1),
+    ),
   })
   .and(storageEnvironmentSchema);
 

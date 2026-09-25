@@ -2,14 +2,14 @@
 
 ## Axentra: Document Management System
 
-**Version:** 0.1.0  
+**Version:** 1.0.0<br>
 **Date:** 2026-09-16  
 **Author:** Arya Isnaidi (Tech Lead)  
 **Status:** Living Document
 
 For new developers joining Axentra. Read this before writing code.
 
-Axentra is currently at **Foundation v0.1.0**. The repository contains the approved engineering
+Axentra is currently at **Foundation v1.0.0**. The repository contains the approved engineering
 base for Web, API, Worker, database boundary, queue, storage, observability, CI, and documentation.
 Business features from US-01 through US-13 are planned but intentionally not implemented in the
 foundation release.
@@ -152,10 +152,24 @@ This starts:
 bun run db:migrate
 ```
 
-Foundation v0.1.0 intentionally has no business tables. Business schema appears only after a
+Foundation v1.0.0 intentionally has no business tables. Business schema appears only after a
 reviewed sprint task adds it.
 
-### 3.5 Start app processes
+### 3.5 Inspect the local database
+
+With local PostgreSQL running and `DATABASE_URL` set in `.env`, start Drizzle Studio from the
+repository root:
+
+```powershell
+bun run db:studio
+```
+
+Open the local address printed in the terminal. Studio binds to `127.0.0.1` and is not exposed to
+other machines on the network. Keep the terminal running while you use Studio and press `Ctrl+C` to
+stop it. Studio connects to the database configured by `DATABASE_URL`; confirm that it points to
+your local database before editing any data.
+
+### 3.6 Start app processes
 
 Run each process in a separate terminal:
 
@@ -180,7 +194,7 @@ Open:
 | API readiness | `http://localhost:3001/api/v1/health/ready` |
 | MinIO console | `http://localhost:9001`                     |
 
-### 3.6 Run the checks
+### 3.7 Run the checks
 
 Baseline gate:
 

@@ -1,4 +1,17 @@
 export type { RedisProbe } from "./connection";
-export { createRedisProbe, redisConnectionOptions } from "./connection";
-export type { QueueProducer, SystemHealthJobHandler } from "./queue";
-export { createQueueProducer, createSystemHealthWorker } from "./queue";
+export {
+  createRedisProbe,
+  queueCommandConnectionOptions,
+  redisConnectionOptions,
+} from "./connection";
+export type {
+  DocumentProcessJobHandler,
+  DocumentProcessingJobHandler,
+  QueueJobHandlers,
+  QueueProducer,
+  QueueWorkerHandlers,
+  SystemHealthJobHandler,
+} from "./queue";
+export { createQueueProducer, createQueueWorker, createSystemHealthWorker } from "./queue";
+export { reconcileRetainedDocumentJob } from "./reconciliation";
+export type { RetainedProcessingJob } from "./reconciliation";

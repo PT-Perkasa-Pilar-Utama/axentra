@@ -16,6 +16,21 @@ export function redisConnectionOptions(redisUrl: string): RedisOptions {
   return options;
 }
 
+export function queueCommandConnectionOptions(
+  redisUrl: string,
+  commandTimeoutMs: number,
+): RedisOptions {
+  const timeoutMs = Math.max(1, commandTimeoutMs);
+  return {
+    ...redisConnectionOptions(redisUrl),
+    connectTimeout: timeoutMs,
+    commandTimeout: timeoutMs,
+    maxRetriesPerRequest: 1,
+    enableOfflineQueue: false,
+    retryStrategy: (attempt: number) => Math.min(attempt * 200, timeoutMs),
+  };
+}
+
 export type RedisProbe = {
   checkHealth: () => Promise<void>;
   close: () => Promise<void>;

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { paginationMetaSchema } from "./api";
 
 export const processingStatusSchema = z.enum(["queued", "processing", "completed", "failed"]);
 export type ProcessingStatus = z.infer<typeof processingStatusSchema>;
@@ -26,6 +27,22 @@ export const documentMetadataSchema = z.object({
 });
 export type DocumentMetadata = z.infer<typeof documentMetadataSchema>;
 
+export const documentMetadataResultSchema = z.object({
+  id: z.string().uuid(),
+  documentId: z.string().uuid(),
+  author: z.string().nullable(),
+  rawMetadata: z.record(z.string(), z.unknown()).nullable().optional(),
+  extractedAt: z.string().datetime().nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+export type DocumentMetadataResult = z.infer<typeof documentMetadataResultSchema>;
+
+export const documentIdParamSchema = z.object({
+  id: z.string().uuid({ message: "ID dokumen harus berupa UUID yang valid" }),
+});
+export type DocumentIdParam = z.infer<typeof documentIdParamSchema>;
+
 export const documentFileInfoSchema = z.object({
   id: z.string().uuid(),
   originalName: z.string().min(1),
@@ -35,6 +52,36 @@ export const documentFileInfoSchema = z.object({
   createdAt: z.string().datetime(),
 });
 export type DocumentFileInfo = z.infer<typeof documentFileInfoSchema>;
+
+export const recentDocumentSchema = z.object({
+  id: z.string().uuid(),
+  filename: z.string().min(1),
+  processingStatus: processingStatusSchema,
+  createdAt: z.string().datetime(),
+});
+export type RecentDocument = z.infer<typeof recentDocumentSchema>;
+
+const blankQueryValue = (value: unknown, fallback: number): unknown =>
+  value === undefined || value === "" ? fallback : value;
+
+export const recentDocumentListQuerySchema = z.object({
+  page: z.preprocess(
+    (value) => blankQueryValue(value, 1),
+    z.coerce.number().int().min(1).max(1_000),
+  ),
+  limit: z.preprocess(
+    (value) => blankQueryValue(value, 20),
+    z.coerce.number().int().min(1).max(100),
+  ),
+});
+export type RecentDocumentListQuery = z.infer<typeof recentDocumentListQuerySchema>;
+
+export const recentDocumentListResponseSchema = z.object({
+  success: z.literal(true),
+  data: z.array(recentDocumentSchema),
+  meta: paginationMetaSchema,
+});
+export type RecentDocumentListResponse = z.infer<typeof recentDocumentListResponseSchema>;
 
 export const documentSummarySchema = z.object({
   id: z.string().uuid(),
