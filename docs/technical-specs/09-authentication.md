@@ -5,16 +5,16 @@ Axentra's API and Web surfaces.
 
 ## Current Status
 
-| Capability                     | Status      | Notes / Card                                                                     |
-| ------------------------------ | ----------- | -------------------------------------------------------------------------------- |
-| Authenticated User Context     | Implemented | `BE-S1-01`: `user: AuthUser` (`id`, `email`, `role`, `name`) in `ApiEnvironment` |
-| Role Definition & Validation   | Implemented | `BE-S1-01`: `USER_ROLES` (`member_team`, `head_of_team`) in `@axentra/shared`    |
-| Route Authorization Middleware | Implemented | `BE-S1-01`: `requireAuth(verifier)` and `requireRole(allowedRole)`               |
-| `/api/v1/auth/me`              | Implemented | `BE-S1-01`: Verified user profile endpoint                                       |
-| Session & Token Lifecycle      | Implemented | `BE-S1-01`: `AuthService` with expiry, rotation, and logout invalidation         |
-| Runtime identity directory     | Implemented | `BE-S1-01`: development/test directory issues session tokens                     |
-| User persistence table         | Deferred    | Scheduled for dedicated identity store card                                      |
-| Client route gating            | In Progress | Frontend integration with `/api/v1/auth/me`                                      |
+| Capability                     | Status      | Notes / Card                                                                           |
+| ------------------------------ | ----------- | -------------------------------------------------------------------------------------- |
+| Authenticated User Context     | Implemented | `BE-S1-01`: `user: AuthUser` (`id`, `email`, `role`, `name`) in `ApiEnvironment`       |
+| Role Definition & Validation   | Implemented | `BE-S1-01`: `USER_ROLES` (`member_team`, `head_of_team`, `admin`) in `@axentra/shared` |
+| Route Authorization Middleware | Implemented | `BE-S1-01`: `requireAuth(verifier)` and `requireRole(allowedRole)`                     |
+| `/api/v1/auth/me`              | Implemented | `BE-S1-01`: Verified user profile endpoint                                             |
+| Session & Token Lifecycle      | Implemented | `BE-S1-01`: `AuthService` with expiry, rotation, and logout invalidation               |
+| Runtime identity directory     | Implemented | `BE-S1-01`: development/test directory issues session tokens                           |
+| User persistence table         | Deferred    | Scheduled for dedicated identity store card                                            |
+| Client route gating            | In Progress | Frontend integration with `/api/v1/auth/me`                                            |
 
 ## Approved Architecture & Token Strategy
 
@@ -42,12 +42,13 @@ export type TokenVerifier = {
 
 ### 3. Role-Based Access Control (RBAC)
 
-The two business personas are enforced via `requireRole(role)`:
+The platform roles and business personas are enforced via `requireRole(role)`:
 
-| Persona (`UserRole`) | Allowed Operations                                                                   |
-| -------------------- | ------------------------------------------------------------------------------------ |
-| `member_team`        | Uploads documents, searches, previews, and downloads when category permission allows |
-| `head_of_team`       | Views analytics, audits download activity, and manages category download permissions |
+| Persona / Role (`UserRole`) | Allowed Operations                                                                                                                            |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `member_team`               | Uploads documents, searches, previews, and downloads when category permission allows                                                          |
+| `head_of_team`              | Views analytics, audits download activity, and manages category download permissions                                                          |
+| `admin`                     | Authenticated platform role; does not replace `member_team` or `head_of_team` on a document route unless explicitly included in `requireRole` |
 
 Route middleware evaluates:
 
