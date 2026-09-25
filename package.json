@@ -24,6 +24,7 @@
     "test:integration": "cross-env RUN_INTEGRATION_TESTS=1 bun test test/infrastructure.integration.test.ts",
     "db:generate": "bun run --cwd packages/db generate",
     "db:migrate": "bun run --cwd packages/db migrate",
+    "db:seed": "bun run --cwd packages/db seed",
     "db:studio": "bun run --cwd packages/db studio",
     "infra:up": "docker compose -f infra/local/docker-compose.yml up -d --wait",
     "infra:down": "docker compose -f infra/local/docker-compose.yml down",
