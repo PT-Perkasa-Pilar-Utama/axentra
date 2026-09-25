@@ -4,9 +4,12 @@ import {
   DocumentUploadNotificationView,
 } from "../features/document-upload/document-upload.view";
 import { useDocumentUploadPresenter } from "../features/document-upload/document-upload.presenter";
+import { RecentDocumentsView } from "../features/recent-documents/recent-documents.view";
+import { useRecentDocumentsPresenter } from "../features/recent-documents/recent-documents.presenter";
 
 export function MemberTeamDashboardPage(): React.JSX.Element {
   const presenter = useDocumentUploadPresenter();
+  const recent = useRecentDocumentsPresenter(5);
 
   return (
     <main className="min-h-screen bg-[#f4f9ef]">
@@ -23,8 +26,15 @@ export function MemberTeamDashboardPage(): React.JSX.Element {
           </p>
         </div>
 
-        <DocumentUploadNotificationView presenter={presenter} />
-        <DocumentUploadAreaView presenter={presenter} />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <DocumentUploadNotificationView presenter={presenter} />
+            <DocumentUploadAreaView presenter={presenter} />
+          </div>
+          <div>
+            <RecentDocumentsView presenter={recent} />
+          </div>
+        </div>
       </div>
     </main>
   );

@@ -1,4 +1,6 @@
 import { useCallback, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { RECENT_DOCUMENTS_QUERY_KEY } from "../recent-documents/recent-documents.presenter";
 import type { DragEvent, MouseEvent } from "react";
 import type { DocumentUploadAcceptedData } from "@axentra/shared";
 import { uploadDocuments as defaultUploadFn } from "./document-upload.api";
@@ -66,6 +68,8 @@ export function useDocumentUploadPresenter(
   const { isUploading, isProcessing, isBusy, isLocked, canRetry } =
     deriveUploadPresenterProps(state);
 
+  const queryClient = useQueryClient();
+
   const dismissNotification = useCallback((): void => {
     dispatch({ type: "DISMISS_NOTIFICATION" });
   }, [dispatch]);
@@ -85,11 +89,24 @@ export function useDocumentUploadPresenter(
         const result = await uploadFn(files);
         dispatch({ type: "UPLOAD_SUCCEEDED", result });
         onSuccess?.(result);
+
+        // Invalidate recent documents so the dashboard refreshes, and force
+        // any currently-mounted/active query to refetch immediately.
+        try {
+          await queryClient.invalidateQueries({ queryKey: [...RECENT_DOCUMENTS_QUERY_KEY] });
+          await queryClient.refetchQueries({
+            queryKey: [...RECENT_DOCUMENTS_QUERY_KEY],
+            exact: false,
+            type: "active",
+          });
+        } catch {
+          // best-effort — a failed refresh shouldn't fail the upload flow
+        }
       } catch (error) {
         dispatch({ type: "UPLOAD_FAILED", error });
       }
     },
-    [uploadFn, onSuccess, dispatch],
+    [uploadFn, onSuccess, dispatch, queryClient],
   );
 
   const retry = useCallback(async (): Promise<void> => {
