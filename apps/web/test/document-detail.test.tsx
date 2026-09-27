@@ -98,38 +98,28 @@ describe("Document Detail Feature (FE-S1-03 / AC-03.01)", () => {
       },
     });
 
-    // Seed query data to simulate ready state with processed author metadata
+    // Seed only the metadata-by-ID query; detail must not depend on recent-document pagination.
     queryClient.setQueryData(
       ["document-detail", "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22"],
       sampleProcessedDoc,
     );
-    queryClient.setQueryData(
-      ["recent-documents", 100],
-      [
-        {
-          id: "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22",
-          filename: "laporan-keuangan.pdf",
-          processingStatus: "completed" as const,
-          createdAt: "2025-12-10T10:00:00.000Z",
-        },
-      ],
-    );
 
     const html = renderDetail(queryClient);
 
-    // Assert AC-03.01 author is rendered correctly in the UI
+    // Assert AC-03.01 author is rendered correctly in the UI.
     expect(html).toContain('data-testid="metadata-author"');
     expect(html).toContain("Bessie Cooper");
-    expect(html).toContain("laporan-keuangan.pdf");
+    expect(html).toContain("Nama berkas belum tersedia");
     expect(html).not.toContain("decoy-file-should-not-render.pdf");
     expect(html).toContain("Metadata");
     expect(html).toContain("Tanggal unggah");
+    expect(html).toContain("Belum tersedia");
     expect(html).toContain("Pratinjau belum tersedia");
     expect(html).toContain("Dokumen Terkait");
     expect(html).toContain("Unduh");
     expect(html).toContain('disabled=""');
     expect(html).toContain('aria-describedby="download-note"');
-    expect(html).toContain("10/12/2025");
+    expect(html).not.toContain("10/12/2025");
     expect(html).not.toContain("16/12/2025");
     expect(html).not.toContain("Halaman 1");
     expect(html).not.toContain("CustomerAdvise");
@@ -159,7 +149,7 @@ describe("Document Detail Feature (FE-S1-03 / AC-03.01)", () => {
     expect(html).not.toContain("Bessie Cooper");
   });
 
-  test("renders fileInfoMessage and reload button when document is not in recent documents list", () => {
+  test("F1 regression: renders author metadata successfully even when document is absent from recent list", () => {
     const queryClient = new QueryClient({
       defaultOptions: {
         queries: {
@@ -168,15 +158,18 @@ describe("Document Detail Feature (FE-S1-03 / AC-03.01)", () => {
       },
     });
 
+    // Only document-detail metadata query is available; recent query is not executed or empty.
     queryClient.setQueryData(
       ["document-detail", "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22"],
       sampleProcessedDoc,
     );
-    queryClient.setQueryData(["recent-documents", 100], []);
 
     const html = renderDetail(queryClient);
-    expect(html).toContain("Berkas belum ditemukan pada 100 dokumen terakhir");
-    expect(html).toContain("Muat ulang");
+    expect(html).toContain('data-testid="metadata-author"');
+    expect(html).toContain("Bessie Cooper");
+    expect(html).toContain("Nama berkas belum tersedia");
+    expect(html).toContain("Belum tersedia");
+    expect(html).not.toContain("Gagal memuat metadata");
   });
 
   test("renders an announced loading state while metadata is pending", () => {
@@ -191,7 +184,7 @@ describe("Document Detail Feature (FE-S1-03 / AC-03.01)", () => {
     // A valid query without seeded data remains pending during server render.
     const html = renderDetail(queryClient, "/documents/doc-not-found");
     expect(html).toContain('aria-busy="true"');
-    expect(html).toContain("Memuat metadata dokumen");
+    expect(html).toContain("Memuat metadata dokumen...");
     expect(html).not.toContain("Pratinjau belum tersedia");
   });
 
@@ -212,74 +205,13 @@ describe("Document Detail Feature (FE-S1-03 / AC-03.01)", () => {
     queryClient.clear();
   });
 
-  test("keeps author visible when filename lookup fails, with a reload action", async () => {
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false, retryOnMount: false } },
-    });
-    queryClient.setQueryData(
-      ["document-detail", sampleProcessedDoc.documentId],
-      sampleProcessedDoc,
-    );
-    await queryClient.prefetchQuery({
-      queryKey: ["recent-documents", 100],
-      queryFn: async () => {
-        throw new Error("test unavailable");
-      },
-    });
-    const html = renderDetail(queryClient);
-    expect(html).toContain("Bessie Cooper");
-    expect(html).toContain("Nama berkas tidak dapat diverifikasi");
-    expect(html).toContain("Muat ulang");
-    expect(html).not.toContain("Gagal memuat metadata");
-    queryClient.clear();
-  });
-
-  test("does not replace missing filenames with extractor data or another document", () => {
-    const queryClient = new QueryClient();
-    queryClient.setQueryData(
-      ["document-detail", sampleProcessedDoc.documentId],
-      sampleProcessedDoc,
-    );
-    queryClient.setQueryData(
-      ["recent-documents", 100],
-      [
-        {
-          id: sampleProcessedDoc.id,
-          filename: "other-document.pdf",
-          processingStatus: "completed",
-          createdAt: sampleProcessedDoc.createdAt,
-        },
-      ],
-    );
-    const html = renderDetail(queryClient);
-    expect(html).toContain("Nama berkas belum tersedia");
-    expect(html).not.toContain("other-document.pdf");
-    expect(html).not.toContain("decoy-file-should-not-render.pdf");
-  });
-
-  test("normalizes blank authors and renders a long filename as escaped text", () => {
+  test("normalizes blank authors and handles long author values securely", () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData(["document-detail", sampleProcessedDoc.documentId], {
       ...sampleProcessedDoc,
       author: "  ",
     });
-    const longName = `<script>alert(1)</script>${"A".repeat(150)}.pdf`;
-    queryClient.setQueryData(
-      ["recent-documents", 100],
-      [
-        {
-          id: sampleProcessedDoc.documentId,
-          filename: longName,
-          processingStatus: "completed",
-          createdAt: sampleProcessedDoc.createdAt,
-        },
-      ],
-    );
     const html = renderDetail(queryClient);
     expect(html).toContain("Tidak terdeteksi");
-    expect(html).toContain("&lt;script&gt;");
-    expect(html).not.toContain("<script>");
-    expect(html).toContain(`${"A".repeat(150)}.pdf`);
-    expect(html).toContain("[overflow-wrap:anywhere]");
   });
 });

@@ -12,7 +12,7 @@ export function DocumentDetailView(): React.JSX.Element {
     return (
       <div className="min-h-dvh bg-[#f3f4f6] flex flex-col" aria-busy="true">
         <span className="sr-only" role="status">
-          Memuat metadata dokumen?
+          Memuat metadata dokumen...
         </span>
         <header className="h-16 bg-white border-b border-gray-200 px-6 flex items-center justify-between">
           <div className="h-6 w-48 bg-gray-200 rounded motion-safe:animate-pulse" />
@@ -65,7 +65,7 @@ export function DocumentDetailView(): React.JSX.Element {
     );
   }
 
-  const { filename, author, uploadDate, fileInfoMessage } = presenter;
+  const { filename, author, uploadDate } = presenter;
 
   return (
     <div className="min-h-dvh bg-[#e5e7eb] flex flex-col text-gray-900 font-sans">
@@ -131,13 +131,7 @@ export function DocumentDetailView(): React.JSX.Element {
         </main>
 
         {/* Right Column: Meta Data & Related Documents Sidebar */}
-        <DocumentMetadataSidebar
-          filename={filename}
-          author={author}
-          uploadDate={uploadDate}
-          fileInfoMessage={fileInfoMessage}
-          retry={presenter.retry}
-        />
+        <DocumentMetadataSidebar filename={filename} author={author} uploadDate={uploadDate} />
       </div>
     </div>
   );

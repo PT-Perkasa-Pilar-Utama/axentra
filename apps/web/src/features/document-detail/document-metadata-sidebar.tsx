@@ -5,16 +5,12 @@ export type DocumentMetadataSidebarProps = {
   filename: string;
   author: string | null;
   uploadDate: string;
-  fileInfoMessage: string | null;
-  retry: () => void;
 };
 
 export function DocumentMetadataSidebar({
   filename,
   author,
   uploadDate,
-  fileInfoMessage,
-  retry,
 }: DocumentMetadataSidebarProps): React.JSX.Element {
   const displayAuthor = author ?? "Tidak terdeteksi";
 
@@ -43,20 +39,6 @@ export function DocumentMetadataSidebar({
               >
                 {filename}
               </span>
-              {fileInfoMessage && (
-                <div className="mt-2 space-y-1">
-                  <span className="block text-sm leading-relaxed text-amber-800">
-                    {fileInfoMessage}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={retry}
-                    className="min-h-11 text-sm font-semibold text-amber-900 underline underline-offset-4 hover:text-amber-950 focus-visible:ring-2 focus-visible:ring-amber-800 cursor-pointer"
-                  >
-                    Muat ulang
-                  </button>
-                </div>
-              )}
             </div>
           </div>
 
