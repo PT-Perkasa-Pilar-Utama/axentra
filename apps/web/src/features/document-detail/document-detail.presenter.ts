@@ -7,11 +7,7 @@ export type DocumentDetailPresenter = {
   document: DocumentMetadataResult | undefined;
   author: string | null;
   filename: string;
-  category: string | null;
-  tags: string[];
-  uploadDate: string | undefined;
-  processingStatus: "completed" | "processing" | "queued" | "failed";
-  isProcessed: boolean;
+  uploadDate: string;
   retry: () => void;
 };
 
@@ -25,7 +21,7 @@ export function useDocumentDetailPresenter(
 ): DocumentDetailPresenter {
   const fetchFn = options?.fetchFn ?? getDocumentDetail;
 
-  const query = useQuery({
+  const docQuery = useQuery({
     queryKey: ["document-detail", documentId],
     queryFn: () => fetchFn(documentId),
     enabled: Boolean(documentId),
@@ -35,25 +31,22 @@ export function useDocumentDetailPresenter(
   let status: DocumentDetailPresenter["status"] = "ready";
   if (!documentId) {
     status = "error";
-  } else if (query.isPending) {
+  } else if (docQuery.isPending) {
     status = "loading";
-  } else if (query.isError) {
+  } else if (docQuery.isError) {
     status = "error";
   }
 
-  const doc = query.data;
-  const processingStatus = doc?.extractedAt ? "completed" : "processing";
+  const doc = docQuery.data;
 
   return {
     status,
     document: doc,
-    author: doc?.author ?? null,
-    filename: (doc?.rawMetadata?.filename as string) ?? "Dokumen",
-    category: (doc?.rawMetadata?.category as string) ?? null,
-    tags: Array.isArray(doc?.rawMetadata?.tags) ? (doc.rawMetadata.tags as string[]) : [],
-    uploadDate: doc?.extractedAt ?? doc?.createdAt,
-    processingStatus,
-    isProcessed: Boolean(doc?.extractedAt || doc?.author),
-    retry: () => void query.refetch(),
+    author: doc?.author?.trim() || null,
+    filename: "Nama berkas belum tersedia",
+    uploadDate: "Belum tersedia",
+    retry: () => {
+      void docQuery.refetch();
+    },
   };
 }
