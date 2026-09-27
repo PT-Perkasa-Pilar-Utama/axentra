@@ -52,7 +52,7 @@ Approximate effort by sprint:
 
 | Sprint   | Arya | Sami | Azis | Aiman |
 | -------- | ---- | ---- | ---- | ----- |
-| Sprint 1 | 1.3d | 4.6d | 2.1d | 3.3d  |
+| Sprint 1 | 1.3d | 4.6d | 2.1d | 3.5d  |
 | Sprint 2 | 1.2d | 3.7d | 2.6d | 1.4d  |
 | Sprint 3 | 1.5d | 2.2d | 0.7d | 1.9d  |
 | Sprint 4 | 1.2d | 1.4d | 0.7d | 1.7d  |
@@ -128,6 +128,7 @@ metadata.
 | FE-S1-04 | Wire upload API client and presenter states | Feature files follow API -> Presenter -> View; handles accepted, rejected, duplicate, loading, empty, and error states.                                                                                                                                                                                                             | AC-01.01 to AC-03.01            | Aiman | 0.7d | CODING_STANDARD.md                                                                           |
 | FE-S1-05 | Build Perkasa login UI and form presenter   | Implementasi kartu login sesuai mockup Perkasa (logo, input email dengan icon, input password dengan toggle lihat password, checkbox Ingat saya, tombol submit hijau dengan indikator loading). Terapkan Zod validation (`loginRequestSchema`), penanganan error credential (_alert envelope_), dan arsitektur _Presenter -> View_. | Prasyarat F-A1 & Desain Perkasa | Aiman | 1.0d | api-specs/02-authentication.md, CODING_STANDARD.md                                           |
 | FE-S1-06 | Wire auth session and Bearer token client   | Manajemen sesi Web (penyimpanan token, dukungan remember me), injeksi otomatis `Authorization: Bearer <token>` pada api-client.ts, route protection & redirect 401 ke /login (menutup blocker F-A1).                                                                                                                                | Prasyarat Proteksi API Dokumen  | Aiman | 0.8d | api-specs/02-authentication.md, audits/SPRINT-1_STATUS_AUDIT_AIMAN_AND_BACKEND_2026-09-22.md |
+| FE-S1-07 | Update application font to Exo 2            | Update application typography to Exo 2 across web shell (index.html, styles.css), configure Tailwind font token, and inherit global form controls.                                                                                                                                                                                  | Desain Perkasa                  | Aiman | 0.2d | CODING_STANDARD.md                                                                           |
 
 ### Acceptance Verification
 
