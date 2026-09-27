@@ -1,60 +1,6 @@
-@import url("https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@0,100..900;1,100..900&display=swap");
 @import "tailwindcss" source(none);
 @source "./**/*.{ts,tsx}";
-
-@theme {
-  --font-sans:
-    "Exo 2", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-}
-
-:root {
-  font-family:
-    "Exo 2",
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    Roboto,
-    Helvetica,
-    Arial,
-    sans-serif;
-  color: #16221a;
-  background: #f4f7f3;
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  min-width: 320px;
-  min-height: 100dvh;
-  font-family:
-    "Exo 2",
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    Roboto,
-    Helvetica,
-    Arial,
-    sans-serif;
-}
-
-button,
-input,
-select,
-textarea,
-a {
-  font-family: inherit;
-}
-
-button:focus-visible,
-a:focus-visible {
-  outline: 3px solid #20643a;
-  outline-offset: 3px;
-}
+@import "./typography.css";
 
 .upload-notification {
   top: 1.75rem;
