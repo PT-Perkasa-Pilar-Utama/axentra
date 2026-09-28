@@ -2,7 +2,7 @@
 
 Source: BA user stories US-04, US-05, US-06.
 
-The Top Tags API is implemented in Foundation v1.0.0. Search Documents and Categories remain planned.
+The Top Tags API is implemented in BE-S2-02. Search Documents and Categories remain planned.
 
 ## Implemented Endpoints
 
