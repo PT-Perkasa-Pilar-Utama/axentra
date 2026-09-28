@@ -1,0 +1,116 @@
+.dashboard-sidebar {
+  --sidebar-surface: #25282e;
+  --sidebar-text: #f7f8fa;
+  --sidebar-muted: #b8bfc8;
+  --sidebar-divider: #454a52;
+  --sidebar-accent: #65a448;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-content: start;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: var(--sidebar-surface);
+  color: var(--sidebar-text);
+}
+
+.dashboard-sidebar-brand {
+  min-width: 0;
+}
+
+.dashboard-sidebar-logo {
+  display: block;
+  width: 100%;
+  max-width: 155px;
+  height: 40px;
+  object-fit: contain;
+  object-position: left;
+}
+
+.dashboard-sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 0 12px;
+  border-radius: 12px;
+  color: var(--sidebar-text);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background-color 160ms ease;
+}
+
+.dashboard-sidebar-link.is-active {
+  background: var(--sidebar-accent);
+  color: #16221a;
+}
+
+@media (hover: hover) {
+  .dashboard-sidebar-link:hover {
+    background: #394039;
+  }
+
+  .dashboard-sidebar-link.is-active:hover {
+    background: #79b65d;
+  }
+}
+
+.dashboard-sidebar-link:focus-visible {
+  outline: 3px solid #b2e295;
+  outline-offset: 4px;
+}
+
+.category-navigation {
+  grid-column: 1 / -1;
+  min-width: 0;
+  padding: 20px 12px 0;
+  border-top: 1px solid var(--sidebar-divider);
+}
+
+.category-navigation h2 {
+  margin: 0 0 16px;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.category-navigation-status {
+  margin: 0 0 6px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.category-navigation-description {
+  max-width: 38ch;
+  margin: 0;
+  color: var(--sidebar-muted);
+  font-size: 0.75rem;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+@media (min-width: 768px) {
+  .dashboard-sidebar {
+    display: flex;
+    min-height: 100dvh;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 24px;
+    padding: 24px 16px;
+  }
+
+  .dashboard-sidebar-brand {
+    padding: 0 8px;
+  }
+
+  .dashboard-sidebar-logo {
+    max-width: 248px;
+    height: 64px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-sidebar-link {
+    transition: none;
+  }
+}

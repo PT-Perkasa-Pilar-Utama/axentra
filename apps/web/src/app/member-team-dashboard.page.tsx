@@ -2,6 +2,7 @@ import { NavLink } from "react-router";
 import type React from "react";
 
 import perkasaLogo from "../assets/perkasa-logo-sidebar.png";
+import { CategoryNavigationView } from "../features/categories/categories.view";
 import { useDocumentUploadPresenter } from "../features/document-upload/document-upload.presenter";
 import { DocumentUploadAreaView } from "../features/document-upload/document-upload.view";
 import { RecentDocumentsView } from "../features/recent-documents/recent-documents.view";
@@ -16,23 +17,25 @@ export function MemberTeamDashboardPage(): React.JSX.Element {
       className="member-team-dashboard min-h-[100dvh] bg-[#f0f2f4] text-[#252930]"
       data-testid="member-team-dashboard"
     >
+      <title>Dashboard | Axentra</title>
+      <meta
+        name="description"
+        content="Kelola unggahan dan lihat dokumen terbaru di dasbor Axentra."
+      />
       <div className="grid min-h-[100dvh] grid-cols-1 md:grid-cols-[18.75rem_minmax(0,1fr)]">
-        <aside className="hidden min-h-[100dvh] flex-col bg-[#25282e] px-4 py-6 text-white md:flex">
-          <div className="mb-6 px-2">
+        <aside className="dashboard-sidebar">
+          <div className="dashboard-sidebar-brand">
             <img
               src={perkasaLogo}
               alt="PERKASA - Innovation Towards Intelligence"
-              className="h-16 w-full max-w-[15.5rem] object-contain object-left"
+              className="dashboard-sidebar-logo"
             />
           </div>
           <nav aria-label="Navigasi utama">
             <NavLink
+              id="dashboard-home-link"
               to="/dashboard"
-              className={({ isActive }) =>
-                `flex min-h-12 items-center gap-3 rounded-xl px-3 text-sm font-medium transition-colors ${
-                  isActive ? "bg-[#65a448] text-white" : "text-gray-300 hover:bg-white/10"
-                }`
-              }
+              className={({ isActive }) => `dashboard-sidebar-link${isActive ? " is-active" : ""}`}
             >
               <svg
                 viewBox="0 0 24 24"
@@ -49,6 +52,7 @@ export function MemberTeamDashboardPage(): React.JSX.Element {
               <span>Dashboard</span>
             </NavLink>
           </nav>
+          <CategoryNavigationView />
         </aside>
 
         <div className="min-w-0 px-4 sm:px-6 md:px-4">

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import type { DocumentUploadAcceptedData, RecentDocument } from "@axentra/shared";
@@ -45,6 +45,8 @@ function listResponse(stage: Exclude<ListStage, "error">): string {
 function createFetchMock(stage: { current: ListStage }): typeof fetch {
   const handler = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = String(input);
+    expect(url).not.toContain("/categories");
+    expect(url).not.toContain("/search/documents");
     const authorization = new Headers(init?.headers).get("authorization");
     expect(authorization).toBe(`Bearer ${memberSession.token}`);
 
@@ -121,6 +123,28 @@ describe("Recent documents refresh after processing", () => {
     cleanup();
     clearSession();
     globalThis.fetch = originalFetch;
+  });
+
+  test("FE-S2-03 shows unavailable categories without fake filters or category API calls", async () => {
+    globalThis.fetch = createFetchMock({ current: "completed" });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    await act(async () => {
+      renderDashboard(queryClient);
+    });
+
+    const categories = screen.getByRole("region", { name: "Kategori" });
+    expect(within(categories).getByText("Kategori belum tersedia")).toBeTruthy();
+    expect(within(categories).queryByRole("button")).toBeNull();
+    expect(within(categories).queryByRole("link")).toBeNull();
+    expect(screen.getAllByRole("heading", { name: "Kategori" })).toHaveLength(1);
+    expect(screen.getByRole("link", { name: "Dashboard" }).getAttribute("aria-current")).toBe(
+      "page",
+    );
+    expect(await screen.findByText("laporan.pdf")).toBeTruthy();
+    expect(screen.getByText("Selesai Diproses")).toBeTruthy();
   });
 
   test("shows laporan.pdf after the document reaches completed", async () => {
