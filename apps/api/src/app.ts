@@ -11,6 +11,8 @@ import { createAuthRoutes } from "./modules/auth/auth.routes";
 import type { AuthService } from "./modules/auth/auth.service";
 import { createDocumentRoutes } from "./modules/documents/documents.routes";
 import type { DocumentService } from "./modules/documents/documents.service";
+import { createTagsRoutes } from "./modules/tags/tags.routes";
+import type { TopTagsService } from "./modules/tags/tags.service";
 
 export type AppDependencies = {
   logger: Logger;
@@ -19,6 +21,7 @@ export type AppDependencies = {
   tokenVerifier?: TokenVerifier | undefined;
   authService?: AuthService | undefined;
   documentService?: DocumentService | undefined;
+  topTagsService?: TopTagsService | undefined;
   enableUploadRoute?: boolean | undefined;
 };
 
@@ -53,6 +56,16 @@ export function createApp(dependencies: AppDependencies): Hono<ApiEnvironment> {
         tokenVerifier,
         documentService: dependencies.documentService,
         enableUploadRoute: dependencies.enableUploadRoute ?? false,
+      }),
+    );
+  }
+
+  if (dependencies.topTagsService) {
+    app.route(
+      "/api/v1/tags",
+      createTagsRoutes({
+        tokenVerifier,
+        service: dependencies.topTagsService,
       }),
     );
   }
