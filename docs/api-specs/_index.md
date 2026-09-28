@@ -57,7 +57,7 @@ PLANNED GET /documents/:id/category
 
 ```text
 PLANNED GET /search/documents
-PLANNED GET /tags/top
+OK GET /tags/top
 PLANNED GET /categories
 ```
 
