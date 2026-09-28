@@ -2,13 +2,18 @@
 
 Source: BA user stories US-04, US-05, US-06.
 
-These APIs are planned and not implemented in Foundation v1.0.0.
+The Top Tags API is implemented in Foundation v1.0.0. Search Documents and Categories remain planned.
+
+## Implemented Endpoints
+
+```text
+GET /api/v1/tags/top
+```
 
 ## Planned Endpoints
 
 ```text
 GET /api/v1/search/documents
-GET /api/v1/tags/top
 GET /api/v1/categories
 ```
 
