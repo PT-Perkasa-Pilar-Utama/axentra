@@ -1,8 +1,9 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { listRecentDocuments } from "./recent-documents.api";
 import type { RecentDocument } from "./recent-documents.api";
+import { TOP_TAGS_QUERY_KEY } from "../top-tags/top-tags.presenter";
 
 export const RECENT_DOCUMENTS_QUERY_KEY = ["recent-documents"] as const;
 const recentDocumentsPollIntervalMs = 2000;
@@ -48,9 +49,7 @@ function formatStatus(status: RecentDocument["processingStatus"]): string {
   }
 }
 
-function toRecentDocumentItem(
-  doc: RecentDocument & { tags?: { id: string; name: string }[] },
-): RecentDocumentItem {
+function toRecentDocumentItem(doc: RecentDocument): RecentDocumentItem {
   return {
     id: doc.id,
     filename: doc.filename,
@@ -73,6 +72,7 @@ export function useRecentDocumentsPresenter(
   activeTagIds?: ReadonlySet<string>,
 ): RecentDocumentsPresenter {
   const queryClient = useQueryClient();
+  const isPollingRef = useRef(false);
 
   const tagIdsArray = activeTagIds ? Array.from(activeTagIds) : [];
 
@@ -86,6 +86,16 @@ export function useRecentDocumentsPresenter(
   });
 
   const documents = query.data ?? [];
+  const isPending = hasPendingDocument(documents);
+
+  useEffect(() => {
+    if (isPending) {
+      isPollingRef.current = true;
+    } else if (isPollingRef.current && !isPending) {
+      void queryClient.invalidateQueries({ queryKey: TOP_TAGS_QUERY_KEY });
+      isPollingRef.current = false;
+    }
+  }, [isPending, queryClient]);
 
   const refresh = useCallback(async (): Promise<void> => {
     await queryClient.invalidateQueries({ queryKey: [...RECENT_DOCUMENTS_QUERY_KEY] });

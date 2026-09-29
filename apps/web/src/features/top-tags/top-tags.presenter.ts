@@ -18,6 +18,7 @@ export type TopTagsPresenter = {
   activeTagIds: ReadonlySet<string>;
   toggleTag: (id: string) => void;
   clearTags: () => void;
+  retry: () => Promise<void>;
 };
 
 export function useTopTagsPresenter(context: TopTagsContext, limit = 10): TopTagsPresenter {
@@ -46,6 +47,10 @@ export function useTopTagsPresenter(context: TopTagsContext, limit = 10): TopTag
     setActiveTagIds(new Set());
   }, []);
 
+  const retry = useCallback(async (): Promise<void> => {
+    await query.refetch();
+  }, [query]);
+
   const rawTags = query.data ?? [];
 
   return {
@@ -55,5 +60,6 @@ export function useTopTagsPresenter(context: TopTagsContext, limit = 10): TopTag
     activeTagIds,
     toggleTag,
     clearTags,
+    retry,
   };
 }
