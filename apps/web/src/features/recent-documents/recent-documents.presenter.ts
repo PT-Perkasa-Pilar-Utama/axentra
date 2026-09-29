@@ -13,6 +13,7 @@ export type RecentDocumentItem = {
   dateLabel: string;
   statusLabel: string;
   processingStatus: RecentDocument["processingStatus"];
+  tags: { id: string; name: string }[];
 };
 
 export type RecentDocumentsPresenter = {
@@ -47,13 +48,16 @@ function formatStatus(status: RecentDocument["processingStatus"]): string {
   }
 }
 
-function toRecentDocumentItem(doc: RecentDocument): RecentDocumentItem {
+function toRecentDocumentItem(
+  doc: RecentDocument & { tags?: { id: string; name: string }[] },
+): RecentDocumentItem {
   return {
     id: doc.id,
     filename: doc.filename,
     dateLabel: formatDate(doc.createdAt),
     statusLabel: formatStatus(doc.processingStatus),
     processingStatus: doc.processingStatus,
+    tags: doc.tags ? doc.tags.slice(0, 3) : [],
   };
 }
 
@@ -64,12 +68,17 @@ function hasPendingDocument(documents: readonly RecentDocument[]): boolean {
   );
 }
 
-export function useRecentDocumentsPresenter(limit = 20): RecentDocumentsPresenter {
+export function useRecentDocumentsPresenter(
+  limit = 20,
+  activeTagIds?: ReadonlySet<string>,
+): RecentDocumentsPresenter {
   const queryClient = useQueryClient();
 
+  const tagIdsArray = activeTagIds ? Array.from(activeTagIds) : [];
+
   const query = useQuery({
-    queryKey: [...RECENT_DOCUMENTS_QUERY_KEY, limit],
-    queryFn: () => listRecentDocuments(1, limit),
+    queryKey: [...RECENT_DOCUMENTS_QUERY_KEY, limit, tagIdsArray],
+    queryFn: () => listRecentDocuments(1, limit, tagIdsArray),
     staleTime: 30 * 1000,
     retry: 1,
     refetchInterval: (current) =>

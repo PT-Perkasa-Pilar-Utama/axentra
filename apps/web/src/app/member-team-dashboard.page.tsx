@@ -7,10 +7,15 @@ import { useDocumentUploadPresenter } from "../features/document-upload/document
 import { DocumentUploadAreaView } from "../features/document-upload/document-upload.view";
 import { RecentDocumentsView } from "../features/recent-documents/recent-documents.view";
 import { useRecentDocumentsPresenter } from "../features/recent-documents/recent-documents.presenter";
+import { useTopTagsPresenter } from "../features/top-tags/top-tags.presenter";
+import { TopTagsView } from "../features/top-tags/top-tags.view";
 
 export function MemberTeamDashboardPage(): React.JSX.Element {
   const uploadPresenter = useDocumentUploadPresenter();
-  const documentsPresenter = useRecentDocumentsPresenter(5);
+
+  const topTagsPresenter = useTopTagsPresenter("dashboard");
+
+  const documentsPresenter = useRecentDocumentsPresenter(5, topTagsPresenter.activeTagIds);
 
   return (
     <main
@@ -61,6 +66,12 @@ export function MemberTeamDashboardPage(): React.JSX.Element {
           </header>
 
           <div className="space-y-6 pb-8">
+            <TopTagsView
+              presenter={topTagsPresenter}
+              activeTagIds={topTagsPresenter.activeTagIds}
+              onTagClick={topTagsPresenter.toggleTag}
+            />
+
             <DocumentUploadAreaView presenter={uploadPresenter} />
             <RecentDocumentsView presenter={documentsPresenter} />
           </div>
