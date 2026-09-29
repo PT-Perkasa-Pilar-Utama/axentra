@@ -6,6 +6,7 @@ import {
   documentFileInfoSchema,
   documentMetadataResultSchema,
   documentMetadataSchema,
+  documentSmartTagsResponseSchema,
   documentSummarySchema,
   processingStatusSchema,
   recentDocumentListQuerySchema,
@@ -144,6 +145,69 @@ describe("document shared schemas", () => {
           createdAt: new Date().toISOString(),
         }),
       ).toThrow();
+    });
+  });
+
+  describe("documentSmartTagsResponseSchema", () => {
+    it("accepts valid response with up to 3 smart tags", () => {
+      const response = {
+        success: true,
+        data: [
+          {
+            id: "11111111-1111-4111-8111-111111111111",
+            name: "finance",
+            createdAt: new Date().toISOString(),
+          },
+          {
+            id: "22222222-2222-4222-8222-222222222222",
+            name: "strategy",
+            createdAt: new Date().toISOString(),
+          },
+          {
+            id: "33333333-3333-4333-8333-333333333333",
+            name: "legal",
+            createdAt: new Date().toISOString(),
+          },
+        ],
+      };
+      expect(documentSmartTagsResponseSchema.parse(response)).toEqual(response);
+    });
+
+    it("accepts empty smart tags array", () => {
+      const response = {
+        success: true,
+        data: [],
+      };
+      expect(documentSmartTagsResponseSchema.parse(response)).toEqual(response);
+    });
+
+    it("rejects response with more than 3 smart tags", () => {
+      const response = {
+        success: true,
+        data: [
+          {
+            id: "11111111-1111-4111-8111-111111111111",
+            name: "tag-1",
+            createdAt: new Date().toISOString(),
+          },
+          {
+            id: "22222222-2222-4222-8222-222222222222",
+            name: "tag-2",
+            createdAt: new Date().toISOString(),
+          },
+          {
+            id: "33333333-3333-4333-8333-333333333333",
+            name: "tag-3",
+            createdAt: new Date().toISOString(),
+          },
+          {
+            id: "44444444-4444-4444-8444-444444444444",
+            name: "tag-4",
+            createdAt: new Date().toISOString(),
+          },
+        ],
+      };
+      expect(() => documentSmartTagsResponseSchema.parse(response)).toThrow();
     });
   });
 

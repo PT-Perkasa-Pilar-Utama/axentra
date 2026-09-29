@@ -1,6 +1,12 @@
 import { and, eq, isNull, or } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import { documentFiles, documentMetadata, documents } from "@axentra/db";
+import {
+  documentFiles,
+  documentMetadata,
+  documentSmartTags,
+  documents,
+  smartTags,
+} from "@axentra/db";
 import { PROCESSING_ENQUEUE_FAILURE_MESSAGE } from "@axentra/shared";
 
 export type DocumentProcessingRecord = {
@@ -40,6 +46,7 @@ export type DocumentProcessingRepository = {
   completeWithMetadata: (
     documentId: string,
     metadata: CompleteDocumentMetadataInput,
+    tags?: ReadonlyArray<string> | undefined,
   ) => Promise<void>;
 };
 
@@ -138,6 +145,7 @@ export class DrizzleDocumentProcessingRepository implements DocumentProcessingRe
   public async completeWithMetadata(
     documentId: string,
     metadata: CompleteDocumentMetadataInput,
+    tags?: ReadonlyArray<string> | undefined,
   ): Promise<void> {
     const now = new Date();
     await this.db.transaction(async (tx) => {
@@ -159,6 +167,34 @@ export class DrizzleDocumentProcessingRepository implements DocumentProcessingRe
             updatedAt: now,
           },
         });
+
+      if (tags && tags.length > 0) {
+        for (const tagName of tags.slice(0, 3)) {
+          await tx
+            .insert(smartTags)
+            .values({ name: tagName })
+            .onConflictDoNothing({ target: smartTags.name });
+
+          const [tagRecord] = await tx
+            .select({ id: smartTags.id })
+            .from(smartTags)
+            .where(eq(smartTags.name, tagName))
+            .limit(1);
+
+          if (tagRecord) {
+            await tx
+              .insert(documentSmartTags)
+              .values({
+                documentId,
+                tagId: tagRecord.id,
+                createdAt: now,
+              })
+              .onConflictDoNothing({
+                target: [documentSmartTags.documentId, documentSmartTags.tagId],
+              });
+          }
+        }
+      }
 
       await tx
         .update(documents)
@@ -182,12 +218,17 @@ export class InMemoryDocumentProcessingRepository implements DocumentProcessingR
     string,
     CompleteDocumentMetadataInput & { documentId: string; updatedAt: Date }
   >();
+  public readonly documentTags = new Map<string, ReadonlyArray<string>>();
   public shouldFailOnComplete = false;
 
   public constructor(
     private readonly onMetadataSaved?: (
       documentId: string,
       metadata: CompleteDocumentMetadataInput,
+    ) => Promise<void> | void,
+    private readonly onTagsSaved?: (
+      documentId: string,
+      tags: ReadonlyArray<string>,
     ) => Promise<void> | void,
   ) {}
 
@@ -249,6 +290,7 @@ export class InMemoryDocumentProcessingRepository implements DocumentProcessingR
   public async completeWithMetadata(
     documentId: string,
     metadata: CompleteDocumentMetadataInput,
+    tags?: ReadonlyArray<string> | undefined,
   ): Promise<void> {
     if (this.shouldFailOnComplete) {
       throw new Error("Simulated transaction failure in completeWithMetadata");
@@ -261,6 +303,11 @@ export class InMemoryDocumentProcessingRepository implements DocumentProcessingR
       extractedAt: metadata.extractedAt,
       updatedAt: now,
     });
+    if (tags) {
+      const capped = tags.slice(0, 3);
+      this.documentTags.set(documentId, capped);
+      await this.onTagsSaved?.(documentId, capped);
+    }
     const doc = this.documents.get(documentId);
     if (doc) {
       doc.processingStatus = "completed";

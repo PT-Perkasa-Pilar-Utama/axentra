@@ -48,8 +48,8 @@ PLANNED GET    /documents/:id/related
 ### Processing
 
 ```text
-PLANNED GET /documents/:id/metadata
-PLANNED GET /documents/:id/smart-tags
+OK      GET /documents/:id/metadata
+OK      GET /documents/:id/smart-tags
 PLANNED GET /documents/:id/category
 ```
 

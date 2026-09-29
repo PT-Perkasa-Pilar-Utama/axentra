@@ -21,6 +21,12 @@ export const smartTagSchema = z.object({
 });
 export type SmartTag = z.infer<typeof smartTagSchema>;
 
+export const documentSmartTagsResponseSchema = z.object({
+  success: z.literal(true),
+  data: z.array(smartTagSchema).max(3),
+});
+export type DocumentSmartTagsResponse = z.infer<typeof documentSmartTagsResponseSchema>;
+
 export const documentMetadataSchema = z.object({
   author: z.string().nullable().optional(),
   extractedAt: z.string().datetime().nullable().optional(),
