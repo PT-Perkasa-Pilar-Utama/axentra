@@ -4,7 +4,7 @@ import { renderToString } from "react-dom/server";
 import { MemoryRouter, createMemoryRouter, RouterProvider } from "react-router";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { DocumentSummary } from "@axentra/shared";
+import type { RelatedDocument } from "@axentra/shared";
 import { RelatedDocumentsView } from "../src/features/document-detail/related-documents.view";
 import type { RelatedDocumentsPresenter } from "../src/features/document-detail/related-documents.presenter";
 import { getRelatedDocuments } from "../src/features/document-detail/related-documents.api";
@@ -22,8 +22,8 @@ const basePresenter: RelatedDocumentsPresenter = {
   items: [
     {
       id: "11111111-1111-4111-8111-111111111111",
-      title: "CustomerAdvise",
-      tags: ["Strategy", "AI"],
+      filename: "CustomerAdvise.pdf",
+      sharedTags: ["Strategy", "AI"],
       href: "/documents/11111111-1111-4111-8111-111111111111",
     },
   ],
@@ -31,14 +31,15 @@ const basePresenter: RelatedDocumentsPresenter = {
 };
 
 describe("RelatedDocumentsView (FE-S2-05 / AC-07.01, AC-07.02)", () => {
-  test("AC-07.01: renders heading, supplied document tags and detail link", () => {
+  test("AC-07.01 & AC-07.02: renders heading, filename, shared tags and accessible link", () => {
     const html = renderView(basePresenter);
 
     expect(html).toContain("Dokumen Terkait");
-    expect(html).toContain("CustomerAdvise");
+    expect(html).toContain("CustomerAdvise.pdf");
     expect(html).toContain("Strategy");
     expect(html).toContain("AI");
     expect(html).toContain('href="/documents/11111111-1111-4111-8111-111111111111"');
+    expect(html).toContain('aria-label="Buka CustomerAdvise.pdf. Tag yang sama: Strategy, AI"');
   });
 
   test("renders loading skeletons without inventing document data", () => {
@@ -46,7 +47,7 @@ describe("RelatedDocumentsView (FE-S2-05 / AC-07.01, AC-07.02)", () => {
 
     expect(html).toContain('aria-busy="true"');
     expect(html).toContain("Memuat dokumen terkait");
-    expect(html).not.toContain("CustomerAdvise");
+    expect(html).not.toContain("CustomerAdvise.pdf");
   });
 
   test("renders honest empty and error recovery states", () => {
@@ -62,18 +63,12 @@ describe("RelatedDocumentsView (FE-S2-05 / AC-07.01, AC-07.02)", () => {
 const sourceId = "22222222-2222-4222-8222-222222222222";
 const relatedId = "11111111-1111-4111-8111-111111111111";
 const createdAt = "2026-09-29T00:00:00.000Z";
-const strategy = {
-  id: "33333333-3333-4333-8333-333333333333",
-  name: "Strategy",
-  createdAt,
-};
-const recommendation: DocumentSummary = {
+const recommendation: RelatedDocument = {
   id: relatedId,
-  title: "CustomerAdvise",
+  filename: "CustomerAdvise.pdf",
   processingStatus: "completed",
-  tags: [strategy],
   createdAt,
-  updatedAt: createdAt,
+  sharedTags: ["Strategy", "AI"],
 };
 
 const originalFetch = globalThis.fetch;
@@ -132,7 +127,7 @@ afterEach(() => {
 });
 
 describe("Related documents API and presenter", () => {
-  test("requests the document-specific endpoint with auth and validates the shared summary", async () => {
+  test("requests the document-specific endpoint with auth and validates the shared contract", async () => {
     setAuthTokenGetter(() => "ax_test_related");
     mockRelated(async (id, init) => {
       expect(id).toBe(sourceId);
@@ -152,15 +147,30 @@ describe("Related documents API and presenter", () => {
     expect(calls).toBe(0);
   });
 
-  test.each([null, {}, [{ ...recommendation, id: "javascript:alert(1)" }]])(
-    "rejects malformed successful data: %j",
-    async (data) => {
-      mockRelated(async () => respond(data));
-      await expect(getRelatedDocuments(sourceId)).rejects.toMatchObject({
-        code: "INVALID_RESPONSE",
-      });
-    },
-  );
+  test.each([
+    null,
+    {},
+    [{ ...recommendation, id: "javascript:alert(1)" }],
+    [{ ...recommendation, sharedTags: [] }],
+    [{ ...recommendation, sharedTags: undefined }],
+    [{ ...recommendation, sharedTags: [{ name: "Strategy" }] }],
+    [
+      {
+        id: relatedId,
+        title: "Old summary",
+        tags: [],
+        processingStatus: "completed",
+        createdAt,
+        updatedAt: createdAt,
+      },
+    ],
+    Array.from({ length: 21 }, () => recommendation),
+  ])("rejects malformed successful data: %j", async (data) => {
+    mockRelated(async () => respond(data));
+    await expect(getRelatedDocuments(sourceId)).rejects.toMatchObject({
+      code: "INVALID_RESPONSE",
+    });
+  });
 
   test("propagates cancellation instead of an empty result", async () => {
     mockRelated(async (_id, init) => {
@@ -212,7 +222,10 @@ describe("Related documents API and presenter", () => {
       await act(async () => {
         fireEvent.click(within(relatedRegion()).getByRole("button", { name: "Coba lagi" }));
       });
-      expect(await screen.findByRole("link", { name: "Buka CustomerAdvise" })).toBeTruthy();
+      const link = await screen.findByRole("link", {
+        name: "Buka CustomerAdvise.pdf. Tag yang sama: Strategy, AI",
+      });
+      expect(link).toBeTruthy();
       expect(calls).toBe(2);
     },
   );
@@ -224,7 +237,9 @@ describe("Related documents API and presenter", () => {
       return respond(id === sourceId ? [recommendation] : []);
     });
     const router = await mountDetail();
-    const link = await screen.findByRole("link", { name: "Buka CustomerAdvise" });
+    const link = await screen.findByRole("link", {
+      name: "Buka CustomerAdvise.pdf. Tag yang sama: Strategy, AI",
+    });
     expect(within(relatedRegion()).getByText("Strategy")).toBeTruthy();
     expect(link.getAttribute("href")).toBe(`/documents/${relatedId}`);
     await act(async () => {
@@ -232,29 +247,28 @@ describe("Related documents API and presenter", () => {
     });
     expect(router.state.location.pathname).toBe(`/documents/${relatedId}`);
     expect(await screen.findByText("Belum ada dokumen dengan tag yang sama.")).toBeTruthy();
-    expect(screen.queryByRole("link", { name: "Buka CustomerAdvise" })).toBeNull();
+    expect(
+      screen.queryByRole("link", {
+        name: "Buka CustomerAdvise.pdf. Tag yang sama: Strategy, AI",
+      }),
+    ).toBeNull();
     expect(requests).toEqual([sourceId, relatedId]);
   });
 
-  test("omits the source document and tagless suggestions; shows at most three unique tags", async () => {
+  test("omits the source document and limits shared tags to three unique entries", async () => {
     mockRelated(async () =>
       respond([
-        { ...recommendation, id: sourceId, title: "Source document" },
-        { ...recommendation, id: strategy.id, title: "Without tags", tags: [] },
+        { ...recommendation, id: sourceId, filename: "Source document.pdf" },
         {
           ...recommendation,
-          tags: [
-            strategy,
-            strategy,
-            { ...strategy, name: "AI" },
-            { ...strategy, name: "Data Science" },
-            { ...strategy, name: "Hidden fourth" },
-          ],
+          sharedTags: ["Strategy", "Strategy", "AI", "Data Science", "Hidden fourth"],
         },
       ]),
     );
     await mountDetail();
-    await screen.findByRole("link", { name: "Buka CustomerAdvise" });
+    await screen.findByRole("link", {
+      name: "Buka CustomerAdvise.pdf. Tag yang sama: Strategy, AI, Data Science",
+    });
     expect(within(relatedRegion()).getAllByRole("link")).toHaveLength(1);
     expect(within(relatedRegion()).getAllByText("Strategy")).toHaveLength(1);
     expect(within(relatedRegion()).getByText("AI")).toBeTruthy();
@@ -262,13 +276,13 @@ describe("Related documents API and presenter", () => {
     expect(screen.queryByText("Hidden fourth")).toBeNull();
   });
 
-  test("renders untrusted titles and tag text as text, not HTML", async () => {
+  test("renders untrusted filenames and shared tag text as text, not HTML", async () => {
     mockRelated(async () =>
       respond([
         {
           ...recommendation,
-          title: "<img src=x onerror=alert(1)>",
-          tags: [{ ...strategy, name: "<script>alert(1)</script>" }],
+          filename: "<img src=x onerror=alert(1)>",
+          sharedTags: ["<script>alert(1)</script>"],
         },
       ]),
     );

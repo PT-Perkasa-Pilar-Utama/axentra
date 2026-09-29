@@ -1,11 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import type { DocumentSummary } from "@axentra/shared";
+import type { RelatedDocument } from "@axentra/shared";
 import { getRelatedDocuments } from "./related-documents.api";
 
 export type RelatedDocumentItem = {
   id: string;
-  title: string;
-  tags: string[];
+  filename: string;
+  sharedTags: string[];
   href: string;
 };
 
@@ -15,12 +15,12 @@ export type RelatedDocumentsPresenter = {
   retry: () => void;
 };
 
-function toRelatedDocumentItem(summary: DocumentSummary): RelatedDocumentItem {
+function toRelatedDocumentItem(document: RelatedDocument): RelatedDocumentItem {
   return {
-    id: summary.id,
-    title: summary.title,
-    tags: [...new Set((summary.tags ?? []).map((tag) => tag.name))].slice(0, 3),
-    href: `/documents/${summary.id}`,
+    id: document.id,
+    filename: document.filename,
+    sharedTags: [...new Set(document.sharedTags)].slice(0, 3),
+    href: `/documents/${document.id}`,
   };
 }
 
@@ -48,9 +48,8 @@ export function useRelatedDocumentsPresenter(documentId: string): RelatedDocumen
     return { status: "error", items: [], retry };
   }
 
-  // Tag overlap is guaranteed by BE-S2-06, not inferred from the recent-document list.
   const items = (query.data ?? [])
-    .filter((document) => document.id !== documentId && document.tags?.length)
+    .filter((document) => document.id !== documentId)
     .map(toRelatedDocumentItem);
 
   if (items.length === 0) {

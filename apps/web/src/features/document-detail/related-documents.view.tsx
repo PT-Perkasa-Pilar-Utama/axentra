@@ -47,32 +47,36 @@ export function RelatedDocumentsView({ presenter }: RelatedDocumentsViewProps): 
 
       {presenter.status === "ready" && (
         <ul className="related-documents__list" aria-label="Daftar dokumen terkait">
-          {presenter.items.map((item) => (
-            <li key={item.id}>
-              <Link
-                id={`related-document-${item.id}`}
-                className="related-documents__card"
-                to={item.href}
-                aria-label={`Buka ${item.title}`}
-              >
-                <span className="related-documents__icon" aria-hidden="true">
-                  <FileIcon />
-                </span>
-                <span className="related-documents__content">
-                  <span className="related-documents__title">{item.title}</span>
-                  {item.tags.length > 0 && (
-                    <span className="related-documents__tags" aria-label={`Tag ${item.title}`}>
-                      {item.tags.map((tag) => (
+          {presenter.items.map((item) => {
+            const tagSummary = item.sharedTags.join(", ");
+            return (
+              <li key={item.id}>
+                <Link
+                  id={`related-document-${item.id}`}
+                  className="related-documents__card"
+                  to={item.href}
+                  aria-label={`Buka ${item.filename}. Tag yang sama: ${tagSummary}`}
+                >
+                  <span className="related-documents__icon" aria-hidden="true">
+                    <FileIcon />
+                  </span>
+                  <span className="related-documents__content">
+                    <span className="related-documents__title">{item.filename}</span>
+                    <span
+                      className="related-documents__tags"
+                      aria-label={`Tag yang sama: ${tagSummary}`}
+                    >
+                      {item.sharedTags.map((tag) => (
                         <span className="related-documents__tag" key={`${item.id}-${tag}`}>
                           {tag}
                         </span>
                       ))}
                     </span>
-                  )}
-                </span>
-              </Link>
-            </li>
-          ))}
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
         </ul>
       )}
     </section>
