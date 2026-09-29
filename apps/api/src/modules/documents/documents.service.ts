@@ -9,6 +9,8 @@ import {
   type DocumentUploadAcceptedData,
   type PaginationMeta,
   type RecentDocument,
+  RELATED_DOCUMENTS_MAX_LIMIT,
+  type RelatedDocument,
 } from "@axentra/shared";
 import type { RawUploadFile } from "./documents.schema";
 import type { IDocumentRepository } from "./documents.repository";
@@ -18,6 +20,7 @@ import { DeterministicMetadataExtractor } from "./metadata.extractor";
 import type { IDocumentMetadataRepository, SaveMetadataInput } from "./metadata.repository";
 import { InMemoryDocumentMetadataRepository } from "./metadata.repository";
 import { createInMemoryRepository, createInMemoryStorage } from "./documents.service.helpers";
+import { NotFoundError } from "../../http/errors";
 import { persistUploadedDocuments } from "./documents.upload.operations";
 import { checkDuplicateOperation, type CheckDuplicateInput } from "./duplicate.operations";
 import {
@@ -50,6 +53,7 @@ export type IDocumentService = {
   validateUpload(files: ReadonlyArray<RawUploadFile>): Promise<DocumentUploadAcceptedData>;
   checkDuplicate(input: CheckDuplicateInput): Promise<CheckDuplicateResponse>;
   listRecentDocuments(page: number, limit: number): Promise<RecentDocumentList>;
+  listRelatedDocuments(documentId: string): Promise<ReadonlyArray<RelatedDocument>>;
   getDocumentMetadata(documentId: string): Promise<DocumentMetadataResult>;
   extractAndStoreMetadata(
     documentId: string,
@@ -122,6 +126,15 @@ export class DocumentService implements IDocumentService {
 
   public async listRecentDocuments(page: number, limit: number): Promise<RecentDocumentList> {
     return await this.repository.listRecentDocuments(page, limit);
+  }
+
+  public async listRelatedDocuments(documentId: string): Promise<ReadonlyArray<RelatedDocument>> {
+    const document = await this.repository.findDocumentById(documentId);
+    if (!document || document.deletedAt) {
+      throw new NotFoundError("Dokumen tidak ditemukan");
+    }
+
+    return await this.repository.listRelatedDocuments(documentId, RELATED_DOCUMENTS_MAX_LIMIT);
   }
 
   public async getDocumentMetadata(documentId: string): Promise<DocumentMetadataResult> {

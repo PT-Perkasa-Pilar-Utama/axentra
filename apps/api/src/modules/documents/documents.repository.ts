@@ -5,9 +5,11 @@ import {
   DOCUMENT_COPY,
   DOCUMENT_ERROR_CODES,
   type PaginationMeta,
+  type RelatedDocument,
   type RecentDocument,
 } from "@axentra/shared";
 import { ConflictError } from "../../http/errors";
+import { listRelatedDocuments as listRelatedDocumentsQuery } from "./documents-related.repository";
 
 export type CreateDocumentBatchItem = {
   id: string;
@@ -37,6 +39,10 @@ export type IDocumentRepository = {
     algorithm?: string,
   ) => Promise<{ documentId: string; contentHash: string } | null>;
   listRecentDocuments: (page: number, limit: number) => Promise<RecentDocumentPage>;
+  listRelatedDocuments: (
+    documentId: string,
+    limit: number,
+  ) => Promise<ReadonlyArray<RelatedDocument>>;
   saveDocumentBatch: (
     items: ReadonlyArray<CreateDocumentBatchItem>,
   ) => Promise<ReadonlyArray<SavedDocumentRecord>>;
@@ -156,6 +162,13 @@ export class DocumentRepository implements IDocumentRepository {
       })),
       meta: { page, limit, total },
     };
+  }
+
+  public async listRelatedDocuments(
+    documentId: string,
+    limit: number,
+  ): Promise<ReadonlyArray<RelatedDocument>> {
+    return listRelatedDocumentsQuery(this.sqlDb, documentId, limit);
   }
 
   public async saveDocumentBatch(

@@ -6,6 +6,7 @@ import { createDocumentUploadHandler } from "./documents.handler";
 import { createCheckDuplicateHandler } from "./duplicate.handler";
 import { createListRecentDocumentsHandler } from "./documents.list.handler";
 import { createGetDocumentMetadataHandler } from "./metadata.handler";
+import { createListRelatedDocumentsHandler } from "./related.handler";
 import type { DocumentService } from "./documents.service";
 
 export type DocumentRouteDependencies = {
@@ -43,6 +44,13 @@ export function createDocumentRoutes(
     requireAuth(verifier),
     requireRole(["member_team", "head_of_team"]),
     createCheckDuplicateHandler(dependencies),
+  );
+
+  routes.get(
+    "/:id/related",
+    requireAuth(verifier),
+    requireRole(["member_team", "head_of_team"]),
+    createListRelatedDocumentsHandler(dependencies),
   );
 
   routes.get(

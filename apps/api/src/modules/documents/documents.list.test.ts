@@ -51,6 +51,7 @@ function repositoryWith(page: RecentDocumentPage): IDocumentRepository {
   return {
     findExistingHashes: async () => new Set<string>(),
     listRecentDocuments: async () => page,
+    listRelatedDocuments: async () => [],
     saveDocumentBatch: async () => [],
     findDocumentById: async () => null,
     findDocumentFileByDocumentId: async () => null,
