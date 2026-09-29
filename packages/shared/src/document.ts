@@ -64,6 +64,7 @@ export const recentDocumentSchema = z.object({
   id: z.string().uuid(),
   filename: z.string().min(1),
   processingStatus: processingStatusSchema,
+  tags: z.array(smartTagSchema).optional(),
   createdAt: z.string().datetime(),
 });
 export type RecentDocument = z.infer<typeof recentDocumentSchema>;

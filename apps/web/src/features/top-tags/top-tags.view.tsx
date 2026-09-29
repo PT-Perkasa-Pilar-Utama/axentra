@@ -4,15 +4,7 @@ import type { TopTagsPresenter } from "./top-tags.presenter";
 
 export type TopTagsViewProps = {
   presenter: TopTagsPresenter;
-  /**
-   * FE-S2-02 will pass the set of currently active tag IDs.
-   * Omitted in FE-S2-01 — chips render in the default (inactive) style.
-   */
   activeTagIds?: ReadonlySet<string>;
-  /**
-   * FE-S2-02 will wire this to presenter.toggleTag(id).
-   * Omitted in FE-S2-01 — chips are non-interactive.
-   */
   onTagClick?: (id: string) => void;
 };
 
@@ -21,9 +13,34 @@ export function TopTagsView({
   activeTagIds,
   onTagClick,
 }: TopTagsViewProps): React.JSX.Element | null {
-  // Render nothing while loading or on error to avoid layout shift.
-  // Empty tag list also renders nothing (context returned no qualifying tags).
-  if (presenter.isLoading || presenter.isError || presenter.tags.length === 0) {
+  if (presenter.isLoading) {
+    return (
+      <div className="flex h-7 items-center gap-2" aria-label="Memuat Top Tags">
+        <div
+          className="h-4 w-4 animate-spin rounded-full border-2 border-[#6fa84f] border-t-transparent"
+          aria-hidden="true"
+        />
+        <span className="text-sm text-gray-500">Memuat tag...</span>
+      </div>
+    );
+  }
+
+  if (presenter.isError) {
+    return (
+      <div className="flex h-7 items-center gap-2">
+        <span className="text-sm text-rose-600">Gagal memuat filter tag.</span>
+        <button
+          type="button"
+          onClick={presenter.retry}
+          className="text-sm font-medium text-rose-700 underline hover:text-rose-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 rounded"
+        >
+          Coba lagi
+        </button>
+      </div>
+    );
+  }
+
+  if (presenter.tags.length === 0) {
     return null;
   }
 

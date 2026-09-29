@@ -48,10 +48,15 @@ describe("document shared schemas", () => {
         filename: "laporan.pdf",
         processingStatus: "queued",
         createdAt: "2026-09-22T00:00:00.000Z",
-        tags: ["Strategy"],
+        tags: [
+          {
+            id: "33333333-3333-4333-8333-333333333333",
+            name: "Strategy",
+            createdAt: "2026-09-25T03:00:00.000Z",
+          },
+        ],
         category: "Reporting",
       });
-      expect(parsed).not.toHaveProperty("tags");
       expect(parsed).not.toHaveProperty("category");
     });
   });
