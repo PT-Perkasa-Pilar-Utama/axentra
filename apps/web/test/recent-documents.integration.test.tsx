@@ -137,6 +137,12 @@ describe("Recent documents refresh after processing", () => {
 
     const categories = screen.getByRole("region", { name: "Kategori" });
     expect(within(categories).getByText("Kategori belum tersedia")).toBeTruthy();
+    expect(
+      within(categories).getByText(
+        "Navigasi kategori belum aktif. Untuk sementara, gunakan daftar dokumen terbaru di dasbor.",
+      ),
+    ).toBeTruthy();
+    expect(within(categories).queryByText(/daftar semua dokumen/i)).toBeNull();
     expect(within(categories).queryByRole("button")).toBeNull();
     expect(within(categories).queryByRole("link")).toBeNull();
     expect(screen.getAllByRole("heading", { name: "Kategori" })).toHaveLength(1);

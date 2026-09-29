@@ -7,7 +7,7 @@ export function CategoryNavigationView(): React.JSX.Element {
       <h2 id="category-navigation-title">Kategori</h2>
       <p className="category-navigation-status">Kategori belum tersedia</p>
       <p className="category-navigation-description">
-        Navigasi kategori belum aktif. Untuk sementara, gunakan daftar semua dokumen.
+        Navigasi kategori belum aktif. Untuk sementara, gunakan daftar dokumen terbaru di dasbor.
       </p>
     </section>
   );

@@ -54,6 +54,16 @@ export {
   systemHealthCheckJobName,
   systemHealthCheckJobSchema,
 } from "./queue";
+export type { TopTag, TopTagsQuery, TopTagsResponse } from "./tags";
+export {
+  TOP_TAGS_DEFAULT_LIMIT,
+  TOP_TAGS_MAX_CONTEXT_DOCUMENTS,
+  TOP_TAGS_MAX_LIMIT,
+  TOP_TAGS_MIN_LIMIT,
+  topTagSchema,
+  topTagsQuerySchema,
+  topTagsResponseSchema,
+} from "./tags";
 export type {
   CheckDuplicateRequest,
   CheckDuplicateResponse,
