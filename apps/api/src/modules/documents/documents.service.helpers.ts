@@ -57,6 +57,7 @@ export function createInMemoryRepository(): IDocumentRepository {
         meta: { page, limit, total: recentDocuments.length },
       };
     },
+    listRelatedDocuments: async () => [],
     saveDocumentBatch: async (items) => {
       for (const item of items) {
         if (existingHashes.has(item.contentHash)) {

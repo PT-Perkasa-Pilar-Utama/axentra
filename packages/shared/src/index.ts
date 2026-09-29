@@ -27,9 +27,12 @@ export type {
   RecentDocument,
   RecentDocumentListQuery,
   RecentDocumentListResponse,
+  RelatedDocument,
+  RelatedDocumentsResponse,
   SmartTag,
 } from "./document";
 export {
+  RELATED_DOCUMENTS_MAX_LIMIT,
   categorySummarySchema,
   documentDetailSchema,
   documentFileInfoSchema,
@@ -41,6 +44,8 @@ export {
   recentDocumentListQuerySchema,
   recentDocumentListResponseSchema,
   recentDocumentSchema,
+  relatedDocumentSchema,
+  relatedDocumentsResponseSchema,
   smartTagSchema,
 } from "./document";
 export type { LivenessData, ReadinessData } from "./health";

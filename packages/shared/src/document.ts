@@ -61,6 +61,19 @@ export const recentDocumentSchema = z.object({
 });
 export type RecentDocument = z.infer<typeof recentDocumentSchema>;
 
+export const RELATED_DOCUMENTS_MAX_LIMIT = 20;
+
+export const relatedDocumentSchema = recentDocumentSchema.extend({
+  sharedTags: z.array(z.string().min(1)).min(1),
+});
+export type RelatedDocument = z.infer<typeof relatedDocumentSchema>;
+
+export const relatedDocumentsResponseSchema = z.object({
+  success: z.literal(true),
+  data: z.array(relatedDocumentSchema).max(RELATED_DOCUMENTS_MAX_LIMIT),
+});
+export type RelatedDocumentsResponse = z.infer<typeof relatedDocumentsResponseSchema>;
+
 const blankQueryValue = (value: unknown, fallback: number): unknown =>
   value === undefined || value === "" ? fallback : value;
 
