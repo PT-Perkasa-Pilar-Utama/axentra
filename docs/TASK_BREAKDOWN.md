@@ -167,8 +167,8 @@ and related-document suggestions.
 ### FE-S2-03 delivery status (2026-09-29)
 
 - **Blocked**: [PR #27](https://github.com/PT-Perkasa-Pilar-Utama/axentra/pull/27) contains a UI
-  scaffold only. Round 1 finding F1 and AC-05.01/AC-05.02 remain open; the card is not complete.
-- At `dev` revision `47422d3`, the [category and search APIs](api-specs/05-search-tags-categories.md)
+  scaffold only. Round 1/Round 2 finding F1 and AC-05.01/AC-05.02 remain open and blocked; the card is not complete.
+- At `dev` revision `1ab15c9`, the [category and search APIs](api-specs/05-search-tags-categories.md)
   remain planned. Integration needs category assignment (BE-S2-04), category listing, and a
   documented category-filtered document endpoint (planned in BE-S2-05).
 - Arya must approve any scaffold-only delivery scope. The card's functional scope remains unchanged.

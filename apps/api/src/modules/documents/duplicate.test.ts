@@ -837,6 +837,7 @@ describe("Task BE-S1-04: Duplicate Detection", () => {
       const throwingRepo: IDocumentRepository = {
         findExistingHashes: async () => new Set(),
         listRecentDocuments: async () => ({ items: [], meta: { page: 1, limit: 20, total: 0 } }),
+        listRelatedDocuments: async () => [],
         findDocumentById: async () => null,
         findDocumentFileByDocumentId: async () => null,
         saveDocumentBatch: async () => {

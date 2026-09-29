@@ -175,6 +175,32 @@ Accepts selected document IDs and returns or starts one `.zip` download.
 
 Returns documents that share at least one Smart Tag with the current document.
 
+- Authentication: `member_team` and `head_of_team`.
+- The response contains at most 20 active documents, excluding the current document, with a stored
+  file and at least one matching Smart Tag. Results are ordered by newest document first, with ID as
+  a stable tie-breaker.
+- `sharedTags` contains only the tag names shared with the current document, sorted alphabetically.
+- An active source document without Smart Tags returns an empty array.
+- An invalid UUID returns `400 VALIDATION_ERROR`; a missing or deleted source document returns
+  `404 NOT_FOUND`.
+
+Success response:
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "11111111-1111-4111-8111-111111111111",
+      "filename": "laporan-tahunan.pdf",
+      "processingStatus": "completed",
+      "createdAt": "2026-09-22T02:00:00.000Z",
+      "sharedTags": ["keuangan", "tahunan"]
+    }
+  ]
+}
+```
+
 ## Authorization Rules
 
 - Member Team can preview and download only when category permission allows it.
