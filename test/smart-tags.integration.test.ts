@@ -6,6 +6,8 @@ import type {
   closeDatabase as CloseDatabase,
   createDatabaseClient as CreateDatabaseClient,
 } from "@axentra/db";
+import type { StorageAdapter } from "@axentra/storage";
+import { documentSmartTagsResponseSchema } from "@axentra/shared";
 
 const runIntegrationTests = Bun.env.RUN_INTEGRATION_TESTS === "1";
 const integrationTest = runIntegrationTests ? test : test.skip;
@@ -33,65 +35,427 @@ describe("Smart Tags PostgreSQL integration (Task BE-S2-01 / AC-04.02)", () => {
     if (database !== undefined) await closeDatabase(database);
   });
 
-  integrationTest("persists and exposes document Smart Tags in PostgreSQL atomically", async () => {
-    if (database === undefined) {
-      throw new Error("PostgreSQL integration database was not initialized");
-    }
+  integrationTest(
+    "end-to-end worker to HTTP route: processes document with realistic body text, persists tags atomically in PostgreSQL, and serves via GET /api/v1/documents/:id/smart-tags",
+    async () => {
+      if (database === undefined) {
+        throw new Error("PostgreSQL integration database was not initialized");
+      }
 
-    const [
-      { documents, smartTags },
-      { DrizzleDocumentSmartTagsRepository },
-      { DrizzleDocumentProcessingRepository },
-    ] = await Promise.all([
-      import("@axentra/db"),
-      import("../apps/api/src/modules/documents/smart-tags.repository"),
-      import("../apps/worker/src/processors/document.processor.repository"),
-    ]);
+      const [
+        { documents, documentFiles, documentSmartTags },
+        { DrizzleDocumentSmartTagsRepository },
+        { DrizzleDocumentProcessingRepository },
+        { processDocumentJob },
+        { createApp },
+        { createDocumentService },
+        { createLogger },
+      ] = await Promise.all([
+        import("@axentra/db"),
+        import("../apps/api/src/modules/documents/smart-tags.repository"),
+        import("../apps/worker/src/processors/document.processor.repository"),
+        import("../apps/worker/src/processors/document.processor"),
+        import("../apps/api/src/app"),
+        import("../apps/api/src/modules/documents/documents.service"),
+        import("@axentra/observability"),
+      ]);
 
-    const suffix = crypto.randomUUID().slice(0, 8);
-    const docId = crypto.randomUUID();
-    const tagOne = `finance-${suffix}`;
-    const tagTwo = `strategy-${suffix}`;
-    const tagThree = `legal-${suffix}`;
+      const suffix = crypto.randomUUID().slice(0, 8);
+      const docId = crypto.randomUUID();
+      const fileId = crypto.randomUUID();
+      const storageKey = `integration-tests/${docId}/audit-budget-procurement.pdf`;
 
-    try {
-      // 1. Insert initial document in queued state
-      await database.db.insert(documents).values({
-        id: docId,
-        title: `Smart Tags Doc ${suffix}`,
-        processingStatus: "queued",
+      // Realistic PDF with body text containing known keywords
+      const pdfContent = `%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 120 >>
+stream
+BT
+/F1 12 Tf
+(This report details the annual fiscal budget allocation, financial audit findings, and procurement procedures.) Tj
+ET
+endstream
+endobj
+xref
+0 5
+trailer
+<< /Root 1 0 R >>
+%%EOF`;
+      const pdfBuffer = Buffer.from(pdfContent, "latin1");
+
+      const storageMap = new Map<string, Uint8Array>();
+      storageMap.set(storageKey, pdfBuffer);
+
+      const storage: StorageAdapter = {
+        async getObject(key: string) {
+          const item = storageMap.get(key);
+          if (!item) throw new Error(`Object not found in storage: ${key}`);
+          return item;
+        },
+        async putObject(input) {
+          storageMap.set(input.key, input.body);
+          return { key: input.key, etag: "mock-etag" };
+        },
+        async deleteObject(key: string) {
+          storageMap.delete(key);
+        },
+        async headObject(key: string) {
+          const item = storageMap.get(key);
+          if (!item) return null;
+          return { contentLength: item.length, lastModified: new Date() };
+        },
+        async initialize() {},
+        async getDownloadUrl(key: string) {
+          return `http://localhost:9000/documents/${key}`;
+        },
+      };
+
+      const workerRepo = new DrizzleDocumentProcessingRepository(database.db);
+      const apiSmartTagsRepo = new DrizzleDocumentSmartTagsRepository(database.db);
+
+      const documentService = createDocumentService({
+        smartTagsRepository: apiSmartTagsRepo,
       });
 
-      // 2. Process and complete with metadata and tags via worker repository
-      const workerRepo = new DrizzleDocumentProcessingRepository(database.db);
-      await workerRepo.completeWithMetadata(
-        docId,
-        {
-          author: "Integration Author",
-          rawMetadata: { test: true },
-          extractedAt: new Date(),
+      const tokenVerifier = {
+        async verifyToken(token: string) {
+          if (token === "integration-member-token") {
+            return {
+              userId: "user-1",
+              email: "member@axentra.local",
+              role: "member_team" as const,
+              name: "Integration Member",
+            };
+          }
+          if (token === "integration-unauthorized-role-token") {
+            return {
+              userId: "user-2",
+              email: "viewer@axentra.local",
+              role: "viewer" as unknown as "member_team",
+              name: "Unauthorized Viewer",
+            };
+          }
+          return null;
         },
-        [tagOne, tagTwo, tagThree, `extra-${suffix}`], // 4 tags provided; should cap at 3
-      );
+      };
 
-      // 3. Query via API DrizzleDocumentSmartTagsRepository
-      const apiRepo = new DrizzleDocumentSmartTagsRepository(database.db);
-      const tags = await apiRepo.findSmartTagsByDocumentId(docId);
+      const logger = createLogger({
+        service: "axentra-api-test",
+        environment: "test",
+        version: "0.1.0",
+        level: "fatal",
+      });
 
-      expect(tags.length).toBe(3);
-      const tagNames = tags.map((t) => t.name);
-      expect(tagNames).toContain(tagOne);
-      expect(tagNames).toContain(tagTwo);
-      expect(tagNames).toContain(tagThree);
+      const app = createApp({
+        logger,
+        version: "0.1.0",
+        readinessChecks: [],
+        tokenVerifier,
+        documentService,
+      });
 
-      // 4. Verify document status transitioned to completed
-      const docRecord = await apiRepo.findDocumentById(docId);
-      expect(docRecord?.processingStatus).toBe("completed");
-    } finally {
-      await database.db.delete(documents).where(inArray(documents.id, [docId]));
-      await database.db
-        .delete(smartTags)
-        .where(inArray(smartTags.name, [tagOne, tagTwo, tagThree, `extra-${suffix}`]));
-    }
-  });
+      try {
+        // 1. Insert initial document in queued state
+        await database.db.insert(documents).values({
+          id: docId,
+          title: `Realistic Test Doc ${suffix}`,
+          processingStatus: "queued",
+        });
+
+        // 2. Insert document file record
+        await database.db.insert(documentFiles).values({
+          id: fileId,
+          documentId: docId,
+          storageKey,
+          originalName: "unrelated-filename-123.pdf",
+          mimeType: "application/pdf",
+          fileSize: pdfBuffer.length,
+          fileExtension: "pdf",
+        });
+
+        // 3. Process document through worker pipeline
+        await processDocumentJob(
+          {
+            jobId: `job-${suffix}`,
+            documentId: docId,
+            schemaVersion: 1,
+            enqueuedAt: new Date().toISOString(),
+          },
+          {
+            repository: workerRepo,
+            storage,
+          },
+        );
+
+        // 4. Verify PostgreSQL persistence
+        const [updatedDoc] = await database.db
+          .select()
+          .from(documents)
+          .where(inArray(documents.id, [docId]));
+        expect(updatedDoc?.processingStatus).toBe("completed");
+        expect(updatedDoc?.errorMessage).toBeNull();
+
+        const docTags = await apiSmartTagsRepo.findSmartTagsByDocumentId(docId);
+        expect(docTags.length).toBe(3);
+        const tagNames = docTags.map((t) => t.name);
+        expect(tagNames).toContain("audit");
+        expect(tagNames).toContain("budget");
+        expect(tagNames).toContain("procurement");
+
+        // 5. Verify HTTP route GET /api/v1/documents/:id/smart-tags
+        const response = await app.request(`/api/v1/documents/${docId}/smart-tags`, {
+          method: "GET",
+          headers: {
+            authorization: "Bearer integration-member-token",
+          },
+        });
+
+        expect(response.status).toBe(200);
+        const body = documentSmartTagsResponseSchema.parse(await response.json());
+        expect(body.success).toBe(true);
+        expect(body.data.length).toBe(3);
+        const httpTagNames = body.data.map((t) => t.name);
+        expect(httpTagNames).toContain("audit");
+        expect(httpTagNames).toContain("budget");
+        expect(httpTagNames).toContain("procurement");
+
+        // 6. Verify HTTP route guards
+        // Unauthorized (missing token)
+        const unauthRes = await app.request(`/api/v1/documents/${docId}/smart-tags`, {
+          method: "GET",
+        });
+        expect(unauthRes.status).toBe(401);
+
+        // Forbidden (unauthorized role)
+        const forbiddenRes = await app.request(`/api/v1/documents/${docId}/smart-tags`, {
+          method: "GET",
+          headers: {
+            authorization: "Bearer integration-unauthorized-role-token",
+          },
+        });
+        expect(forbiddenRes.status).toBe(403);
+      } finally {
+        // Cleanup PostgreSQL
+        await database.db.delete(documentFiles).where(inArray(documentFiles.id, [fileId]));
+        await database.db
+          .delete(documentSmartTags)
+          .where(inArray(documentSmartTags.documentId, [docId]));
+        await database.db.delete(documents).where(inArray(documents.id, [docId]));
+      }
+    },
+  );
+
+  integrationTest(
+    "failure handling and transaction rollback: marks document as failed and leaves no orphan smart tags when worker processing fails",
+    async () => {
+      if (database === undefined) {
+        throw new Error("PostgreSQL integration database was not initialized");
+      }
+
+      const [
+        { documents, documentFiles, documentSmartTags },
+        { DrizzleDocumentProcessingRepository },
+        { processDocumentJob },
+      ] = await Promise.all([
+        import("@axentra/db"),
+        import("../apps/worker/src/processors/document.processor.repository"),
+        import("../apps/worker/src/processors/document.processor"),
+      ]);
+
+      const suffix = crypto.randomUUID().slice(0, 8);
+      const failDocId = crypto.randomUUID();
+      const failFileId = crypto.randomUUID();
+      const missingKey = `integration-tests/${failDocId}/non-existent.pdf`;
+
+      const emptyStorage: StorageAdapter = {
+        async getObject(key: string) {
+          throw new Error(`Storage read failure for: ${key}`);
+        },
+        async putObject() {
+          return { key: "mock", etag: "mock" };
+        },
+        async deleteObject() {},
+        async headObject() {
+          return null;
+        },
+        async initialize() {},
+        async getDownloadUrl(key: string) {
+          return `http://localhost:9000/documents/${key}`;
+        },
+      };
+
+      const workerRepo = new DrizzleDocumentProcessingRepository(database.db);
+
+      try {
+        // 1. Insert document in queued state
+        await database.db.insert(documents).values({
+          id: failDocId,
+          title: `Failing Doc ${suffix}`,
+          processingStatus: "queued",
+        });
+
+        // 2. Insert document file with missing key
+        await database.db.insert(documentFiles).values({
+          id: failFileId,
+          documentId: failDocId,
+          storageKey: missingKey,
+          originalName: "failing.pdf",
+          mimeType: "application/pdf",
+          fileSize: 1024,
+          fileExtension: "pdf",
+        });
+
+        // 3. Process document - expected to fail due to storage read failure
+        let caughtError: unknown;
+        try {
+          await processDocumentJob(
+            {
+              jobId: `job-fail-${suffix}`,
+              documentId: failDocId,
+              schemaVersion: 1,
+              enqueuedAt: new Date().toISOString(),
+            },
+            {
+              repository: workerRepo,
+              storage: emptyStorage,
+            },
+          );
+        } catch (err) {
+          caughtError = err;
+        }
+
+        expect(caughtError).toBeDefined();
+
+        // 4. Verify document status marked as failed in PostgreSQL
+        const [failedDoc] = await database.db
+          .select()
+          .from(documents)
+          .where(inArray(documents.id, [failDocId]));
+        expect(failedDoc?.processingStatus).toBe("failed");
+        expect(failedDoc?.errorMessage).toContain("Storage read failure");
+
+        // 5. Verify no orphan smart tags were committed in PostgreSQL
+        const orphanTags = await database.db
+          .select()
+          .from(documentSmartTags)
+          .where(inArray(documentSmartTags.documentId, [failDocId]));
+        expect(orphanTags.length).toBe(0);
+      } finally {
+        await database.db.delete(documentFiles).where(inArray(documentFiles.id, [failFileId]));
+        await database.db
+          .delete(documentSmartTags)
+          .where(inArray(documentSmartTags.documentId, [failDocId]));
+        await database.db.delete(documents).where(inArray(documents.id, [failDocId]));
+      }
+    },
+  );
+
+  integrationTest(
+    "soft-deleted document returns 404 on GET /api/v1/documents/:id/smart-tags",
+    async () => {
+      if (database === undefined) {
+        throw new Error("PostgreSQL integration database was not initialized");
+      }
+
+      const [
+        { documents, documentSmartTags, smartTags },
+        { DrizzleDocumentSmartTagsRepository },
+        { createApp },
+        { createDocumentService },
+        { createLogger },
+      ] = await Promise.all([
+        import("@axentra/db"),
+        import("../apps/api/src/modules/documents/smart-tags.repository"),
+        import("../apps/api/src/app"),
+        import("../apps/api/src/modules/documents/documents.service"),
+        import("@axentra/observability"),
+      ]);
+
+      const suffix = crypto.randomUUID().slice(0, 8);
+      const deletedDocId = crypto.randomUUID();
+      const tagId = crypto.randomUUID();
+
+      const apiSmartTagsRepo = new DrizzleDocumentSmartTagsRepository(database.db);
+      const documentService = createDocumentService({
+        smartTagsRepository: apiSmartTagsRepo,
+      });
+
+      const tokenVerifier = {
+        async verifyToken(token: string) {
+          if (token === "integration-member-token") {
+            return {
+              userId: "user-1",
+              email: "member@axentra.local",
+              role: "member_team" as const,
+              name: "Integration Member",
+            };
+          }
+          return null;
+        },
+      };
+
+      const logger = createLogger({
+        service: "axentra-api-test",
+        environment: "test",
+        version: "0.1.0",
+        level: "fatal",
+      });
+
+      const app = createApp({
+        logger,
+        version: "0.1.0",
+        readinessChecks: [],
+        tokenVerifier,
+        documentService,
+      });
+
+      try {
+        // Insert soft-deleted document
+        await database.db.insert(documents).values({
+          id: deletedDocId,
+          title: `Deleted Doc ${suffix}`,
+          processingStatus: "completed",
+          deletedAt: new Date(),
+        });
+
+        // Insert smart tag & link
+        await database.db.insert(smartTags).values({
+          id: tagId,
+          name: `finance-${suffix}`,
+        });
+        await database.db.insert(documentSmartTags).values({
+          documentId: deletedDocId,
+          tagId,
+        });
+
+        // Fetch through HTTP route
+        const response = await app.request(`/api/v1/documents/${deletedDocId}/smart-tags`, {
+          method: "GET",
+          headers: {
+            authorization: "Bearer integration-member-token",
+          },
+        });
+
+        expect(response.status).toBe(404);
+        const body = (await response.json()) as { success: boolean; error: { code: string } };
+        expect(body.success).toBe(false);
+        expect(body.error.code).toBe("NOT_FOUND");
+      } finally {
+        await database.db
+          .delete(documentSmartTags)
+          .where(inArray(documentSmartTags.documentId, [deletedDocId]));
+        await database.db.delete(smartTags).where(inArray(smartTags.id, [tagId]));
+        await database.db.delete(documents).where(inArray(documents.id, [deletedDocId]));
+      }
+    },
+  );
 });

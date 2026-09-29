@@ -286,4 +286,58 @@ describe("Document Worker Processor (Task BE-S1-05 / F2 & F7)", () => {
     expect(tags).toBeDefined();
     expect(tags).toEqual(["strategy", "legal", "contract"]);
   });
+
+  it("extracts smart tags from document body text when filename has no keywords (F1)", async () => {
+    const repository = new InMemoryDocumentProcessingRepository();
+    repository.documents.set(validJob.documentId, {
+      id: validJob.documentId,
+      title: "sample-doc-1234.pdf",
+      processingStatus: "queued",
+      errorMessage: null,
+      updatedAt: new Date(),
+    });
+
+    const storageKey = `docs/${validJob.documentId}/sample-doc-1234.pdf`;
+    repository.files.set(validJob.documentId, {
+      id: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+      documentId: validJob.documentId,
+      storageKey,
+      originalName: "sample-doc-1234.pdf",
+      mimeType: "application/pdf",
+    });
+
+    const pdfContent = `%PDF-1.4
+1 0 obj
+<< /Author (Dr. Siti Rahma) >>
+endobj
+2 0 obj
+<< /Length 100 >>
+stream
+BT
+/F1 12 Tf
+(This report details the annual fiscal budget allocation, tax calculation, and procurement guidelines.) Tj
+ET
+endstream
+endobj
+%%EOF`;
+    const filesMap = new Map<string, Uint8Array>();
+    filesMap.set(storageKey, Buffer.from(pdfContent, "latin1"));
+    const storage = createMockStorage(filesMap);
+
+    await processDocumentJob(validJob, {
+      repository,
+      storage,
+    });
+
+    const doc = repository.documents.get(validJob.documentId);
+    expect(doc?.processingStatus).toBe("completed");
+
+    const tags = repository.documentTags.get(validJob.documentId);
+    expect(tags).toBeDefined();
+    expect(tags?.length).toBe(3);
+    expect(tags).toContain("budget");
+    expect(tags).toContain("tax");
+    expect(tags).toContain("procurement");
+    expect(tags).not.toContain("sample");
+  });
 });

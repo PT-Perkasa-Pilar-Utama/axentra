@@ -1,4 +1,5 @@
 import { inflateRawSync } from "node:zlib";
+import { extractDocumentBodyText } from "./document-text.extractor";
 
 const EOCD_SIGNATURE = 0x06054b50;
 const CD_HEADER_SIGNATURE = 0x02014b50;
@@ -240,53 +241,62 @@ function extractFromContentText(content: string): ReadonlyArray<string> {
   return results;
 }
 
+/**
+ * Extracts up to 3 Smart Tags for a document.
+ * Priority order:
+ * 1. Document body text content keywords (representing actual document content per AC-04.02)
+ * 2. Document metadata keywords (DOCX core.xml / PDF keywords & subject)
+ * 3. Filename tokens (fallback when body content and metadata yield fewer than 3 tags)
+ */
 export function extractSmartTagsFromBuffer(
   filename: string,
   mimeType: string,
   buffer: Uint8Array,
   rawText?: string,
 ): ReadonlyArray<string> {
-  const candidates: string[] = [];
+  const contentCandidates: string[] = [];
+  const metadataCandidates: string[] = [];
+  const fallbackCandidates: string[] = [];
 
-  // 1. Check rawText if provided
-  if (rawText && rawText.trim().length > 0) {
-    candidates.push(...extractFromContentText(rawText));
+  // 1. Primary: Extract from provided rawText or auto-extracted document body text
+  const bodyText =
+    rawText && rawText.trim().length > 0
+      ? rawText
+      : extractDocumentBodyText(filename, mimeType, buffer);
+
+  if (bodyText.length > 0) {
+    contentCandidates.push(...extractFromContentText(bodyText));
   }
 
-  // 2. Check DOCX core xml
+  // 2. Secondary: Document metadata keywords
   const isDocx =
     mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
     filename.toLowerCase().endsWith(".docx");
 
   if (isDocx) {
-    candidates.push(...extractFromDocxCoreXml(buffer));
+    metadataCandidates.push(...extractFromDocxCoreXml(buffer));
   }
 
-  // 3. Check PDF keywords
   const isPdf = mimeType === "application/pdf" || filename.toLowerCase().endsWith(".pdf");
 
   if (isPdf) {
-    candidates.push(...extractFromPdfKeywords(buffer));
+    metadataCandidates.push(...extractFromPdfKeywords(buffer));
   }
 
-  // 4. Scan printable buffer content for known keywords
-  const bufferScanSlice = buffer.subarray(0, Math.min(buffer.length, 16384));
-  const textSample = Buffer.from(bufferScanSlice).toString("utf-8");
-  candidates.push(...extractFromContentText(textSample));
+  // 3. Fallback: Filename tokens only if needed
+  fallbackCandidates.push(...extractFromFilename(filename));
 
-  // 5. Check filename tokens
-  candidates.push(...extractFromFilename(filename));
-
-  // Deduplicate preserving order
+  // Merge with strict priority: Content > Metadata > Fallback
   const uniqueTags: string[] = [];
-  for (const tag of candidates) {
-    if (!uniqueTags.includes(tag)) {
+  const addCandidate = (tag: string) => {
+    if (!uniqueTags.includes(tag) && uniqueTags.length < MAX_SMART_TAGS_PER_DOCUMENT) {
       uniqueTags.push(tag);
     }
-    if (uniqueTags.length >= MAX_SMART_TAGS_PER_DOCUMENT) {
-      break;
-    }
-  }
+  };
+
+  for (const tag of contentCandidates) addCandidate(tag);
+  for (const tag of metadataCandidates) addCandidate(tag);
+  for (const tag of fallbackCandidates) addCandidate(tag);
 
   return uniqueTags;
 }

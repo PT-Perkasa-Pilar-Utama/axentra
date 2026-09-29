@@ -2,6 +2,7 @@ import type { Logger } from "@axentra/observability";
 import type { DocumentProcessingJob } from "@axentra/shared";
 import type { StorageAdapter } from "@axentra/storage";
 import { extractMetadataFromBuffer } from "./metadata.extractor";
+import { extractDocumentBodyText } from "./document-text.extractor";
 import { extractSmartTagsFromBuffer } from "./smart-tags.extractor";
 import type { DocumentProcessingRepository } from "./document.processor.repository";
 
@@ -62,9 +63,10 @@ export async function processDocumentJob(
     // 5. Read file buffer from object storage
     const fileBuffer = await storage.getObject(file.storageKey);
 
-    // 6. Extract metadata and smart tags
+    // 6. Extract metadata, bounded body text, and smart tags
     const extracted = extractMetadataFromBuffer(file.originalName, file.mimeType, fileBuffer);
-    const tags = extractSmartTagsFromBuffer(file.originalName, file.mimeType, fileBuffer);
+    const bodyText = extractDocumentBodyText(file.originalName, file.mimeType, fileBuffer);
+    const tags = extractSmartTagsFromBuffer(file.originalName, file.mimeType, fileBuffer, bodyText);
 
     // 7. Persist metadata and tags and mark document completed atomically within a transaction
     await repository.completeWithMetadata(
