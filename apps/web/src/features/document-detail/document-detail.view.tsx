@@ -131,7 +131,12 @@ export function DocumentDetailView(): React.JSX.Element {
         </main>
 
         {/* Right Column: Meta Data & Related Documents Sidebar */}
-        <DocumentMetadataSidebar filename={filename} author={author} uploadDate={uploadDate} />
+        <DocumentMetadataSidebar
+          documentId={presenter.document.documentId}
+          filename={filename}
+          author={author}
+          uploadDate={uploadDate}
+        />
       </div>
     </div>
   );
