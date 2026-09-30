@@ -11,6 +11,7 @@ import {
   type RecentDocument,
   RELATED_DOCUMENTS_MAX_LIMIT,
   type RelatedDocument,
+  type SmartTag,
 } from "@axentra/shared";
 import type { RawUploadFile } from "./documents.schema";
 import type { IDocumentRepository } from "./documents.repository";
@@ -19,6 +20,8 @@ import type { IMetadataExtractor } from "./metadata.extractor";
 import { DeterministicMetadataExtractor } from "./metadata.extractor";
 import type { IDocumentMetadataRepository, SaveMetadataInput } from "./metadata.repository";
 import { InMemoryDocumentMetadataRepository } from "./metadata.repository";
+import type { IDocumentSmartTagsRepository } from "./smart-tags.repository";
+import { InMemoryDocumentSmartTagsRepository } from "./smart-tags.repository";
 import { createInMemoryRepository, createInMemoryStorage } from "./documents.service.helpers";
 import { NotFoundError } from "../../http/errors";
 import { persistUploadedDocuments } from "./documents.upload.operations";
@@ -29,6 +32,7 @@ import {
   storeProvidedMetadata,
   type ExtractMetadataOptions,
 } from "./documents.metadata.operations";
+import { readDocumentSmartTags, storeDocumentSmartTags } from "./smart-tags.operations";
 
 export type { CheckDuplicateInput, ExtractMetadataOptions };
 
@@ -41,6 +45,7 @@ export type DocumentServiceDependencies = {
   metadataExtractor?: IMetadataExtractor | undefined;
   queueProducer?: QueueProducer | undefined;
   contentHashRepository?: IDocumentContentHashRepository | undefined;
+  smartTagsRepository?: IDocumentSmartTagsRepository | undefined;
 };
 
 export type RecentDocumentList = {
@@ -55,6 +60,8 @@ export type IDocumentService = {
   listRecentDocuments(page: number, limit: number): Promise<RecentDocumentList>;
   listRelatedDocuments(documentId: string): Promise<ReadonlyArray<RelatedDocument>>;
   getDocumentMetadata(documentId: string): Promise<DocumentMetadataResult>;
+  getDocumentSmartTags(documentId: string): Promise<ReadonlyArray<SmartTag>>;
+  storeSmartTags(documentId: string, tags: ReadonlyArray<string>): Promise<ReadonlyArray<SmartTag>>;
   extractAndStoreMetadata(
     documentId: string,
     options?: ExtractMetadataOptions | undefined,
@@ -72,6 +79,7 @@ export class DocumentService implements IDocumentService {
   private readonly metadataExtractor: IMetadataExtractor;
   private readonly queueProducer?: QueueProducer | undefined;
   private readonly contentHashRepository?: IDocumentContentHashRepository | undefined;
+  private readonly smartTagsRepository: IDocumentSmartTagsRepository;
 
   public constructor(dependencies: DocumentServiceDependencies = {}) {
     this.repository = dependencies.repository ?? createInMemoryRepository();
@@ -90,6 +98,8 @@ export class DocumentService implements IDocumentService {
       dependencies.metadataRepository ?? new InMemoryDocumentMetadataRepository();
     this.metadataExtractor = dependencies.metadataExtractor ?? new DeterministicMetadataExtractor();
     this.contentHashRepository = dependencies.contentHashRepository;
+    this.smartTagsRepository =
+      dependencies.smartTagsRepository ?? new InMemoryDocumentSmartTagsRepository();
   }
 
   public async validateUpload(
@@ -139,6 +149,17 @@ export class DocumentService implements IDocumentService {
 
   public async getDocumentMetadata(documentId: string): Promise<DocumentMetadataResult> {
     return readStoredMetadata(this.metadataRepository, documentId);
+  }
+
+  public async getDocumentSmartTags(documentId: string): Promise<ReadonlyArray<SmartTag>> {
+    return readDocumentSmartTags(this.smartTagsRepository, documentId);
+  }
+
+  public async storeSmartTags(
+    documentId: string,
+    tags: ReadonlyArray<string>,
+  ): Promise<ReadonlyArray<SmartTag>> {
+    return storeDocumentSmartTags(this.smartTagsRepository, documentId, tags);
   }
 
   public async extractAndStoreMetadata(

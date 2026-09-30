@@ -214,4 +214,130 @@ describe("Document Worker Processor (Task BE-S1-05 / F2 & F7)", () => {
     expect(doc?.processingStatus).toBe("failed");
     expect(doc?.errorMessage).toBe("Simulated transaction failure in completeWithMetadata");
   });
+
+  it("extracts and persists up to 3 smart tags during processing (Task BE-S2-01 / AC-04.02)", async () => {
+    const repository = new InMemoryDocumentProcessingRepository();
+    repository.documents.set(validJob.documentId, {
+      id: validJob.documentId,
+      title: "Laporan Keuangan Tahunan.pdf",
+      processingStatus: "queued",
+      errorMessage: null,
+      updatedAt: new Date(),
+    });
+
+    const storageKey = `docs/${validJob.documentId}/laporan-keuangan-tahunan.pdf`;
+    repository.files.set(validJob.documentId, {
+      id: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+      documentId: validJob.documentId,
+      storageKey,
+      originalName: "Laporan-Keuangan-Tahunan.pdf",
+      mimeType: "application/pdf",
+    });
+
+    const pdfContent = `%PDF-1.4\n1 0 obj\n<< /Title (Laporan Keuangan) /Author (Dr. Siti Rahma) /Keywords (finance, strategy, reporting, extra-tag) >>\nendobj\n%%EOF`;
+    const filesMap = new Map<string, Uint8Array>();
+    filesMap.set(storageKey, Buffer.from(pdfContent, "utf-8"));
+    const storage = createMockStorage(filesMap);
+
+    await processDocumentJob(validJob, {
+      repository,
+      storage,
+    });
+
+    const doc = repository.documents.get(validJob.documentId);
+    expect(doc?.processingStatus).toBe("completed");
+
+    const tags = repository.documentTags.get(validJob.documentId);
+    expect(tags).toBeDefined();
+    expect(tags?.length).toBeLessThanOrEqual(3);
+    expect(tags).toEqual(["finance", "strategy", "reporting"]);
+  });
+
+  it("extracts smart tags from filename when no metadata keywords are in PDF", async () => {
+    const repository = new InMemoryDocumentProcessingRepository();
+    repository.documents.set(validJob.documentId, {
+      id: validJob.documentId,
+      title: "strategy-legal-contract.pdf",
+      processingStatus: "queued",
+      errorMessage: null,
+      updatedAt: new Date(),
+    });
+
+    const storageKey = `docs/${validJob.documentId}/strategy-legal-contract.pdf`;
+    repository.files.set(validJob.documentId, {
+      id: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+      documentId: validJob.documentId,
+      storageKey,
+      originalName: "strategy-legal-contract.pdf",
+      mimeType: "application/pdf",
+    });
+
+    const pdfContent = `%PDF-1.4\n1 0 obj\n<< /Author (Dr. Siti Rahma) >>\nendobj\n%%EOF`;
+    const filesMap = new Map<string, Uint8Array>();
+    filesMap.set(storageKey, Buffer.from(pdfContent, "utf-8"));
+    const storage = createMockStorage(filesMap);
+
+    await processDocumentJob(validJob, {
+      repository,
+      storage,
+    });
+
+    const tags = repository.documentTags.get(validJob.documentId);
+    expect(tags).toBeDefined();
+    expect(tags).toEqual(["strategy", "legal", "contract"]);
+  });
+
+  it("extracts smart tags from document body text when filename has no keywords (F1)", async () => {
+    const repository = new InMemoryDocumentProcessingRepository();
+    repository.documents.set(validJob.documentId, {
+      id: validJob.documentId,
+      title: "sample-doc-1234.pdf",
+      processingStatus: "queued",
+      errorMessage: null,
+      updatedAt: new Date(),
+    });
+
+    const storageKey = `docs/${validJob.documentId}/sample-doc-1234.pdf`;
+    repository.files.set(validJob.documentId, {
+      id: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+      documentId: validJob.documentId,
+      storageKey,
+      originalName: "sample-doc-1234.pdf",
+      mimeType: "application/pdf",
+    });
+
+    const pdfContent = `%PDF-1.4
+1 0 obj
+<< /Author (Dr. Siti Rahma) >>
+endobj
+2 0 obj
+<< /Length 100 >>
+stream
+BT
+/F1 12 Tf
+(This report details the annual fiscal budget allocation, tax calculation, and procurement guidelines.) Tj
+ET
+endstream
+endobj
+%%EOF`;
+    const filesMap = new Map<string, Uint8Array>();
+    filesMap.set(storageKey, Buffer.from(pdfContent, "latin1"));
+    const storage = createMockStorage(filesMap);
+
+    await processDocumentJob(validJob, {
+      repository,
+      storage,
+    });
+
+    const doc = repository.documents.get(validJob.documentId);
+    expect(doc?.processingStatus).toBe("completed");
+
+    const tags = repository.documentTags.get(validJob.documentId);
+    expect(tags).toBeDefined();
+    expect(tags?.length).toBe(3);
+    expect(tags).toContain("budget");
+    expect(tags).toContain("tax");
+    expect(tags).toContain("procurement");
+    expect(tags).not.toContain("sample");
+  });
 });

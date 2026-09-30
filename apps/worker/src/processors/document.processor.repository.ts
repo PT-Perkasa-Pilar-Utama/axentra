@@ -1,6 +1,12 @@
 import { and, eq, isNull, or } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import { documentFiles, documentMetadata, documents } from "@axentra/db";
+import {
+  documentFiles,
+  documentMetadata,
+  documentSmartTags,
+  documents,
+  smartTags,
+} from "@axentra/db";
 import { PROCESSING_ENQUEUE_FAILURE_MESSAGE } from "@axentra/shared";
 
 export type DocumentProcessingRecord = {
@@ -40,6 +46,7 @@ export type DocumentProcessingRepository = {
   completeWithMetadata: (
     documentId: string,
     metadata: CompleteDocumentMetadataInput,
+    tags?: ReadonlyArray<string> | undefined,
   ) => Promise<void>;
 };
 
@@ -138,6 +145,7 @@ export class DrizzleDocumentProcessingRepository implements DocumentProcessingRe
   public async completeWithMetadata(
     documentId: string,
     metadata: CompleteDocumentMetadataInput,
+    tags?: ReadonlyArray<string> | undefined,
   ): Promise<void> {
     const now = new Date();
     await this.db.transaction(async (tx) => {
@@ -160,6 +168,34 @@ export class DrizzleDocumentProcessingRepository implements DocumentProcessingRe
           },
         });
 
+      if (tags && tags.length > 0) {
+        for (const tagName of tags.slice(0, 3)) {
+          await tx
+            .insert(smartTags)
+            .values({ name: tagName })
+            .onConflictDoNothing({ target: smartTags.name });
+
+          const [tagRecord] = await tx
+            .select({ id: smartTags.id })
+            .from(smartTags)
+            .where(eq(smartTags.name, tagName))
+            .limit(1);
+
+          if (tagRecord) {
+            await tx
+              .insert(documentSmartTags)
+              .values({
+                documentId,
+                tagId: tagRecord.id,
+                createdAt: now,
+              })
+              .onConflictDoNothing({
+                target: [documentSmartTags.documentId, documentSmartTags.tagId],
+              });
+          }
+        }
+      }
+
       await tx
         .update(documents)
         .set({
@@ -172,101 +208,4 @@ export class DrizzleDocumentProcessingRepository implements DocumentProcessingRe
   }
 }
 
-export class InMemoryDocumentProcessingRepository implements DocumentProcessingRepository {
-  public readonly documents = new Map<
-    string,
-    DocumentProcessingRecord & { errorMessage?: string | null; updatedAt?: Date }
-  >();
-  public readonly files = new Map<string, DocumentProcessingFileRecord>();
-  public readonly metadata = new Map<
-    string,
-    CompleteDocumentMetadataInput & { documentId: string; updatedAt: Date }
-  >();
-  public shouldFailOnComplete = false;
-
-  public constructor(
-    private readonly onMetadataSaved?: (
-      documentId: string,
-      metadata: CompleteDocumentMetadataInput,
-    ) => Promise<void> | void,
-  ) {}
-
-  public readonly enqueueFailures: FailedProcessingDocument[] = [];
-
-  public async listRecoverableDocuments(): Promise<ReadonlyArray<FailedProcessingDocument>> {
-    if (this.enqueueFailures.length > 0) return [...this.enqueueFailures];
-    const recoverable: FailedProcessingDocument[] = [];
-    for (const [documentId, document] of this.documents) {
-      const stranded =
-        document.processingStatus === "queued" ||
-        (document.processingStatus === "failed" &&
-          document.errorMessage === PROCESSING_ENQUEUE_FAILURE_MESSAGE);
-      const file = this.files.get(documentId);
-      if (!stranded || file === undefined) continue;
-      recoverable.push({ documentId, storageKey: file.storageKey });
-    }
-    return recoverable;
-  }
-
-  public async markEnqueueRecovered(documentId: string): Promise<void> {
-    const document = this.documents.get(documentId);
-    if (document?.processingStatus === "failed") {
-      document.processingStatus = "queued";
-      document.errorMessage = null;
-    }
-  }
-
-  public async findDocumentById(id: string): Promise<DocumentProcessingRecord | null> {
-    const doc = this.documents.get(id);
-    if (!doc) return null;
-    return { id: doc.id, title: doc.title, processingStatus: doc.processingStatus };
-  }
-
-  public async findDocumentFileByDocumentId(
-    documentId: string,
-  ): Promise<DocumentProcessingFileRecord | null> {
-    const file = this.files.get(documentId);
-    return file ?? null;
-  }
-
-  public async markAsProcessing(documentId: string): Promise<void> {
-    const doc = this.documents.get(documentId);
-    if (doc) {
-      doc.processingStatus = "processing";
-      doc.updatedAt = new Date();
-    }
-  }
-
-  public async markAsFailed(documentId: string, errorMessage: string): Promise<void> {
-    const doc = this.documents.get(documentId);
-    if (doc) {
-      doc.processingStatus = "failed";
-      doc.errorMessage = errorMessage;
-      doc.updatedAt = new Date();
-    }
-  }
-
-  public async completeWithMetadata(
-    documentId: string,
-    metadata: CompleteDocumentMetadataInput,
-  ): Promise<void> {
-    if (this.shouldFailOnComplete) {
-      throw new Error("Simulated transaction failure in completeWithMetadata");
-    }
-    const now = new Date();
-    this.metadata.set(documentId, {
-      documentId,
-      author: metadata.author,
-      rawMetadata: metadata.rawMetadata,
-      extractedAt: metadata.extractedAt,
-      updatedAt: now,
-    });
-    const doc = this.documents.get(documentId);
-    if (doc) {
-      doc.processingStatus = "completed";
-      doc.errorMessage = null;
-      doc.updatedAt = now;
-    }
-    await this.onMetadataSaved?.(documentId, metadata);
-  }
-}
+export { InMemoryDocumentProcessingRepository } from "./document.processor.in-memory-repository";

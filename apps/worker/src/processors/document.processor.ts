@@ -2,6 +2,8 @@ import type { Logger } from "@axentra/observability";
 import type { DocumentProcessingJob } from "@axentra/shared";
 import type { StorageAdapter } from "@axentra/storage";
 import { extractMetadataFromBuffer } from "./metadata.extractor";
+import { extractDocumentBodyText } from "./document-text.extractor";
+import { extractSmartTagsFromBuffer } from "./smart-tags.extractor";
 import type { DocumentProcessingRepository } from "./document.processor.repository";
 
 export * from "./document.processor.repository";
@@ -14,9 +16,8 @@ export type DocumentProcessorDependencies = {
 
 /**
  * Idempotently processes a document by loading its file from storage,
- * extracting metadata (such as author), persisting it to document_metadata,
- * and transitioning documents.processing_status from queued -> processing -> completed
- * inside an atomic database transaction.
+ * extracting metadata (such as author) and Smart Tags (up to 3 tags),
+ * persisting them atomically, and transitioning processing_status to completed.
  */
 export async function processDocumentJob(
   payload: DocumentProcessingJob,
@@ -62,23 +63,35 @@ export async function processDocumentJob(
     // 5. Read file buffer from object storage
     const fileBuffer = await storage.getObject(file.storageKey);
 
-    // 6. Extract metadata
+    // 6. Extract metadata, bounded body text, and smart tags
     const extracted = extractMetadataFromBuffer(file.originalName, file.mimeType, fileBuffer);
+    const bodyText = extractDocumentBodyText(file.originalName, file.mimeType, fileBuffer);
+    const tags = extractSmartTagsFromBuffer(file.originalName, file.mimeType, fileBuffer, bodyText);
 
-    // 7. Persist metadata and mark document completed atomically within a transaction
-    await repository.completeWithMetadata(documentId, {
-      author: extracted.author,
-      rawMetadata: extracted.rawMetadata,
-      extractedAt: extracted.extractedAt,
-    });
+    // 7. Persist metadata and tags and mark document completed atomically within a transaction
+    await repository.completeWithMetadata(
+      documentId,
+      {
+        author: extracted.author,
+        rawMetadata: extracted.rawMetadata,
+        extractedAt: extracted.extractedAt,
+      },
+      tags,
+    );
 
     logger?.info(
-      { jobId, documentId, author: extracted.author },
-      "Document metadata extraction and processing completed successfully",
+      { jobId, documentId, author: extracted.author, tagCount: tags.length },
+      "Document metadata and smart tags extraction and processing completed successfully",
     );
   } catch (error: unknown) {
-    const errorMessage =
+    const causeMsg = (error as { cause?: { message?: string } })?.cause?.message;
+    const baseMessage =
       error instanceof Error ? error.message : "Terjadi kesalahan saat memproses dokumen";
+    const errorMessage =
+      typeof causeMsg === "string" && causeMsg.length > 0 && !baseMessage.includes(causeMsg)
+        ? `${baseMessage}: ${causeMsg}`
+        : baseMessage;
+
     await repository.markAsFailed(documentId, errorMessage);
 
     logger?.error({ jobId, documentId, error }, "Document processing failed");

@@ -10,6 +10,7 @@ import { DocumentRepository } from "./modules/documents/documents.repository";
 import { createDocumentService } from "./modules/documents/documents.service";
 import { DrizzleDocumentContentHashRepository } from "./modules/documents/duplicate.repository";
 import { DrizzleDocumentMetadataRepository } from "./modules/documents/metadata.repository";
+import { DrizzleDocumentSmartTagsRepository } from "./modules/documents/smart-tags.repository";
 import { DrizzleTopTagsRepository } from "./modules/tags/tags.repository";
 import { createTopTagsService } from "./modules/tags/tags.service";
 
@@ -80,6 +81,7 @@ async function start(): Promise<void> {
     logger,
     metadataRepository: new DrizzleDocumentMetadataRepository(database.db),
     contentHashRepository: new DrizzleDocumentContentHashRepository(database.db),
+    smartTagsRepository: new DrizzleDocumentSmartTagsRepository(database.db),
   });
   const topTagsService = createTopTagsService(new DrizzleTopTagsRepository(database.db));
 
