@@ -5,7 +5,7 @@ import {
   MAX_SMART_TAGS_PER_DOCUMENT,
   normalizeTagName,
 } from "./smart-tags.extractor";
-import { extractDocumentBodyText } from "./document-text.extractor";
+import { decodePdfHexString, extractDocumentBodyText } from "./document-text.extractor";
 
 function createCompressedDocxWithDocumentXml(documentXml: string): Buffer {
   const xmlBuf = Buffer.from(documentXml, "utf-8");
@@ -244,6 +244,85 @@ trailer
       expect(tags[0]).toBe("tax");
       expect(tags[1]).toBe("audit");
       expect(tags[2]).toBe("marketing");
+    });
+
+    it("decodes PDF hex string literals accurately (F2)", () => {
+      expect(decodePdfHexString("66696e616e6365")).toBe("finance");
+      expect(decodePdfHexString("6c 65 67 61 6c")).toBe("legal");
+      // Odd-length hex string padded with trailing 0
+      expect(decodePdfHexString("61756469740")).toBe("audit\0");
+      // UTF-16BE hex string with BOM
+      expect(decodePdfHexString("feff007400610078")).toBe("tax");
+    });
+
+    it("extracts smart tags from PDF using hex string in Tj operator (F2)", () => {
+      // <66696e616e636520617564697420746178> = "finance audit tax"
+      const pdfContent = `%PDF-1.4
+1 0 obj
+<< /Length 60 >>
+stream
+BT
+/F1 12 Tf
+<66696e616e636520617564697420746178> Tj
+ET
+endstream
+endobj
+trailer
+<< /Root 1 0 R >>
+%%EOF`;
+      const buffer = Buffer.from(pdfContent, "latin1");
+
+      const tags = extractSmartTagsFromBuffer("scan-hex-01.pdf", "application/pdf", buffer);
+
+      expect(tags.length).toBe(3);
+      expect(tags).toEqual(["finance", "tax", "audit"]);
+      expect(tags).not.toContain("scan");
+    });
+
+    it("extracts smart tags from PDF using hex strings in TJ array operator (F2)", () => {
+      // <6c6567616c> = "legal", <636f6e7472616374> = "contract", <636f6d706c69616e6365> = "compliance"
+      const pdfContent = `%PDF-1.4
+1 0 obj
+<< /Length 90 >>
+stream
+BT
+/F1 12 Tf
+[<6c6567616c> 10 (and) 10 <636f6e7472616374> 15 <636f6d706c69616e6365>] TJ
+ET
+endstream
+endobj
+trailer
+<< /Root 1 0 R >>
+%%EOF`;
+      const buffer = Buffer.from(pdfContent, "latin1");
+
+      const tags = extractSmartTagsFromBuffer("doc-hex-array.pdf", "application/pdf", buffer);
+
+      expect(tags.length).toBe(3);
+      expect(tags).toEqual(["legal", "contract", "compliance"]);
+    });
+
+    it("safely bounds memory when encountering large or repetitive compressed stream (F1)", () => {
+      // Create a compressed stream with large decompressed text containing Tj operators
+      const repeatedText = "BT /F1 12 Tf (finance audit budget tax operations) Tj ET\n".repeat(
+        1_000,
+      );
+      const compressedStream = deflateRawSync(Buffer.from(repeatedText, "utf-8"));
+      const streamHeader = Buffer.from(
+        "%PDF-1.4\n1 0 obj\n<< /Length 100 /Filter /FlateDecode >>\nstream\n",
+        "latin1",
+      );
+      const streamFooter = Buffer.from("\nendstream\nendobj\n%%EOF", "latin1");
+      const buffer = Buffer.concat([streamHeader, compressedStream, streamFooter]);
+
+      const extracted = extractDocumentBodyText("large-stream.pdf", "application/pdf", buffer);
+
+      expect(extracted.length).toBeLessThanOrEqual(100_000);
+      const tags = extractSmartTagsFromBuffer("large-stream.pdf", "application/pdf", buffer);
+      expect(tags.length).toBeLessThanOrEqual(3);
+      expect(tags).toContain("finance");
+      expect(tags).toContain("tax");
+      expect(tags).toContain("audit");
     });
   });
 });

@@ -6,7 +6,9 @@ const LOCAL_HEADER_SIGNATURE = 0x04034b50;
 const MAX_DOCX_XML_BYTES = 1024 * 1024; // 1 MiB
 const MAX_CENTRAL_DIRECTORY_ENTRIES = 500;
 const MAX_PDF_SCAN_BYTES = 1024 * 1024; // 1 MiB
-const MAX_EXTRACTED_CHARS = 100_000;
+export const MAX_PDF_STREAM_DECOMPRESSED_BYTES = 256 * 1024; // 256 KiB per stream (F1)
+export const MAX_PDF_TOTAL_DECOMPRESSED_BYTES = 512 * 1024; // 512 KiB total cumulative (F1)
+export const MAX_EXTRACTED_CHARS = 100_000;
 
 function unescapeXml(text: string): string {
   return text
@@ -24,6 +26,25 @@ function unescapePdfString(raw: string): string {
     .replace(/\\n/g, "\n")
     .replace(/\\r/g, "\r")
     .replace(/\\t/g, "\t");
+}
+
+/**
+ * Decodes a PDF hexadecimal string literal (<48656c6c6f>).
+ * Handles odd-digit padding and UTF-16BE encoding with BOM.
+ */
+export function decodePdfHexString(raw: string): string {
+  const cleaned = raw.replace(/\s+/g, "");
+  if (cleaned.length === 0 || !/^[0-9a-fA-F]+$/.test(cleaned)) return "";
+  const normalized = cleaned.length % 2 === 1 ? `${cleaned}0` : cleaned;
+  try {
+    const buf = Buffer.from(normalized, "hex");
+    if (buf.length >= 2 && buf[0] === 0xfe && buf[1] === 0xff) {
+      return buf.subarray(2).swap16().toString("utf-16le");
+    }
+    return buf.toString("utf-8");
+  } catch {
+    return "";
+  }
 }
 
 /**
@@ -115,9 +136,13 @@ export function extractTextFromDocxBuffer(buffer: Uint8Array): string {
       const textParts: string[] = [];
       const textRegex = /<w:t(?:[^>]*)>([^<]+)<\/w:t>/gi;
       let match: RegExpExecArray | null;
+      let collectedLen = 0;
       while ((match = textRegex.exec(xmlText)) !== null) {
         if (match[1]) {
-          textParts.push(unescapeXml(match[1]));
+          const text = unescapeXml(match[1]);
+          textParts.push(text);
+          collectedLen += text.length;
+          if (collectedLen >= MAX_EXTRACTED_CHARS) break;
         }
       }
 
@@ -132,6 +157,8 @@ export function extractTextFromDocxBuffer(buffer: Uint8Array): string {
 
 /**
  * Extracts raw body text from a PDF buffer by reading content streams.
+ * Bounded by decompression size quotas and character limits (F1).
+ * Supports both literal strings and hexadecimal string operands (F2).
  */
 export function extractTextFromPdfBuffer(buffer: Uint8Array): string {
   const scanLimit = Math.min(buffer.length, MAX_PDF_SCAN_BYTES);
@@ -139,52 +166,92 @@ export function extractTextFromPdfBuffer(buffer: Uint8Array): string {
   const latin1 = Buffer.from(scanSlice).toString("latin1");
 
   const textFragments: string[] = [];
+  let totalExtractedLength = 0;
+  let totalDecompressedBytes = 0;
+
   const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
   let match: RegExpExecArray | null;
 
   while ((match = streamRegex.exec(latin1)) !== null) {
+    if (totalExtractedLength >= MAX_EXTRACTED_CHARS) break;
+
     const rawStream = match[1];
     if (!rawStream) continue;
 
     let streamContent = rawStream;
     const streamBytes = Buffer.from(rawStream, "latin1");
 
-    // Attempt flate decompression for compressed streams
-    try {
-      const decompressed = inflateSync(streamBytes, { finishFlush: 2 });
-      streamContent = decompressed.toString("latin1");
-    } catch {
+    // Attempt bounded flate decompression if within cumulative budget (F1)
+    if (totalDecompressedBytes < MAX_PDF_TOTAL_DECOMPRESSED_BYTES) {
+      const remainingBudget = Math.min(
+        MAX_PDF_STREAM_DECOMPRESSED_BYTES,
+        MAX_PDF_TOTAL_DECOMPRESSED_BYTES - totalDecompressedBytes,
+      );
       try {
-        const rawDecompressed = inflateRawSync(streamBytes);
-        streamContent = rawDecompressed.toString("latin1");
+        const decompressed = inflateSync(streamBytes, {
+          finishFlush: 2,
+          maxOutputLength: remainingBudget,
+        });
+        streamContent = decompressed.toString("latin1");
+        totalDecompressedBytes += decompressed.length;
       } catch {
-        // Fall back to uncompressed streamContent
+        try {
+          const rawDecompressed = inflateRawSync(streamBytes, {
+            maxOutputLength: remainingBudget,
+          });
+          streamContent = rawDecompressed.toString("latin1");
+          totalDecompressedBytes += rawDecompressed.length;
+        } catch {
+          // Fall back to uncompressed streamContent
+        }
       }
     }
 
-    // Extract strings from Tj operators: (text) Tj
-    const tjRegex = /\((.*?)\)\s*Tj/g;
+    const appendText = (text: string) => {
+      if (!text || totalExtractedLength >= MAX_EXTRACTED_CHARS) return;
+      const allowed = text.slice(0, MAX_EXTRACTED_CHARS - totalExtractedLength);
+      textFragments.push(allowed);
+      totalExtractedLength += allowed.length;
+    };
+
+    // 1. Literal text: (text) Tj
+    const tjLiteralRegex = /\((.*?)\)\s*Tj/g;
     let tjMatch: RegExpExecArray | null;
-    while ((tjMatch = tjRegex.exec(streamContent)) !== null) {
-      if (tjMatch[1]) textFragments.push(unescapePdfString(tjMatch[1]));
+    while ((tjMatch = tjLiteralRegex.exec(streamContent)) !== null) {
+      if (tjMatch[1]) appendText(unescapePdfString(tjMatch[1]));
+      if (totalExtractedLength >= MAX_EXTRACTED_CHARS) break;
     }
 
-    // Extract strings from TJ array operators: [(t1) 10 (t2)] TJ
+    // 2. Hex text: <hex> Tj (F2)
+    const tjHexRegex = /<([0-9a-fA-F\s]+)>\s*Tj/g;
+    let hexTjMatch: RegExpExecArray | null;
+    while ((hexTjMatch = tjHexRegex.exec(streamContent)) !== null) {
+      if (hexTjMatch[1]) appendText(decodePdfHexString(hexTjMatch[1]));
+      if (totalExtractedLength >= MAX_EXTRACTED_CHARS) break;
+    }
+
+    // 3. TJ array: [(t1) 10 <hex2>] TJ (F2)
     const tjArrayRegex = /\[((?:[^\]\\]|\\.)*)\]\s*TJ/g;
     let arrayMatch: RegExpExecArray | null;
     while ((arrayMatch = tjArrayRegex.exec(streamContent)) !== null) {
       const inner = arrayMatch[1];
       if (inner) {
-        const itemRegex = /\((.*?)\)/g;
+        const itemRegex = /\((.*?)\)|<([0-9a-fA-F\s]+)>/g;
         let itemMatch: RegExpExecArray | null;
         while ((itemMatch = itemRegex.exec(inner)) !== null) {
-          if (itemMatch[1]) textFragments.push(unescapePdfString(itemMatch[1]));
+          if (itemMatch[1]) {
+            appendText(unescapePdfString(itemMatch[1]));
+          } else if (itemMatch[2]) {
+            appendText(decodePdfHexString(itemMatch[2]));
+          }
+          if (totalExtractedLength >= MAX_EXTRACTED_CHARS) break;
         }
       }
+      if (totalExtractedLength >= MAX_EXTRACTED_CHARS) break;
     }
   }
 
-  return textFragments.join(" ").slice(0, MAX_EXTRACTED_CHARS);
+  return textFragments.join(" ");
 }
 
 /**

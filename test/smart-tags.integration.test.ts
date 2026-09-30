@@ -36,7 +36,7 @@ describe("Smart Tags PostgreSQL integration (Task BE-S2-01 / AC-04.02)", () => {
   });
 
   integrationTest(
-    "end-to-end worker to HTTP route: processes document with realistic body text, persists tags atomically in PostgreSQL, and serves via GET /api/v1/documents/:id/smart-tags",
+    "end-to-end worker to HTTP route: processes document with realistic body text and hex operands, persists tags atomically in PostgreSQL, and serves via GET /api/v1/documents/:id/smart-tags",
     async () => {
       if (database === undefined) {
         throw new Error("PostgreSQL integration database was not initialized");
@@ -65,7 +65,9 @@ describe("Smart Tags PostgreSQL integration (Task BE-S2-01 / AC-04.02)", () => {
       const fileId = crypto.randomUUID();
       const storageKey = `integration-tests/${docId}/audit-budget-procurement.pdf`;
 
-      // Realistic PDF with body text containing known keywords
+      // Realistic PDF with both literal strings and hex operands (F2)
+      // <616e642066696e616e6369616c206175646974> = "and financial audit"
+      // <70726f637572656d656e74> = "procurement"
       const pdfContent = `%PDF-1.4
 1 0 obj
 << /Type /Catalog /Pages 2 0 R >>
@@ -77,11 +79,13 @@ endobj
 << /Type /Page /Parent 2 0 R /Contents 4 0 R >>
 endobj
 4 0 obj
-<< /Length 120 >>
+<< /Length 150 >>
 stream
 BT
 /F1 12 Tf
-(This report details the annual fiscal budget allocation, financial audit findings, and procurement procedures.) Tj
+(This report details the annual fiscal budget allocation ) Tj
+<616e642066696e616e6369616c206175646974> Tj
+[10 <70726f637572656d656e74>] TJ
 ET
 endstream
 endobj
@@ -255,14 +259,14 @@ trailer
   );
 
   integrationTest(
-    "failure handling and transaction rollback: marks document as failed and leaves no orphan smart tags when worker processing fails",
+    "failure handling and transaction rollback: rolls back all transaction writes and marks document as failed when database write fails midway (F3)",
     async () => {
       if (database === undefined) {
         throw new Error("PostgreSQL integration database was not initialized");
       }
 
       const [
-        { documents, documentFiles, documentSmartTags },
+        { documents, documentFiles, documentMetadata, documentSmartTags, smartTags },
         { DrizzleDocumentProcessingRepository },
         { processDocumentJob },
       ] = await Promise.all([
@@ -274,16 +278,28 @@ trailer
       const suffix = crypto.randomUUID().slice(0, 8);
       const failDocId = crypto.randomUUID();
       const failFileId = crypto.randomUUID();
-      const missingKey = `integration-tests/${failDocId}/non-existent.pdf`;
+      const validKey = `integration-tests/${failDocId}/test.pdf`;
+      const dummyPdf = Buffer.from(
+        "%PDF-1.4\n1 0 obj\n<< /Length 20 >>\nstream\n(budget) Tj\nendstream\nendobj\n%%EOF",
+        "latin1",
+      );
 
-      const emptyStorage: StorageAdapter = {
+      const storageMap = new Map<string, Uint8Array>();
+      storageMap.set(validKey, dummyPdf);
+
+      const storage: StorageAdapter = {
         async getObject(key: string) {
-          throw new Error(`Storage read failure for: ${key}`);
+          const item = storageMap.get(key);
+          if (!item) throw new Error(`Not found: ${key}`);
+          return item;
         },
-        async putObject() {
-          return { key: "mock", etag: "mock" };
+        async putObject(input) {
+          storageMap.set(input.key, input.body);
+          return { key: input.key, etag: "mock" };
         },
-        async deleteObject() {},
+        async deleteObject(key: string) {
+          storageMap.delete(key);
+        },
         async headObject() {
           return null;
         },
@@ -293,28 +309,74 @@ trailer
         },
       };
 
-      const workerRepo = new DrizzleDocumentProcessingRepository(database.db);
+      // Repository subclass that begins active transaction, performs writes, then injects write failure midway
+      class TransactionFailureProcessingRepository extends DrizzleDocumentProcessingRepository {
+        public override async completeWithMetadata(
+          documentId: string,
+          metadata: {
+            author: string | null;
+            rawMetadata: Record<string, unknown>;
+            extractedAt: Date;
+          },
+        ): Promise<void> {
+          const now = new Date();
+          await this.db.transaction(async (tx) => {
+            // Write 1: insert document metadata inside the active transaction
+            await tx
+              .insert(documentMetadata)
+              .values({
+                documentId,
+                author: metadata.author,
+                rawMetadata: metadata.rawMetadata,
+                extractedAt: metadata.extractedAt,
+                updatedAt: now,
+              })
+              .onConflictDoUpdate({
+                target: documentMetadata.documentId,
+                set: {
+                  author: metadata.author,
+                  rawMetadata: metadata.rawMetadata,
+                  extractedAt: metadata.extractedAt,
+                  updatedAt: now,
+                },
+              });
+
+            // Write 2: insert tag inside the active transaction
+            await tx
+              .insert(smartTags)
+              .values({ name: `rollback-test-tag-${suffix}` })
+              .onConflictDoNothing();
+
+            // Simulate database write failure AFTER writes have executed inside this active transaction
+            throw new Error(
+              "Simulated database write failure midway inside completeWithMetadata transaction",
+            );
+          });
+        }
+      }
+
+      const failingRepo = new TransactionFailureProcessingRepository(database.db);
 
       try {
         // 1. Insert document in queued state
         await database.db.insert(documents).values({
           id: failDocId,
-          title: `Failing Doc ${suffix}`,
+          title: `Rollback Doc ${suffix}`,
           processingStatus: "queued",
         });
 
-        // 2. Insert document file with missing key
+        // 2. Insert document file
         await database.db.insert(documentFiles).values({
           id: failFileId,
           documentId: failDocId,
-          storageKey: missingKey,
-          originalName: "failing.pdf",
+          storageKey: validKey,
+          originalName: "rollback.pdf",
           mimeType: "application/pdf",
-          fileSize: 1024,
+          fileSize: dummyPdf.length,
           fileExtension: "pdf",
         });
 
-        // 3. Process document - expected to fail due to storage read failure
+        // 3. Process document - expected to fail due to simulated write error during transaction
         let caughtError: unknown;
         try {
           await processDocumentJob(
@@ -325,8 +387,8 @@ trailer
               enqueuedAt: new Date().toISOString(),
             },
             {
-              repository: workerRepo,
-              storage: emptyStorage,
+              repository: failingRepo,
+              storage,
             },
           );
         } catch (err) {
@@ -341,19 +403,31 @@ trailer
           .from(documents)
           .where(inArray(documents.id, [failDocId]));
         expect(failedDoc?.processingStatus).toBe("failed");
-        expect(failedDoc?.errorMessage).toContain("Storage read failure");
+        expect(failedDoc?.errorMessage).toContain(
+          "Simulated database write failure midway inside completeWithMetadata transaction",
+        );
 
-        // 5. Verify no orphan smart tags were committed in PostgreSQL
-        const orphanTags = await database.db
+        // 5. PROVE TRANSACTION ROLLBACK: document_metadata write MUST be rolled back!
+        const rolledBackMetadata = await database.db
+          .select()
+          .from(documentMetadata)
+          .where(inArray(documentMetadata.documentId, [failDocId]));
+        expect(rolledBackMetadata.length).toBe(0);
+
+        // 6. PROVE TRANSACTION ROLLBACK: no document_smart_tags links exist!
+        const rolledBackTags = await database.db
           .select()
           .from(documentSmartTags)
           .where(inArray(documentSmartTags.documentId, [failDocId]));
-        expect(orphanTags.length).toBe(0);
+        expect(rolledBackTags.length).toBe(0);
       } finally {
         await database.db.delete(documentFiles).where(inArray(documentFiles.id, [failFileId]));
         await database.db
           .delete(documentSmartTags)
           .where(inArray(documentSmartTags.documentId, [failDocId]));
+        await database.db
+          .delete(documentMetadata)
+          .where(inArray(documentMetadata.documentId, [failDocId]));
         await database.db.delete(documents).where(inArray(documents.id, [failDocId]));
       }
     },
