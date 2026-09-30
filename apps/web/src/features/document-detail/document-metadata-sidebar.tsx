@@ -1,18 +1,23 @@
 import type React from "react";
 import { BookmarkIcon, CalendarIcon, FileIcon, GridIcon, UserIcon } from "./document-icons";
+import { useRelatedDocumentsPresenter } from "./related-documents.presenter";
+import { RelatedDocumentsView } from "./related-documents.view";
 
 export type DocumentMetadataSidebarProps = {
+  documentId: string;
   filename: string;
   author: string | null;
   uploadDate: string;
 };
 
 export function DocumentMetadataSidebar({
+  documentId,
   filename,
   author,
   uploadDate,
 }: DocumentMetadataSidebarProps): React.JSX.Element {
   const displayAuthor = author ?? "Tidak terdeteksi";
+  const related = useRelatedDocumentsPresenter(documentId);
 
   return (
     <aside
@@ -104,14 +109,7 @@ export function DocumentMetadataSidebar({
       </section>
 
       {/* Section: Related Documents (Sprint 2 - AC-07.01) */}
-      <section className="space-y-3.5">
-        <h2 className="text-sm font-semibold text-gray-600">Dokumen Terkait</h2>
-        <div className="bg-[#f8fafc] border border-dashed border-gray-200 rounded-xl p-4 text-center">
-          <p className="text-base leading-relaxed text-gray-600">
-            Rekomendasi dokumen terkait belum tersedia pada versi ini.
-          </p>
-        </div>
-      </section>
+      <RelatedDocumentsView presenter={related} />
     </aside>
   );
 }
