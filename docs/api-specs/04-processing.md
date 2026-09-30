@@ -18,6 +18,7 @@ Source: BA user stories US-03, US-04, US-05.
 
 Retrieves extracted document metadata, including author, extraction timestamp, and raw extractor payload.
 
+- **Status:** Implemented (BE-S1-05 / Sprint 1)
 - **Authorization:** Bearer token required. Allowed roles: `member_team`, `head_of_team`.
 - **Path Parameters:**
   - `id` (string, UUID): Valid UUID identifying the document.
@@ -69,6 +70,7 @@ Retrieves extracted document metadata, including author, extraction timestamp, a
 
 Retrieves system-generated Smart Tags associated with a document (max 3 tags per document, per AC-04.02).
 
+- **Status:** Implemented (BE-S2-01 / Sprint 2)
 - **Authorization:** Bearer token required. Allowed roles: `member_team`, `head_of_team`.
 - **Path Parameters:**
   - `id` (string, UUID): Valid UUID identifying the document.

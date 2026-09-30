@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { inArray } from "drizzle-orm";
+import { inArray, sql } from "drizzle-orm";
 import type {
   DatabaseClient,
   closeDatabase as CloseDatabase,
@@ -279,8 +279,9 @@ trailer
       const failDocId = crypto.randomUUID();
       const failFileId = crypto.randomUUID();
       const validKey = `integration-tests/${failDocId}/test.pdf`;
+      const uniqueTagName = `unique-tag-${suffix}`;
       const dummyPdf = Buffer.from(
-        "%PDF-1.4\n1 0 obj\n<< /Length 20 >>\nstream\n(budget) Tj\nendstream\nendobj\n%%EOF",
+        `%PDF-1.4\n1 0 obj\n<< /Length 50 >>\nstream\n(${uniqueTagName} budget) Tj\nendstream\nendobj\n%%EOF`,
         "latin1",
       );
 
@@ -309,53 +310,32 @@ trailer
         },
       };
 
-      // Repository subclass that begins active transaction, performs writes, then injects write failure midway
-      class TransactionFailureProcessingRepository extends DrizzleDocumentProcessingRepository {
-        public override async completeWithMetadata(
-          documentId: string,
-          metadata: {
-            author: string | null;
-            rawMetadata: Record<string, unknown>;
-            extractedAt: Date;
-          },
-        ): Promise<void> {
-          const now = new Date();
-          await this.db.transaction(async (tx) => {
-            // Write 1: insert document metadata inside the active transaction
-            await tx
-              .insert(documentMetadata)
-              .values({
-                documentId,
-                author: metadata.author,
-                rawMetadata: metadata.rawMetadata,
-                extractedAt: metadata.extractedAt,
-                updatedAt: now,
-              })
-              .onConflictDoUpdate({
-                target: documentMetadata.documentId,
-                set: {
-                  author: metadata.author,
-                  rawMetadata: metadata.rawMetadata,
-                  extractedAt: metadata.extractedAt,
-                  updatedAt: now,
-                },
-              });
+      // Real production repository instance (F3 - no subclassing or overriding completeWithMetadata)
+      const repo = new DrizzleDocumentProcessingRepository(database.db);
 
-            // Write 2: insert tag inside the active transaction
-            await tx
-              .insert(smartTags)
-              .values({ name: `rollback-test-tag-${suffix}` })
-              .onConflictDoNothing();
+      // In PostgreSQL: install a trigger to fail during tag relation write inside completeWithMetadata transaction
+      const triggerFnName = `fail_smart_tags_${suffix.replace(/-/g, "_")}`;
+      const triggerName = `trg_${triggerFnName}`;
 
-            // Simulate database write failure AFTER writes have executed inside this active transaction
-            throw new Error(
-              "Simulated database write failure midway inside completeWithMetadata transaction",
-            );
-          });
-        }
-      }
+      await database.db.execute(
+        sql.raw(`
+        CREATE OR REPLACE FUNCTION ${triggerFnName}()
+        RETURNS trigger AS $$
+        BEGIN
+          IF NEW.document_id = '${failDocId}' THEN
+            RAISE EXCEPTION 'Simulated PostgreSQL failure on document_smart_tags insert';
+          END IF;
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql;
 
-      const failingRepo = new TransactionFailureProcessingRepository(database.db);
+        DROP TRIGGER IF EXISTS ${triggerName} ON document_smart_tags;
+        CREATE TRIGGER ${triggerName}
+        BEFORE INSERT ON document_smart_tags
+        FOR EACH ROW
+        EXECUTE FUNCTION ${triggerFnName}();
+      `),
+      );
 
       try {
         // 1. Insert document in queued state
@@ -376,7 +356,7 @@ trailer
           fileExtension: "pdf",
         });
 
-        // 3. Process document - expected to fail due to simulated write error during transaction
+        // 3. Process document via production repository - fails during relation insert inside completeWithMetadata transaction
         let caughtError: unknown;
         try {
           await processDocumentJob(
@@ -387,7 +367,7 @@ trailer
               enqueuedAt: new Date().toISOString(),
             },
             {
-              repository: failingRepo,
+              repository: repo,
               storage,
             },
           );
@@ -404,7 +384,7 @@ trailer
           .where(inArray(documents.id, [failDocId]));
         expect(failedDoc?.processingStatus).toBe("failed");
         expect(failedDoc?.errorMessage).toContain(
-          "Simulated database write failure midway inside completeWithMetadata transaction",
+          "Simulated PostgreSQL failure on document_smart_tags insert",
         );
 
         // 5. PROVE TRANSACTION ROLLBACK: document_metadata write MUST be rolled back!
@@ -420,7 +400,20 @@ trailer
           .from(documentSmartTags)
           .where(inArray(documentSmartTags.documentId, [failDocId]));
         expect(rolledBackTags.length).toBe(0);
+
+        // 7. PROVE TRANSACTION ROLLBACK: newly inserted smart_tags row MUST be rolled back!
+        const rolledBackUniqueTag = await database.db
+          .select()
+          .from(smartTags)
+          .where(inArray(smartTags.name, [uniqueTagName]));
+        expect(rolledBackUniqueTag.length).toBe(0);
       } finally {
+        await database.db.execute(
+          sql.raw(`
+          DROP TRIGGER IF EXISTS ${triggerName} ON document_smart_tags;
+          DROP FUNCTION IF EXISTS ${triggerFnName}();
+        `),
+        );
         await database.db.delete(documentFiles).where(inArray(documentFiles.id, [failFileId]));
         await database.db
           .delete(documentSmartTags)

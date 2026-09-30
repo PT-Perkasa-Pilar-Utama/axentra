@@ -1,23 +1,12 @@
 import { inflateRawSync, inflateSync } from "node:zlib";
+import { extractTextFromDocxBuffer } from "./document-text.docx";
 
-const EOCD_SIGNATURE = 0x06054b50;
-const CD_HEADER_SIGNATURE = 0x02014b50;
-const LOCAL_HEADER_SIGNATURE = 0x04034b50;
-const MAX_DOCX_XML_BYTES = 1024 * 1024; // 1 MiB
-const MAX_CENTRAL_DIRECTORY_ENTRIES = 500;
-const MAX_PDF_SCAN_BYTES = 1024 * 1024; // 1 MiB
+export const MAX_PDF_SCAN_BYTES = 1024 * 1024; // 1 MiB
 export const MAX_PDF_STREAM_DECOMPRESSED_BYTES = 256 * 1024; // 256 KiB per stream (F1)
 export const MAX_PDF_TOTAL_DECOMPRESSED_BYTES = 512 * 1024; // 512 KiB total cumulative (F1)
 export const MAX_EXTRACTED_CHARS = 100_000;
 
-function unescapeXml(text: string): string {
-  return text
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'");
-}
+export { extractTextFromDocxBuffer } from "./document-text.docx";
 
 function unescapePdfString(raw: string): string {
   return raw
@@ -47,112 +36,15 @@ export function decodePdfHexString(raw: string): string {
   }
 }
 
-/**
- * Extracts raw body text from a DOCX buffer by reading word/document.xml.
- */
-export function extractTextFromDocxBuffer(buffer: Uint8Array): string {
-  if (buffer.length < 22) return "";
-
-  const maxSearch = Math.min(buffer.length, 65557);
-  const minOffset = buffer.length - maxSearch;
-  let eocdOffset = -1;
-
-  for (let i = buffer.length - 22; i >= minOffset; i--) {
-    if (
-      buffer[i] === 0x50 &&
-      buffer[i + 1] === 0x4b &&
-      buffer[i + 2] === 0x05 &&
-      buffer[i + 3] === 0x06
-    ) {
-      eocdOffset = i;
-      break;
-    }
+function isBufferTooLargeError(err: unknown): boolean {
+  if (err instanceof RangeError) return true;
+  if (typeof err === "object" && err !== null) {
+    const code = (err as { code?: string }).code;
+    if (code === "ERR_BUFFER_TOO_LARGE") return true;
+    const msg = (err as { message?: string }).message;
+    if (typeof msg === "string" && msg.includes("larger than")) return true;
   }
-
-  if (eocdOffset === -1) return "";
-
-  const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
-  if (view.getUint32(eocdOffset, true) !== EOCD_SIGNATURE) return "";
-
-  const totalEntries = view.getUint16(eocdOffset + 10, true);
-  const cdSize = view.getUint32(eocdOffset + 12, true);
-  const cdOffset = view.getUint32(eocdOffset + 16, true);
-
-  if (cdOffset + cdSize > buffer.length) return "";
-
-  let offset = cdOffset;
-  const maxEntries = Math.min(totalEntries, MAX_CENTRAL_DIRECTORY_ENTRIES);
-
-  for (let i = 0; i < maxEntries; i++) {
-    if (offset + 46 > buffer.length) break;
-    const sig = view.getUint32(offset, true);
-    if (sig !== CD_HEADER_SIGNATURE) break;
-
-    const compressionMethod = view.getUint16(offset + 10, true);
-    const compressedSize = view.getUint32(offset + 20, true);
-    const uncompressedSize = view.getUint32(offset + 24, true);
-    const filenameLen = view.getUint16(offset + 28, true);
-    const extraLen = view.getUint16(offset + 30, true);
-    const commentLen = view.getUint16(offset + 32, true);
-    const localHeaderOffset = view.getUint32(offset + 42, true);
-
-    if (offset + 46 + filenameLen > buffer.length) break;
-    const filename = Buffer.from(buffer.subarray(offset + 46, offset + 46 + filenameLen)).toString(
-      "utf-8",
-    );
-
-    if (filename === "word/document.xml") {
-      if (uncompressedSize > MAX_DOCX_XML_BYTES) return "";
-      if (localHeaderOffset + 30 > buffer.length) return "";
-
-      const localSig = view.getUint32(localHeaderOffset, true);
-      if (localSig !== LOCAL_HEADER_SIGNATURE) return "";
-
-      const localFilenameLen = view.getUint16(localHeaderOffset + 26, true);
-      const localExtraLen = view.getUint16(localHeaderOffset + 28, true);
-      const dataOffset = localHeaderOffset + 30 + localFilenameLen + localExtraLen;
-
-      if (dataOffset + compressedSize > buffer.length) return "";
-
-      let xmlText = "";
-      if (compressionMethod === 0) {
-        xmlText = Buffer.from(buffer.subarray(dataOffset, dataOffset + compressedSize)).toString(
-          "utf-8",
-        );
-      } else if (compressionMethod === 8) {
-        const compressedChunk = buffer.subarray(dataOffset, dataOffset + compressedSize);
-        try {
-          const decompressed = inflateRawSync(compressedChunk, {
-            maxOutputLength: MAX_DOCX_XML_BYTES,
-          });
-          xmlText = decompressed.toString("utf-8");
-        } catch {
-          return "";
-        }
-      } else {
-        return "";
-      }
-
-      const textParts: string[] = [];
-      const textRegex = /<w:t(?:[^>]*)>([^<]+)<\/w:t>/gi;
-      let match: RegExpExecArray | null;
-      let collectedLen = 0;
-      while ((match = textRegex.exec(xmlText)) !== null) {
-        if (match[1]) {
-          const text = unescapeXml(match[1]);
-          textParts.push(text);
-          collectedLen += text.length;
-          if (collectedLen >= MAX_EXTRACTED_CHARS) break;
-        }
-      }
-
-      return textParts.join(" ").slice(0, MAX_EXTRACTED_CHARS);
-    }
-
-    offset += 46 + filenameLen + extraLen + commentLen;
-  }
-
-  return "";
+  return false;
 }
 
 /**
@@ -174,6 +66,7 @@ export function extractTextFromPdfBuffer(buffer: Uint8Array): string {
 
   while ((match = streamRegex.exec(latin1)) !== null) {
     if (totalExtractedLength >= MAX_EXTRACTED_CHARS) break;
+    if (totalDecompressedBytes >= MAX_PDF_TOTAL_DECOMPRESSED_BYTES) break;
 
     const rawStream = match[1];
     if (!rawStream) continue;
@@ -187,23 +80,38 @@ export function extractTextFromPdfBuffer(buffer: Uint8Array): string {
         MAX_PDF_STREAM_DECOMPRESSED_BYTES,
         MAX_PDF_TOTAL_DECOMPRESSED_BYTES - totalDecompressedBytes,
       );
+      let decompressed = false;
+
       try {
-        const decompressed = inflateSync(streamBytes, {
+        const decompressedBuf = inflateSync(streamBytes, {
           finishFlush: 2,
           maxOutputLength: remainingBudget,
         });
-        streamContent = decompressed.toString("latin1");
-        totalDecompressedBytes += decompressed.length;
-      } catch {
-        try {
-          const rawDecompressed = inflateRawSync(streamBytes, {
-            maxOutputLength: remainingBudget,
-          });
-          streamContent = rawDecompressed.toString("latin1");
-          totalDecompressedBytes += rawDecompressed.length;
-        } catch {
-          // Fall back to uncompressed streamContent
+        streamContent = decompressedBuf.toString("latin1");
+        totalDecompressedBytes += decompressedBuf.length;
+        decompressed = true;
+      } catch (err) {
+        if (isBufferTooLargeError(err)) {
+          totalDecompressedBytes += remainingBudget;
+        } else {
+          try {
+            const rawDecompressed = inflateRawSync(streamBytes, {
+              maxOutputLength: remainingBudget,
+            });
+            streamContent = rawDecompressed.toString("latin1");
+            totalDecompressedBytes += rawDecompressed.length;
+            decompressed = true;
+          } catch (rawErr) {
+            if (isBufferTooLargeError(rawErr)) {
+              totalDecompressedBytes += remainingBudget;
+            }
+          }
         }
+      }
+
+      // Hentikan parsing saat budget kumulatif habis (F1)
+      if (totalDecompressedBytes >= MAX_PDF_TOTAL_DECOMPRESSED_BYTES && !decompressed) {
+        break;
       }
     }
 

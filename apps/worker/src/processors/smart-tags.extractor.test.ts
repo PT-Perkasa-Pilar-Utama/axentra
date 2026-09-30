@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { deflateRawSync } from "node:zlib";
+import { deflateRawSync, deflateSync } from "node:zlib";
 import {
   extractSmartTagsFromBuffer,
   MAX_SMART_TAGS_PER_DOCUMENT,
@@ -323,6 +323,51 @@ trailer
       expect(tags).toContain("finance");
       expect(tags).toContain("tax");
       expect(tags).toContain("audit");
+    });
+
+    it("enforces per-stream decompression limit on oversized compressed stream (F1)", () => {
+      // 350 KiB decompressed content - exceeds MAX_PDF_STREAM_DECOMPRESSED_BYTES (256 KiB)
+      const oversizedText = `BT /F1 12 Tf (procurement governance) Tj ET\n${"A".repeat(350 * 1024)}`;
+      const compressed = deflateSync(Buffer.from(oversizedText, "utf-8"));
+
+      const pdf = Buffer.concat([
+        Buffer.from("%PDF-1.4\n1 0 obj\n<< /Filter /FlateDecode >>\nstream\n", "latin1"),
+        compressed,
+        Buffer.from("\nendstream\nendobj\n%%EOF", "latin1"),
+      ]);
+
+      const extracted = extractDocumentBodyText("oversized.pdf", "application/pdf", pdf);
+      // Because inflateSync exceeded remaining budget, it should not extract unbounded text
+      expect(extracted.length).toBeLessThanOrEqual(100_000);
+    });
+
+    it("halts PDF parsing when cumulative decompression quota is exhausted across multiple streams (F1)", () => {
+      // Create two oversized streams (each > 256 KiB uncompressed)
+      // Stream 1 consumes 256 KiB attempted budget; Stream 2 consumes the remaining 256 KiB
+      const text1 = `BT /F1 12 Tf (streamOneText) Tj ET\n${"X".repeat(300 * 1024)}`;
+      const comp1 = deflateSync(Buffer.from(text1, "utf-8"));
+
+      const text2 = `BT /F1 12 Tf (streamTwoText) Tj ET\n${"Y".repeat(300 * 1024)}`;
+      const comp2 = deflateSync(Buffer.from(text2, "utf-8"));
+
+      // Stream 3 contains keyword that should NEVER be reached because cumulative quota is exhausted
+      const text3 = "BT /F1 12 Tf (budget compliance) Tj ET\n";
+      const comp3 = deflateSync(Buffer.from(text3, "utf-8"));
+
+      const pdf = Buffer.concat([
+        Buffer.from("%PDF-1.4\n1 0 obj\n<< /Filter /FlateDecode >>\nstream\n", "latin1"),
+        comp1,
+        Buffer.from("\nendstream\nendobj\n2 0 obj\n<< /Filter /FlateDecode >>\nstream\n", "latin1"),
+        comp2,
+        Buffer.from("\nendstream\nendobj\n3 0 obj\n<< /Filter /FlateDecode >>\nstream\n", "latin1"),
+        comp3,
+        Buffer.from("\nendstream\nendobj\n%%EOF", "latin1"),
+      ]);
+
+      const extracted = extractDocumentBodyText("multi-oversized.pdf", "application/pdf", pdf);
+      // Stream 3 was never parsed because cumulative 512 KiB budget was exhausted on stream 1 & 2
+      expect(extracted).not.toContain("budget");
+      expect(extracted).not.toContain("compliance");
     });
   });
 });

@@ -84,8 +84,14 @@ export async function processDocumentJob(
       "Document metadata and smart tags extraction and processing completed successfully",
     );
   } catch (error: unknown) {
-    const errorMessage =
+    const causeMsg = (error as { cause?: { message?: string } })?.cause?.message;
+    const baseMessage =
       error instanceof Error ? error.message : "Terjadi kesalahan saat memproses dokumen";
+    const errorMessage =
+      typeof causeMsg === "string" && causeMsg.length > 0 && !baseMessage.includes(causeMsg)
+        ? `${baseMessage}: ${causeMsg}`
+        : baseMessage;
+
     await repository.markAsFailed(documentId, errorMessage);
 
     logger?.error({ jobId, documentId, error }, "Document processing failed");
