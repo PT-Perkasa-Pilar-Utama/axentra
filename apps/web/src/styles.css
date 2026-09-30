@@ -1,6 +1,7 @@
 @import "tailwindcss" source(none);
 @source "./**/*.{ts,tsx}";
 @import "./typography.css";
+@import "./features/categories/categories.css";
 
 .upload-notification {
   top: 1.75rem;
