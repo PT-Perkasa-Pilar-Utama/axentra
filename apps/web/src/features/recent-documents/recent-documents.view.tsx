@@ -2,7 +2,6 @@ import type React from "react";
 
 import type { RecentDocumentsPresenter } from "./recent-documents.presenter";
 
-// Required empty-state copy (CODING_STANDARD section 11).
 const emptyMessage = "Tidak ada hasil yang ditemukan";
 
 function ChevronLeftIcon(): React.JSX.Element {

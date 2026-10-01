@@ -15,8 +15,8 @@ export type TopTagsPresenter = {
   isLoading: boolean;
   isError: boolean;
   tags: TopTagItem[];
-  activeTagIds: ReadonlySet<string>;
-  toggleTag: (id: string) => void;
+  activeTagNames: ReadonlySet<string>;
+  toggleTag: (name: string) => void;
   clearTags: () => void;
   retry: () => Promise<void>;
 };
@@ -29,22 +29,22 @@ export function useTopTagsPresenter(context: TopTagsContext, limit = 10): TopTag
     retry: 1,
   });
 
-  const [activeTagIds, setActiveTagIds] = useState<ReadonlySet<string>>(new Set());
+  const [activeTagNames, setActiveTagNames] = useState<ReadonlySet<string>>(new Set());
 
-  const toggleTag = useCallback((id: string): void => {
-    setActiveTagIds((prev) => {
+  const toggleTag = useCallback((name: string): void => {
+    setActiveTagNames((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
+      if (next.has(name)) {
+        next.delete(name);
       } else {
-        next.add(id);
+        next.add(name);
       }
       return next;
     });
   }, []);
 
   const clearTags = useCallback((): void => {
-    setActiveTagIds(new Set());
+    setActiveTagNames(new Set());
   }, []);
 
   const retry = useCallback(async (): Promise<void> => {
@@ -57,7 +57,7 @@ export function useTopTagsPresenter(context: TopTagsContext, limit = 10): TopTag
     isLoading: query.isPending,
     isError: query.isError,
     tags: rawTags.map(({ id, name }) => ({ id, name })),
-    activeTagIds,
+    activeTagNames,
     toggleTag,
     clearTags,
     retry,

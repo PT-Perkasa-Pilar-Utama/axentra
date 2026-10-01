@@ -15,7 +15,7 @@ export function MemberTeamDashboardPage(): React.JSX.Element {
 
   const topTagsPresenter = useTopTagsPresenter("dashboard");
 
-  const documentsPresenter = useRecentDocumentsPresenter(5, topTagsPresenter.activeTagIds);
+  const documentsPresenter = useRecentDocumentsPresenter(5, topTagsPresenter.activeTagNames);
 
   return (
     <main
@@ -68,7 +68,7 @@ export function MemberTeamDashboardPage(): React.JSX.Element {
           <div className="space-y-6 pb-8">
             <TopTagsView
               presenter={topTagsPresenter}
-              activeTagIds={topTagsPresenter.activeTagIds}
+              activeTagNames={topTagsPresenter.activeTagNames}
               onTagClick={topTagsPresenter.toggleTag}
             />
 
