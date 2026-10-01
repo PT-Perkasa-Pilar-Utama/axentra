@@ -1,25 +1,27 @@
 import type { Context } from "hono";
-import { recentDocumentListQuerySchema } from "@axentra/shared";
+import { searchDocumentsQuerySchema } from "@axentra/shared";
 import type { ApiEnvironment } from "../../environment";
 import { ValidationError } from "../../http/errors";
 import { jsonSuccess } from "../../http/responses";
-import type { DocumentService } from "./documents.service";
+import type { SearchService } from "./search.service";
 
-export type ListRecentDocumentsDependencies = {
-  documentService: DocumentService;
+export type SearchHandlerDependencies = {
+  searchService: SearchService;
 };
 
-export function createListRecentDocumentsHandler(
-  dependencies: ListRecentDocumentsDependencies,
+export function createSearchDocumentsHandler(
+  dependencies: SearchHandlerDependencies,
 ): (context: Context<ApiEnvironment>) => Promise<Response> {
   return async (context: Context<ApiEnvironment>): Promise<Response> => {
     const rawTags =
       context.req.queries("tags") ?? context.req.query("tags") ?? context.req.query("tag");
 
-    const parsed = recentDocumentListQuerySchema.safeParse({
+    const parsed = searchDocumentsQuerySchema.safeParse({
+      q: context.req.query("q"),
+      tags: rawTags,
+      categoryId: context.req.query("categoryId"),
       page: context.req.query("page"),
       limit: context.req.query("limit"),
-      tags: rawTags,
     });
 
     if (!parsed.success) {
@@ -30,11 +32,7 @@ export function createListRecentDocumentsHandler(
       throw new ValidationError("Data tidak valid", details);
     }
 
-    const result = await dependencies.documentService.listRecentDocuments(
-      parsed.data.page,
-      parsed.data.limit,
-      parsed.data.tags,
-    );
+    const result = await dependencies.searchService.searchDocuments(parsed.data);
     return jsonSuccess(context, result.items, 200, result.meta);
   };
 }

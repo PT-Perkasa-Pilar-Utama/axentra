@@ -10,6 +10,7 @@ import {
 } from "@axentra/shared";
 import { ConflictError } from "../../http/errors";
 import { listRelatedDocuments as listRelatedDocumentsQuery } from "./documents-related.repository";
+import { listRecentDocumentsWithTagFilter } from "./documents.tag-filter";
 
 export type CreateDocumentBatchItem = {
   id: string;
@@ -38,7 +39,11 @@ export type IDocumentRepository = {
     contentHash: string,
     algorithm?: string,
   ) => Promise<{ documentId: string; contentHash: string } | null>;
-  listRecentDocuments: (page: number, limit: number) => Promise<RecentDocumentPage>;
+  listRecentDocuments: (
+    page: number,
+    limit: number,
+    tags?: ReadonlyArray<string> | undefined,
+  ) => Promise<RecentDocumentPage>;
   listRelatedDocuments: (
     documentId: string,
     limit: number,
@@ -131,7 +136,14 @@ export class DocumentRepository implements IDocumentRepository {
     return rows[0] ?? null;
   }
 
-  public async listRecentDocuments(page: number, limit: number): Promise<RecentDocumentPage> {
+  public async listRecentDocuments(
+    page: number,
+    limit: number,
+    tags?: ReadonlyArray<string> | undefined,
+  ): Promise<RecentDocumentPage> {
+    if (tags && tags.length > 0) {
+      return listRecentDocumentsWithTagFilter(this.sqlDb, page, limit, tags);
+    }
     const whereActive = isNull(documents.deletedAt);
     const [counted] = await this.sqlDb
       .select({ total: count() })

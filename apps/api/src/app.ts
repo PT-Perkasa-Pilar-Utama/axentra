@@ -13,6 +13,8 @@ import { createDocumentRoutes } from "./modules/documents/documents.routes";
 import type { DocumentService } from "./modules/documents/documents.service";
 import { createTagsRoutes } from "./modules/tags/tags.routes";
 import type { TopTagsService } from "./modules/tags/tags.service";
+import { createSearchRoutes } from "./modules/search/search.routes";
+import type { SearchService } from "./modules/search/search.service";
 
 export type AppDependencies = {
   logger: Logger;
@@ -22,6 +24,7 @@ export type AppDependencies = {
   authService?: AuthService | undefined;
   documentService?: DocumentService | undefined;
   topTagsService?: TopTagsService | undefined;
+  searchService?: SearchService | undefined;
   enableUploadRoute?: boolean | undefined;
 };
 
@@ -66,6 +69,16 @@ export function createApp(dependencies: AppDependencies): Hono<ApiEnvironment> {
       createTagsRoutes({
         tokenVerifier,
         service: dependencies.topTagsService,
+      }),
+    );
+  }
+
+  if (dependencies.searchService) {
+    app.route(
+      "/api/v1/search",
+      createSearchRoutes({
+        tokenVerifier,
+        searchService: dependencies.searchService,
       }),
     );
   }

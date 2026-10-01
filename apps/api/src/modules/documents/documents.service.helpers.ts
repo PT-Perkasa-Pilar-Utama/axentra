@@ -37,6 +37,7 @@ export function createInMemoryRepository(): IDocumentRepository {
   const hashToDocId = new Map<string, string>();
   const savedBatches: CreateDocumentBatchItem[][] = [];
   const recentDocuments: RecentDocument[] = [];
+  const documentTags = new Map<string, Set<string>>();
   return {
     findExistingHashes: async (hashes) => {
       const found = new Set<string>();
@@ -50,11 +51,28 @@ export function createInMemoryRepository(): IDocumentRepository {
       if (!docId) return null;
       return { documentId: docId, contentHash };
     },
-    listRecentDocuments: async (page, limit): Promise<RecentDocumentPage> => {
+    listRecentDocuments: async (
+      page: number,
+      limit: number,
+      tags?: ReadonlyArray<string> | undefined,
+    ): Promise<RecentDocumentPage> => {
+      let filtered = recentDocuments;
+      if (tags && tags.length > 0) {
+        const uniqueTags = Array.from(
+          new Set(tags.map((t) => t.trim().toLowerCase()).filter((t) => t.length > 0)),
+        );
+        if (uniqueTags.length > 0) {
+          filtered = recentDocuments.filter((doc) => {
+            const tagsForDoc = documentTags.get(doc.id);
+            if (!tagsForDoc) return false;
+            return uniqueTags.every((t) => tagsForDoc.has(t));
+          });
+        }
+      }
       const start = (page - 1) * limit;
       return {
-        items: recentDocuments.slice(start, start + limit),
-        meta: { page, limit, total: recentDocuments.length },
+        items: filtered.slice(start, start + limit),
+        meta: { page, limit, total: filtered.length },
       };
     },
     listRelatedDocuments: async () => [],

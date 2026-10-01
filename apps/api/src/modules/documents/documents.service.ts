@@ -57,7 +57,11 @@ export type IDocumentService = {
   uploadDocuments(files: ReadonlyArray<RawUploadFile>): Promise<DocumentUploadAcceptedData>;
   validateUpload(files: ReadonlyArray<RawUploadFile>): Promise<DocumentUploadAcceptedData>;
   checkDuplicate(input: CheckDuplicateInput): Promise<CheckDuplicateResponse>;
-  listRecentDocuments(page: number, limit: number): Promise<RecentDocumentList>;
+  listRecentDocuments(
+    page: number,
+    limit: number,
+    tags?: ReadonlyArray<string> | undefined,
+  ): Promise<RecentDocumentList>;
   listRelatedDocuments(documentId: string): Promise<ReadonlyArray<RelatedDocument>>;
   getDocumentMetadata(documentId: string): Promise<DocumentMetadataResult>;
   getDocumentSmartTags(documentId: string): Promise<ReadonlyArray<SmartTag>>;
@@ -134,8 +138,12 @@ export class DocumentService implements IDocumentService {
     );
   }
 
-  public async listRecentDocuments(page: number, limit: number): Promise<RecentDocumentList> {
-    return await this.repository.listRecentDocuments(page, limit);
+  public async listRecentDocuments(
+    page: number,
+    limit: number,
+    tags?: ReadonlyArray<string> | undefined,
+  ): Promise<RecentDocumentList> {
+    return await this.repository.listRecentDocuments(page, limit, tags);
   }
 
   public async listRelatedDocuments(documentId: string): Promise<ReadonlyArray<RelatedDocument>> {
