@@ -4,13 +4,13 @@ import type { TopTagsPresenter } from "./top-tags.presenter";
 
 export type TopTagsViewProps = {
   presenter: TopTagsPresenter;
-  activeTagIds?: ReadonlySet<string>;
-  onTagClick?: (id: string) => void;
+  activeTagNames?: ReadonlySet<string>;
+  onTagClick?: (name: string) => void;
 };
 
 export function TopTagsView({
   presenter,
-  activeTagIds,
+  activeTagNames,
   onTagClick,
 }: TopTagsViewProps): React.JSX.Element | null {
   if (presenter.isLoading) {
@@ -49,7 +49,7 @@ export function TopTagsView({
       <span className="text-sm font-semibold text-gray-700">Top Tags :</span>
       <ul className="flex flex-wrap gap-2" role="list">
         {presenter.tags.map((tag) => {
-          const isActive = activeTagIds?.has(tag.id) ?? false;
+          const isActive = activeTagNames?.has(tag.name) ?? false;
           const interactive = onTagClick != null;
 
           return (
@@ -57,7 +57,7 @@ export function TopTagsView({
               {interactive ? (
                 <button
                   type="button"
-                  onClick={() => onTagClick(tag.id)}
+                  onClick={() => onTagClick(tag.name)}
                   aria-pressed={isActive}
                   className={`rounded-full border px-3 py-1 text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6fa84f] focus-visible:ring-offset-1 ${
                     isActive

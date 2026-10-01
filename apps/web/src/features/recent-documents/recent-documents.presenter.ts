@@ -69,16 +69,16 @@ function hasPendingDocument(documents: readonly RecentDocument[]): boolean {
 
 export function useRecentDocumentsPresenter(
   limit = 20,
-  activeTagIds?: ReadonlySet<string>,
+  activeTagNames?: ReadonlySet<string>,
 ): RecentDocumentsPresenter {
   const queryClient = useQueryClient();
   const isPollingRef = useRef(false);
 
-  const tagIdsArray = activeTagIds ? Array.from(activeTagIds) : [];
+  const tagsArray = activeTagNames ? Array.from(activeTagNames) : [];
 
   const query = useQuery({
-    queryKey: [...RECENT_DOCUMENTS_QUERY_KEY, limit, tagIdsArray],
-    queryFn: () => listRecentDocuments(1, limit, tagIdsArray),
+    queryKey: [...RECENT_DOCUMENTS_QUERY_KEY, limit, tagsArray],
+    queryFn: () => listRecentDocuments(1, limit, tagsArray),
     staleTime: 30 * 1000,
     retry: 1,
     refetchInterval: (current) =>

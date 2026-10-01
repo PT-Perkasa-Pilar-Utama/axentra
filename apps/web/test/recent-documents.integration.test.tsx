@@ -124,12 +124,13 @@ function createFetchMock(
 
       const queryString = url.includes("?") ? url.split("?")[1] : "";
       const params = new URLSearchParams(queryString);
-      const requestedTagIds = params.getAll("tagIds");
+
+      const requestedTags = params.getAll("tags");
 
       const filtered =
-        requestedTagIds.length === 0
+        requestedTags.length === 0
           ? baseDocs
-          : baseDocs.filter((doc) => doc.tags?.some((t) => requestedTagIds.includes(t.id)));
+          : baseDocs.filter((doc) => doc.tags?.some((t) => requestedTags.includes(t.name)));
 
       return new Response(buildListResponse(filtered), { status: 200 });
     }
