@@ -41,7 +41,6 @@ export function useSearchDocumentsPresenter(): SearchDocumentsPresenter {
     [inputValue],
   );
 
-  // Tambahkan fungsi khusus untuk mereset kedua state secara bersamaan
   const clearSearch = useCallback(() => {
     setInputValue("");
     setKeyword("");
