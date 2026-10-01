@@ -348,15 +348,15 @@ endobj
       const docId = "33333333-3333-4333-8333-333333333333";
       repository.documents.set(docId, {
         id: docId,
-        title: "Dokumen-Laporan.pdf",
+        title: "doc-sample-101.pdf",
         processingStatus: "queued",
       });
-      const storageKey = `docs/${docId}/Dokumen-Laporan.pdf`;
+      const storageKey = `docs/${docId}/doc-sample-101.pdf`;
       repository.files.set(docId, {
         id: "file-cat-1",
         documentId: docId,
         storageKey,
-        originalName: "Dokumen-Laporan.pdf",
+        originalName: "doc-sample-101.pdf",
         mimeType: "application/pdf",
       });
 
@@ -411,30 +411,30 @@ endobj
 
       repository.documents.set(doc1Id, {
         id: doc1Id,
-        title: "doc1.pdf",
+        title: "doc-sample-201.pdf",
         processingStatus: "queued",
       });
       repository.documents.set(doc2Id, {
         id: doc2Id,
-        title: "doc2.pdf",
+        title: "doc-sample-202.pdf",
         processingStatus: "queued",
       });
 
-      const storageKey1 = `docs/${doc1Id}/doc1.pdf`;
-      const storageKey2 = `docs/${doc2Id}/doc2.pdf`;
+      const storageKey1 = `docs/${doc1Id}/doc-sample-201.pdf`;
+      const storageKey2 = `docs/${doc2Id}/doc-sample-202.pdf`;
 
       repository.files.set(doc1Id, {
         id: "f-1",
         documentId: doc1Id,
         storageKey: storageKey1,
-        originalName: "doc1.pdf",
+        originalName: "doc-sample-201.pdf",
         mimeType: "application/pdf",
       });
       repository.files.set(doc2Id, {
         id: "f-2",
         documentId: doc2Id,
         storageKey: storageKey2,
-        originalName: "doc2.pdf",
+        originalName: "doc-sample-202.pdf",
         mimeType: "application/pdf",
       });
 
