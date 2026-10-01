@@ -5,7 +5,6 @@ export type SearchViewProps = {
   presenter: SearchDocumentsPresenter;
 };
 
-// Search Bar (Untuk dirender di Header, tetap sama)
 export function SearchBarView({ presenter }: SearchViewProps): React.JSX.Element {
   return (
     <form onSubmit={presenter.handleSubmit} className="relative w-full max-w-[16rem]">
@@ -37,7 +36,6 @@ export function SearchBarView({ presenter }: SearchViewProps): React.JSX.Element
   );
 }
 
-// Hasil Pencarian (Disesuaikan dengan gaya recent-documents.view.tsx)
 export function SearchResultsView({ presenter }: SearchViewProps): React.JSX.Element | null {
   if (!presenter.keyword) return null;
   const hasResults = !presenter.isLoading && !presenter.isError && presenter.results.length > 0;
@@ -57,7 +55,6 @@ export function SearchResultsView({ presenter }: SearchViewProps): React.JSX.Ele
         </button>
       </div>
 
-      {/* Loading state - Disamakan dengan recent documents */}
       {presenter.isLoading && (
         <div
           className="flex min-h-48 items-center justify-center gap-2 rounded-2xl border border-[#e1e5e9] bg-white py-12 text-sm text-gray-500"
@@ -72,7 +69,6 @@ export function SearchResultsView({ presenter }: SearchViewProps): React.JSX.Ele
         </div>
       )}
 
-      {/* Error state - Disamakan dengan recent documents */}
       {presenter.isError && !presenter.isLoading && (
         <div className="flex min-h-48 flex-col items-center justify-center gap-3 rounded-2xl border border-[#e1e5e9] bg-white py-12">
           <p className="text-sm text-rose-600">Gagal memuat hasil pencarian.</p>
@@ -86,20 +82,17 @@ export function SearchResultsView({ presenter }: SearchViewProps): React.JSX.Ele
         </div>
       )}
 
-      {/* Empty state - Disamakan dengan recent documents */}
       {presenter.isEmpty && (
         <p className="flex min-h-48 items-center justify-center rounded-2xl border border-[#e1e5e9] bg-white px-4 py-12 text-center text-sm text-gray-500">
           Tidak ada hasil yang ditemukan untuk <strong>"{presenter.keyword}"</strong>
         </p>
       )}
 
-      {/* Document list - Layout disamakan dengan recent documents */}
       {hasResults && (
         <ul aria-label="Daftar hasil pencarian" className="space-y-1.5">
           {presenter.results.map((item) => (
             <li
               key={item.id}
-              // Menggunakan grid yang sama, items-start agar teks panjang dan checkbox sejajar di atas
               className="grid min-h-[4.5rem] grid-cols-[1.25rem_minmax(0,1fr)] items-start gap-x-5 rounded-2xl border border-[#e1e5e9] bg-white px-5 py-4 md:px-8"
             >
               <input

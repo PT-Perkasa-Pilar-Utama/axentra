@@ -5,19 +5,15 @@ export type SearchResultItem = {
 };
 
 export async function searchDocuments(keyword: string): Promise<SearchResultItem[]> {
-  // Ambil token dari session (disesuaikan dengan arsitektur auth Axentra)
   const sessionStr =
     sessionStorage.getItem("ax_auth_session") || sessionStorage.getItem("auth-storage");
   let token = "";
   if (sessionStr) {
     try {
       token = JSON.parse(sessionStr).state?.session?.token || JSON.parse(sessionStr).token || "";
-    } catch {
-      // Abaikan jika gagal parse
-    }
+    } catch {}
   }
 
-  // Gunakan base URL environment jika ada, fallback ke /api/v1
   const baseUrl =
     import.meta.env && import.meta.env.VITE_API_BASE_URL
       ? import.meta.env.VITE_API_BASE_URL
