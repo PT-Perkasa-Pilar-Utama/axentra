@@ -1,7 +1,9 @@
 import { describe, expect, it } from "bun:test";
 
 import {
+  categoriesResponseSchema,
   categorySummarySchema,
+  documentCategoryResponseSchema,
   documentDetailSchema,
   documentFileInfoSchema,
   documentMetadataResultSchema,
@@ -124,6 +126,48 @@ describe("document shared schemas", () => {
           updatedAt: new Date().toISOString(),
         }),
       ).toThrow();
+    });
+  });
+
+  describe("documentCategoryResponseSchema", () => {
+    it("accepts valid category data or null", () => {
+      const validWithCategory = {
+        success: true,
+        data: {
+          id: "11111111-1111-4111-8111-111111111111",
+          name: "Reporting",
+          slug: "reporting",
+          downloadEnabled: false,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      };
+      expect(documentCategoryResponseSchema.parse(validWithCategory)).toEqual(validWithCategory);
+
+      const validWithNull = {
+        success: true,
+        data: null,
+      };
+      expect(documentCategoryResponseSchema.parse(validWithNull)).toEqual(validWithNull);
+    });
+  });
+
+  describe("categoriesResponseSchema", () => {
+    it("accepts array of categories", () => {
+      const valid = {
+        success: true,
+        data: [
+          {
+            id: "11111111-1111-4111-8111-111111111111",
+            name: "Reporting",
+            slug: "reporting",
+            downloadEnabled: false,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        ],
+      };
+      expect(categoriesResponseSchema.parse(valid)).toEqual(valid);
     });
   });
 

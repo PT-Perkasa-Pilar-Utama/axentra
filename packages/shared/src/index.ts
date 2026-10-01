@@ -16,7 +16,9 @@ export {
   userRoleSchema,
 } from "./auth";
 export type {
+  CategoriesResponse,
   CategorySummary,
+  DocumentCategoryResponse,
   DocumentDetail,
   DocumentFileInfo,
   DocumentIdParam,
@@ -34,7 +36,9 @@ export type {
 } from "./document";
 export {
   RELATED_DOCUMENTS_MAX_LIMIT,
+  categoriesResponseSchema,
   categorySummarySchema,
+  documentCategoryResponseSchema,
   documentDetailSchema,
   documentFileInfoSchema,
   documentIdParamSchema,
