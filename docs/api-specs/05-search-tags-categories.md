@@ -2,18 +2,18 @@
 
 Source: BA user stories US-04, US-05, US-06.
 
-The Top Tags API is implemented in BE-S2-02. Search Documents and Categories remain planned.
+The Top Tags API is implemented in BE-S2-02. Tag filtering for search and list endpoints is implemented in BE-S2-03. Categories and full-text keyword extraction search remain planned.
 
 ## Implemented Endpoints
 
 ```text
 GET /api/v1/tags/top
+GET /api/v1/search/documents
 ```
 
 ## Planned Endpoints
 
 ```text
-GET /api/v1/search/documents
 GET /api/v1/categories
 ```
 
@@ -21,22 +21,55 @@ GET /api/v1/categories
 
 ### `GET /api/v1/search/documents`
 
-Planned query parameters:
+Status: Implemented for single-tag and multi-tag filtering (BE-S2-03); OCR/AI body text snippet search is planned in BE-S2-05.
 
-| Parameter    | Purpose                       |
-| ------------ | ----------------------------- |
-| `q`          | Keyword from title or content |
-| `tags`       | One or more Smart Tags        |
-| `categoryId` | Auto category filter          |
-| `page`       | Page number                   |
-| `limit`      | Page size                     |
+**Authorization:**
 
-Planned behavior:
+- Requires authenticated session (`Bearer <token>`).
+- Enforces role `member_team` or `head_of_team`.
 
-- Search by any keyword from document content or title.
-- Return results in less than 3 seconds.
-- Each result displays filename and matching text snippet.
-- If no result exists, show `Tidak ada hasil yang ditemukan`.
+#### Query parameters:
+
+| Parameter    | Required | Values / limit                  | Purpose                                                                           |
+| ------------ | -------- | ------------------------------- | --------------------------------------------------------------------------------- |
+| `tags`       | No       | Repeated or CSV; max 20 tags    | Single-tag and multi-tag filtering (AND logic per AC-04.03, AC-04.04).            |
+| `tag`        | No       | String; max 50 chars            | Single-tag alias for `tags`.                                                      |
+| `q`          | No       | String; max 100 chars           | Title / filename keyword filter (full extracted text search planned in BE-S2-05). |
+| `categoryId` | No       | Valid UUID                      | Auto-category filter.                                                             |
+| `page`       | No       | Integer `1`–`1000`; default `1` | Page number.                                                                      |
+| `limit`      | No       | Integer `1`–`100`; default `20` | Page size.                                                                        |
+
+#### Response schema
+
+Success (`200 OK`):
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "11111111-1111-4111-8111-111111111111",
+      "filename": "rencana-strategis.pdf",
+      "processingStatus": "completed",
+      "createdAt": "2026-09-22T00:00:00.000Z",
+      "snippet": null
+    }
+  ],
+  "meta": {
+    "page": 1,
+    "limit": 20,
+    "total": 1
+  }
+}
+```
+
+If no document matches, returns `"data": []` with `"meta": { "total": 0 }`. The frontend displays `Tidak ada hasil yang ditemukan`.
+
+**Error responses:**
+
+- `400 VALIDATION_ERROR`: Invalid UUID, limit out of bounds, or tag exceeding 50 characters.
+- `401 UNAUTHORIZED`: Missing or invalid Bearer token.
+- `403 FORBIDDEN`: Role not permitted.
 
 ## Top Tags
 
@@ -98,7 +131,7 @@ Invalid or out-of-range parameters return `400` using the standard validation er
 Unauthenticated requests return `401`; roles other than `member_team` and `head_of_team` return
 `403`.
 
-This endpoint only supplies the tag choices relevant to a context. It does not apply tag filters to document results; single-tag and multi-tag filtering remain in BE-S2-03.
+This endpoint only supplies the tag choices relevant to a context. Single-tag and multi-tag filtering is implemented in BE-S2-03 across search/list endpoints.
 
 ## Categories
 

@@ -13,6 +13,8 @@ import { DrizzleDocumentMetadataRepository } from "./modules/documents/metadata.
 import { DrizzleDocumentSmartTagsRepository } from "./modules/documents/smart-tags.repository";
 import { DrizzleTopTagsRepository } from "./modules/tags/tags.repository";
 import { createTopTagsService } from "./modules/tags/tags.service";
+import { DrizzleSearchRepository } from "./modules/search/search.repository";
+import { createSearchService } from "./modules/search/search.service";
 
 const closeResourcesWithinDeadline = async (
   operations: Array<() => Promise<unknown>>,
@@ -84,6 +86,7 @@ async function start(): Promise<void> {
     smartTagsRepository: new DrizzleDocumentSmartTagsRepository(database.db),
   });
   const topTagsService = createTopTagsService(new DrizzleTopTagsRepository(database.db));
+  const searchService = createSearchService(new DrizzleSearchRepository(database.db));
 
   const app = createApp({
     logger,
@@ -96,6 +99,7 @@ async function start(): Promise<void> {
     authService,
     documentService,
     topTagsService,
+    searchService,
     enableUploadRoute: true,
   });
 

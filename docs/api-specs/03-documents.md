@@ -23,7 +23,7 @@ GET  /api/v1/documents/:id/related
 
 Status: Implemented (BE-S1-06).
 
-Returns documents that have a stored file, newest `created_at` first. Soft-deleted documents are omitted. Sprint 1 items do not include `tags` or `category`.
+Returns documents that have a stored file, newest `created_at` first. Soft-deleted documents are omitted. Supports single-tag and multi-tag filtering (AND logic per AC-04.03, AC-04.04).
 
 **Authorization:**
 
@@ -34,6 +34,8 @@ Returns documents that have a stored file, newest `created_at` first. Soft-delet
 
 - `page` — integer, default `1`, minimum `1`, maximum `1000`.
 - `limit` — integer, default `20`, minimum `1`, maximum `100`.
+- `tags` — string or repeated array, maximum 20 tags. Filters documents containing all specified tags (AND logic).
+- `tag` — string, single tag alias for `tags`.
 
 **Success Response (`200 OK`):**
 

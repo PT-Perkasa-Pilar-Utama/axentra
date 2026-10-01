@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { paginationMetaSchema } from "./api";
+import { MAX_FILTER_TAGS, MAX_TAG_NAME_LENGTH, parseTagsQuery } from "./tags";
 
 export const processingStatusSchema = z.enum(["queued", "processing", "completed", "failed"]);
 export type ProcessingStatus = z.infer<typeof processingStatusSchema>;
@@ -92,6 +93,20 @@ export const recentDocumentListQuerySchema = z.object({
     (value) => blankQueryValue(value, 20),
     z.coerce.number().int().min(1).max(100),
   ),
+  tags: z
+    .preprocess(
+      parseTagsQuery,
+      z
+        .array(
+          z
+            .string()
+            .min(1, { message: "Tag tidak boleh kosong" })
+            .max(MAX_TAG_NAME_LENGTH, { message: "Nama tag melebihi batas maksimum" }),
+        )
+        .max(MAX_FILTER_TAGS, { message: "Jumlah filter tag melebihi batas maksimum" })
+        .optional(),
+    )
+    .optional(),
 });
 export type RecentDocumentListQuery = z.infer<typeof recentDocumentListQuerySchema>;
 

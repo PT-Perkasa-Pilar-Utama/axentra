@@ -63,14 +63,23 @@ export {
 } from "./queue";
 export type { TopTag, TopTagsQuery, TopTagsResponse } from "./tags";
 export {
+  MAX_FILTER_TAGS,
+  MAX_TAG_NAME_LENGTH,
   TOP_TAGS_DEFAULT_LIMIT,
   TOP_TAGS_MAX_CONTEXT_DOCUMENTS,
   TOP_TAGS_MAX_LIMIT,
   TOP_TAGS_MIN_LIMIT,
+  parseTagsQuery,
   topTagSchema,
   topTagsQuerySchema,
   topTagsResponseSchema,
 } from "./tags";
+export type { SearchDocument, SearchDocumentsQuery, SearchDocumentsResponse } from "./search";
+export {
+  searchDocumentSchema,
+  searchDocumentsQuerySchema,
+  searchDocumentsResponseSchema,
+} from "./search";
 export type {
   CheckDuplicateRequest,
   CheckDuplicateResponse,
