@@ -43,7 +43,8 @@ describe("Auto-Category Assignment PostgreSQL Integration (Task BE-S2-04 / AC-05
   let closeDatabase: CloseDatabase;
   let createDatabaseClient: CreateDatabaseClient;
   const createdDocumentIds: string[] = [];
-  const createdCategorySlugs = ["reporting", "contract"];
+  const createdCategoryIds: string[] = [];
+  let preExistingCategoryIds = new Set<string>();
 
   beforeAll(async () => {
     if (!runIntegrationTests) return;
@@ -55,17 +56,48 @@ describe("Auto-Category Assignment PostgreSQL Integration (Task BE-S2-04 / AC-05
     closeDatabase = db.closeDatabase;
     createDatabaseClient = db.createDatabaseClient;
     const config = loadApiConfigFromRuntime();
+
+    // Safety guard: run only against an isolated, disposable database (F1)
+    const isDisposable =
+      config.DATABASE_URL.includes("localhost") ||
+      config.DATABASE_URL.includes("127.0.0.1") ||
+      config.DATABASE_URL.includes("test");
+    if (!isDisposable) {
+      throw new Error(
+        "Safety guard: auto-category integration tests must only be run against an isolated, disposable database.",
+      );
+    }
+
     database = createDatabaseClient(config.DATABASE_URL);
     await db.checkDatabase(database);
+
+    // Snapshot pre-existing categories so cleanup NEVER deletes data not created by this test (F1)
+    const preExisting = await database.db.select({ id: db.categories.id }).from(db.categories);
+    preExistingCategoryIds = new Set(preExisting.map((c) => c.id));
   });
 
   afterAll(async () => {
     if (database !== undefined) {
-      const { documents, categories } = await import("@axentra/db");
+      const { documents, documentFiles, categories, categoryDownloadPermissions } =
+        await import("@axentra/db");
+
+      // 1. Clean up only documents created by this test suite
       if (createdDocumentIds.length > 0) {
+        await database.db
+          .delete(documentFiles)
+          .where(inArray(documentFiles.documentId, createdDocumentIds));
         await database.db.delete(documents).where(inArray(documents.id, createdDocumentIds));
       }
-      await database.db.delete(categories).where(inArray(categories.slug, createdCategorySlugs));
+
+      // 2. Clean up ONLY category records created by this test suite by ID (F1)
+      // Never delete categories based only on their names or slugs!
+      if (createdCategoryIds.length > 0) {
+        await database.db
+          .delete(categoryDownloadPermissions)
+          .where(inArray(categoryDownloadPermissions.categoryId, createdCategoryIds));
+        await database.db.delete(categories).where(inArray(categories.id, createdCategoryIds));
+      }
+
       await closeDatabase(database);
     }
   });
@@ -101,18 +133,20 @@ describe("Auto-Category Assignment PostgreSQL Integration (Task BE-S2-04 / AC-05
 
       const docId = crypto.randomUUID();
       createdDocumentIds.push(docId);
-      const storageKey = `integration-tests/${docId}/laporan-kinerja.pdf`;
+      // Neutral filename that cannot trigger filename fallback (F2)
+      const neutralFilename = "doc-content-sample-a.pdf";
+      const storageKey = `integration-tests/${docId}/${neutralFilename}`;
 
       await database.db.insert(documents).values({
         id: docId,
-        title: "Laporan Kinerja Q3.pdf",
+        title: neutralFilename,
         processingStatus: "queued",
       });
 
       await database.db.insert(documentFiles).values({
         documentId: docId,
         storageKey,
-        originalName: "Laporan Kinerja Q3.pdf",
+        originalName: neutralFilename,
         mimeType: "application/pdf",
         fileSize: 1024,
         fileExtension: "pdf",
@@ -127,7 +161,7 @@ endobj
 stream
 BT
 /F1 12 Tf
-(Dokumen ini berisi Reporting tahunan keuangan organisasi dan laporan rekapitulasi Reporting.) Tj
+(Dokumen ini berisi Reporting tahunan organisasi dan data rekapitulasi Reporting.) Tj
 ET
 endstream
 endobj
@@ -157,6 +191,14 @@ endobj
 
       expect(doc?.processingStatus).toBe("completed");
       expect(doc?.categoryId).not.toBeNull();
+
+      if (
+        doc?.categoryId &&
+        !preExistingCategoryIds.has(doc.categoryId) &&
+        !createdCategoryIds.includes(doc.categoryId)
+      ) {
+        createdCategoryIds.push(doc.categoryId);
+      }
 
       const [categoryRow] = await database.db
         .select()
@@ -236,7 +278,7 @@ endobj
       }
 
       const [
-        { documents, documentFiles },
+        { documents, documentFiles, categories },
         { DrizzleDocumentCategoryRepository },
         { DrizzleDocumentProcessingRepository },
         { processDocumentJob },
@@ -253,26 +295,64 @@ endobj
         import("@axentra/observability"),
       ]);
 
-      const contractDocId = crypto.randomUUID();
-      createdDocumentIds.push(contractDocId);
-      const storageKey = `integration-tests/${contractDocId}/surat-perjanjian.pdf`;
+      // Document 1 with neutral filename and Reporting content
+      const reportingDocId = crypto.randomUUID();
+      createdDocumentIds.push(reportingDocId);
+      const neutralReportingFilename = "doc-content-sample-b.pdf";
+      const storageKeyReporting = `integration-tests/${reportingDocId}/${neutralReportingFilename}`;
 
       await database.db.insert(documents).values({
-        id: contractDocId,
-        title: "Perjanjian Kerjasama.pdf",
+        id: reportingDocId,
+        title: neutralReportingFilename,
         processingStatus: "queued",
       });
 
       await database.db.insert(documentFiles).values({
-        documentId: contractDocId,
-        storageKey,
-        originalName: "Perjanjian Kerjasama.pdf",
+        documentId: reportingDocId,
+        storageKey: storageKeyReporting,
+        originalName: neutralReportingFilename,
         mimeType: "application/pdf",
         fileSize: 1024,
         fileExtension: "pdf",
       });
 
-      const pdfContent = `%PDF-1.4
+      // Document 2 with neutral filename and Contract content
+      const contractDocId = crypto.randomUUID();
+      createdDocumentIds.push(contractDocId);
+      const neutralContractFilename = "doc-content-sample-c.pdf";
+      const storageKeyContract = `integration-tests/${contractDocId}/${neutralContractFilename}`;
+
+      await database.db.insert(documents).values({
+        id: contractDocId,
+        title: neutralContractFilename,
+        processingStatus: "queued",
+      });
+
+      await database.db.insert(documentFiles).values({
+        documentId: contractDocId,
+        storageKey: storageKeyContract,
+        originalName: neutralContractFilename,
+        mimeType: "application/pdf",
+        fileSize: 1024,
+        fileExtension: "pdf",
+      });
+
+      const reportingPdf = `%PDF-1.4
+1 0 obj
+<< /Author (Finance Lead) >>
+endobj
+2 0 obj
+<< /Length 120 >>
+stream
+BT
+/F1 12 Tf
+(Dokumen ini menyajikan data Reporting operasional dan Reporting kinerja kuartal.) Tj
+ET
+endstream
+endobj
+%%EOF`;
+
+      const contractPdf = `%PDF-1.4
 1 0 obj
 << /Author (Legal Lead) >>
 endobj
@@ -288,10 +368,20 @@ endobj
 %%EOF`;
 
       const filesMap = new Map<string, Uint8Array>();
-      filesMap.set(storageKey, Buffer.from(pdfContent, "latin1"));
+      filesMap.set(storageKeyReporting, Buffer.from(reportingPdf, "latin1"));
+      filesMap.set(storageKeyContract, Buffer.from(contractPdf, "latin1"));
       const storage = createMockStorage(filesMap);
 
       const workerRepo = new DrizzleDocumentProcessingRepository(database.db);
+      await processDocumentJob(
+        {
+          jobId: `job-${reportingDocId}`,
+          documentId: reportingDocId,
+          schemaVersion: 1,
+          requestedAt: new Date().toISOString(),
+        },
+        { repository: workerRepo, storage },
+      );
       await processDocumentJob(
         {
           jobId: `job-${contractDocId}`,
@@ -301,6 +391,53 @@ endobj
         },
         { repository: workerRepo, storage },
       );
+
+      // Verify both documents in database received distinct categories
+      const [reportingDoc] = await database.db
+        .select()
+        .from(documents)
+        .where(inArray(documents.id, [reportingDocId]))
+        .limit(1);
+
+      const [contractDoc] = await database.db
+        .select()
+        .from(documents)
+        .where(inArray(documents.id, [contractDocId]))
+        .limit(1);
+
+      expect(reportingDoc?.categoryId).not.toBeNull();
+      expect(contractDoc?.categoryId).not.toBeNull();
+      expect(reportingDoc?.categoryId).not.toBe(contractDoc?.categoryId);
+
+      // Track newly created category IDs for safe cleanup (F1)
+      if (
+        reportingDoc?.categoryId &&
+        !preExistingCategoryIds.has(reportingDoc.categoryId) &&
+        !createdCategoryIds.includes(reportingDoc.categoryId)
+      ) {
+        createdCategoryIds.push(reportingDoc.categoryId);
+      }
+      if (
+        contractDoc?.categoryId &&
+        !preExistingCategoryIds.has(contractDoc.categoryId) &&
+        !createdCategoryIds.includes(contractDoc.categoryId)
+      ) {
+        createdCategoryIds.push(contractDoc.categoryId);
+      }
+
+      const [reportingCategory] = await database.db
+        .select()
+        .from(categories)
+        .where(inArray(categories.id, [reportingDoc?.categoryId ?? ""]))
+        .limit(1);
+      const [contractCategory] = await database.db
+        .select()
+        .from(categories)
+        .where(inArray(categories.id, [contractDoc?.categoryId ?? ""]))
+        .limit(1);
+
+      expect(reportingCategory?.name).toBe("Reporting");
+      expect(contractCategory?.name).toBe("Contract");
 
       const app = createApp({
         logger: createLogger({
@@ -324,16 +461,27 @@ endobj
         }),
       });
 
-      const res = await app.request(`/api/v1/documents/${contractDocId}/category`, {
+      const resReporting = await app.request(`/api/v1/documents/${reportingDocId}/category`, {
         method: "GET",
         headers: { Authorization: "Bearer test" },
       });
-      expect(res.status).toBe(200);
-      const body = (await res.json()) as DocumentCategoryResponse;
-      expect(body.success).toBe(true);
-      expect(body.data?.name).toBe("Contract");
-      expect(body.data?.slug).toBe("contract");
-      expect(body.data?.downloadEnabled).toBe(false);
+      expect(resReporting.status).toBe(200);
+      const bodyReporting = (await resReporting.json()) as DocumentCategoryResponse;
+      expect(bodyReporting.success).toBe(true);
+      expect(bodyReporting.data?.name).toBe("Reporting");
+      expect(bodyReporting.data?.slug).toBe("reporting");
+      expect(bodyReporting.data?.downloadEnabled).toBe(false);
+
+      const resContract = await app.request(`/api/v1/documents/${contractDocId}/category`, {
+        method: "GET",
+        headers: { Authorization: "Bearer test" },
+      });
+      expect(resContract.status).toBe(200);
+      const bodyContract = (await resContract.json()) as DocumentCategoryResponse;
+      expect(bodyContract.success).toBe(true);
+      expect(bodyContract.data?.name).toBe("Contract");
+      expect(bodyContract.data?.slug).toBe("contract");
+      expect(bodyContract.data?.downloadEnabled).toBe(false);
     },
   );
 });

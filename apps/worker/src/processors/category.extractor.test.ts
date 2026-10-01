@@ -13,23 +13,78 @@ describe("category.extractor", () => {
   });
 
   describe("extractCategoryFromBuffer", () => {
-    it("assigns Reporting category from content text per AC-05.01", () => {
-      const content =
-        "Dokumen ini merupakan laporan kinerja bulanan divisi teknis untuk Reporting Q3.";
-      const category = extractCategoryFromBuffer("doc1.txt", "text/plain", dummyBuffer, content);
+    it("assigns Reporting category from actual PDF buffer content using neutral filename per AC-05.01", () => {
+      const reportingPdf = `%PDF-1.4
+1 0 obj
+<< /Length 80 >>
+stream
+BT
+/F1 12 Tf
+(Dokumen ini menyajikan data Reporting tahunan organisasi dan evaluasi Reporting.) Tj
+ET
+endstream
+endobj
+%%EOF`;
+      const pdfBuffer = Buffer.from(reportingPdf, "latin1");
+
+      // Test with neutral filename that cannot trigger filename fallback
+      const category = extractCategoryFromBuffer(
+        "doc-sample-101.pdf",
+        "application/pdf",
+        pdfBuffer,
+      );
 
       expect(category).not.toBeNull();
       expect(category?.name).toBe("Reporting");
       expect(category?.slug).toBe("reporting");
     });
 
-    it("assigns Contract category from content text per AC-05.02", () => {
-      const content = "Surat perjanjian kerja sama atau Contract vendor pengadaan barang.";
-      const category = extractCategoryFromBuffer("doc2.txt", "text/plain", dummyBuffer, content);
+    it("assigns Contract category from actual PDF buffer content using neutral filename per AC-05.02", () => {
+      const contractPdf = `%PDF-1.4
+1 0 obj
+<< /Length 80 >>
+stream
+BT
+/F1 12 Tf
+(Dokumen resmi Contract kemitraan strategis dan pasal Contract kerja sama.) Tj
+ET
+endstream
+endobj
+%%EOF`;
+      const pdfBuffer = Buffer.from(contractPdf, "latin1");
+
+      // Test with neutral filename that cannot trigger filename fallback
+      const category = extractCategoryFromBuffer(
+        "doc-sample-102.pdf",
+        "application/pdf",
+        pdfBuffer,
+      );
 
       expect(category).not.toBeNull();
       expect(category?.name).toBe("Contract");
       expect(category?.slug).toBe("contract");
+    });
+
+    it("ensures extracted PDF content takes precedence over contradictory filename", () => {
+      const reportingPdf = `%PDF-1.4
+1 0 obj
+<< /Length 80 >>
+stream
+BT
+/F1 12 Tf
+(Reporting berkala dan evaluasi Reporting performa departemen.) Tj
+ET
+endstream
+endobj
+%%EOF`;
+      const pdfBuffer = Buffer.from(reportingPdf, "latin1");
+
+      // Filename mentions 'finance' but actual PDF content has 'Reporting'
+      const category = extractCategoryFromBuffer("finance-notes.pdf", "application/pdf", pdfBuffer);
+
+      expect(category).not.toBeNull();
+      expect(category?.name).toBe("Reporting");
+      expect(category?.slug).toBe("reporting");
     });
 
     it("assigns category with highest keyword frequency in content", () => {
