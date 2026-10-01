@@ -45,6 +45,7 @@ export class InMemoryDocumentProcessingRepository implements DocumentProcessingR
   ) {}
 
   public readonly enqueueFailures: FailedProcessingDocument[] = [];
+  public readonly createdCategoryIds: string[] = [];
 
   public async listRecoverableDocuments(): Promise<ReadonlyArray<FailedProcessingDocument>> {
     if (this.enqueueFailures.length > 0) return [...this.enqueueFailures];
@@ -149,6 +150,7 @@ export class InMemoryDocumentProcessingRepository implements DocumentProcessingR
           downloadEnabled: false,
         });
         categoryId = newId;
+        this.createdCategoryIds.push(newId);
         await this.onCategorySaved?.(documentId, {
           id: newId,
           name: category.name,

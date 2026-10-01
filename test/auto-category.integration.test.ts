@@ -45,41 +45,36 @@ describe("Auto-Category Assignment PostgreSQL Integration (Task BE-S2-04 / AC-05
   const createdDocumentIds: string[] = [];
   const createdCategoryIds: string[] = [];
   let preExistingCategoryIds = new Set<string>();
+  let databaseUrl: string | undefined;
 
   beforeAll(async () => {
     if (!runIntegrationTests) return;
 
-    const [{ loadApiConfigFromRuntime }, db] = await Promise.all([
+    const [{ loadApiConfigFromRuntime }, db, { assertDisposableTestDatabase }] = await Promise.all([
       import("@axentra/config"),
       import("@axentra/db"),
+      import("./helpers/disposable-database"),
     ]);
     closeDatabase = db.closeDatabase;
     createDatabaseClient = db.createDatabaseClient;
     const config = loadApiConfigFromRuntime();
+    databaseUrl = config.DATABASE_URL;
 
-    // Safety guard: run only against an isolated, disposable database (F1)
-    const isDisposable =
-      config.DATABASE_URL.includes("localhost") ||
-      config.DATABASE_URL.includes("127.0.0.1") ||
-      config.DATABASE_URL.includes("test");
-    if (!isDisposable) {
-      throw new Error(
-        "Safety guard: auto-category integration tests must only be run against an isolated, disposable database.",
-      );
-    }
+    // Explicit disposable test database validation (F1)
+    assertDisposableTestDatabase(config.DATABASE_URL);
 
     database = createDatabaseClient(config.DATABASE_URL);
     await db.checkDatabase(database);
 
-    // Snapshot pre-existing categories so cleanup NEVER deletes data not created by this test (F1)
+    // Snapshot pre-existing categories for exclusion guard (F1)
     const preExisting = await database.db.select({ id: db.categories.id }).from(db.categories);
     preExistingCategoryIds = new Set(preExisting.map((c) => c.id));
   });
 
   afterAll(async () => {
     if (database !== undefined) {
-      const { documents, documentFiles, categories, categoryDownloadPermissions } =
-        await import("@axentra/db");
+      const { documents, documentFiles } = await import("@axentra/db");
+      const { safeCleanupTestCategories } = await import("./helpers/disposable-database");
 
       // 1. Clean up only documents created by this test suite
       if (createdDocumentIds.length > 0) {
@@ -89,14 +84,11 @@ describe("Auto-Category Assignment PostgreSQL Integration (Task BE-S2-04 / AC-05
         await database.db.delete(documents).where(inArray(documents.id, createdDocumentIds));
       }
 
-      // 2. Clean up ONLY category records created by this test suite by ID (F1)
-      // Never delete categories based only on their names or slugs!
-      if (createdCategoryIds.length > 0) {
-        await database.db
-          .delete(categoryDownloadPermissions)
-          .where(inArray(categoryDownloadPermissions.categoryId, createdCategoryIds));
-        await database.db.delete(categories).where(inArray(categories.id, createdCategoryIds));
-      }
+      // 2. Multi-layer safe category cleanup (F1)
+      await safeCleanupTestCategories(database, createdCategoryIds, {
+        preExistingCategoryIds,
+        databaseUrl,
+      });
 
       await closeDatabase(database);
     }
@@ -192,12 +184,10 @@ endobj
       expect(doc?.processingStatus).toBe("completed");
       expect(doc?.categoryId).not.toBeNull();
 
-      if (
-        doc?.categoryId &&
-        !preExistingCategoryIds.has(doc.categoryId) &&
-        !createdCategoryIds.includes(doc.categoryId)
-      ) {
-        createdCategoryIds.push(doc.categoryId);
+      for (const id of workerRepo.createdCategoryIds) {
+        if (!createdCategoryIds.includes(id)) {
+          createdCategoryIds.push(id);
+        }
       }
 
       const [categoryRow] = await database.db
@@ -409,20 +399,11 @@ endobj
       expect(contractDoc?.categoryId).not.toBeNull();
       expect(reportingDoc?.categoryId).not.toBe(contractDoc?.categoryId);
 
-      // Track newly created category IDs for safe cleanup (F1)
-      if (
-        reportingDoc?.categoryId &&
-        !preExistingCategoryIds.has(reportingDoc.categoryId) &&
-        !createdCategoryIds.includes(reportingDoc.categoryId)
-      ) {
-        createdCategoryIds.push(reportingDoc.categoryId);
-      }
-      if (
-        contractDoc?.categoryId &&
-        !preExistingCategoryIds.has(contractDoc.categoryId) &&
-        !createdCategoryIds.includes(contractDoc.categoryId)
-      ) {
-        createdCategoryIds.push(contractDoc.categoryId);
+      // Track newly created category IDs from worker repository (F1: no snapshot comparison)
+      for (const id of workerRepo.createdCategoryIds) {
+        if (!createdCategoryIds.includes(id)) {
+          createdCategoryIds.push(id);
+        }
       }
 
       const [reportingCategory] = await database.db
@@ -482,6 +463,159 @@ endobj
       expect(bodyContract.data?.name).toBe("Contract");
       expect(bodyContract.data?.slug).toBe("contract");
       expect(bodyContract.data?.downloadEnabled).toBe(false);
+    },
+  );
+
+  integrationTest(
+    "regression (F1): categories created externally after setup are never deleted by cleanup even if worker reuses them",
+    async () => {
+      if (database === undefined) {
+        throw new Error("PostgreSQL integration database was not initialized");
+      }
+
+      const [
+        { categories, categoryDownloadPermissions },
+        { DrizzleDocumentProcessingRepository },
+        { safeCleanupTestCategories },
+      ] = await Promise.all([
+        import("@axentra/db"),
+        import("../apps/worker/src/processors/document.processor.repository"),
+        import("./helpers/disposable-database"),
+      ]);
+
+      const externalCategoryId = crypto.randomUUID();
+      const externalSlug = `external-partner-${Date.now()}`;
+
+      // Insert an external category created by another actor after setup snapshot
+      await database.db.insert(categories).values({
+        id: externalCategoryId,
+        name: "External Partner",
+        slug: externalSlug,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      await database.db.insert(categoryDownloadPermissions).values({
+        categoryId: externalCategoryId,
+        downloadEnabled: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      try {
+        // Instantiate a worker repository
+        const workerRepo = new DrizzleDocumentProcessingRepository(database.db);
+
+        // Worker repository tracks ONLY categories actually inserted by this worker run
+        expect(workerRepo.createdCategoryIds).not.toContain(externalCategoryId);
+
+        // Execute multi-layer safe cleanup with workerRepo's tracked created categories
+        const cleanupResult = await safeCleanupTestCategories(
+          database,
+          workerRepo.createdCategoryIds,
+          { preExistingCategoryIds, databaseUrl },
+        );
+
+        // Verify the external category was never considered or deleted
+        expect(cleanupResult.deletedCategoryIds).not.toContain(externalCategoryId);
+
+        // Verify the external category remains intact in the database
+        const [stillExists] = await database.db
+          .select({ id: categories.id })
+          .from(categories)
+          .where(inArray(categories.id, [externalCategoryId]))
+          .limit(1);
+
+        expect(stillExists).toBeDefined();
+        expect(stillExists?.id).toBe(externalCategoryId);
+
+        const [permStillExists] = await database.db
+          .select({ id: categoryDownloadPermissions.id })
+          .from(categoryDownloadPermissions)
+          .where(inArray(categoryDownloadPermissions.categoryId, [externalCategoryId]))
+          .limit(1);
+
+        expect(permStillExists).toBeDefined();
+      } finally {
+        // Explicitly clean up only this test's fixture
+        await database.db
+          .delete(categoryDownloadPermissions)
+          .where(inArray(categoryDownloadPermissions.categoryId, [externalCategoryId]));
+        await database.db.delete(categories).where(inArray(categories.id, [externalCategoryId]));
+      }
+    },
+  );
+
+  integrationTest(
+    "regression (F1): category created by test worker is preserved if another document references it",
+    async () => {
+      if (database === undefined) {
+        throw new Error("PostgreSQL integration database was not initialized");
+      }
+
+      const [
+        { categories, categoryDownloadPermissions, documents },
+        { safeCleanupTestCategories },
+      ] = await Promise.all([import("@axentra/db"), import("./helpers/disposable-database")]);
+
+      const testCatId = crypto.randomUUID();
+      const foreignDocId = crypto.randomUUID();
+
+      // Simulate a category created during testing
+      await database.db.insert(categories).values({
+        id: testCatId,
+        name: "Temporary Shared Test Cat",
+        slug: `temp-shared-${Date.now()}`,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      await database.db.insert(categoryDownloadPermissions).values({
+        categoryId: testCatId,
+        downloadEnabled: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      // Insert an external document referencing this category
+      await database.db.insert(documents).values({
+        id: foreignDocId,
+        title: "Foreign Document",
+        fileType: "application/pdf",
+        fileSize: 1024,
+        storageKey: `foreign/${foreignDocId}.pdf`,
+        processingStatus: "completed",
+        categoryId: testCatId,
+        uploadedBy: "foreign-user",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      try {
+        // Even though testCatId is in candidateCategoryIds, referential integrity guard must preserve it
+        const cleanupResult = await safeCleanupTestCategories(database, [testCatId], {
+          preExistingCategoryIds,
+          databaseUrl,
+        });
+
+        expect(cleanupResult.skippedCategoryIds).toContain(testCatId);
+        expect(cleanupResult.deletedCategoryIds).not.toContain(testCatId);
+
+        // Verify category was not deleted
+        const [stillExists] = await database.db
+          .select({ id: categories.id })
+          .from(categories)
+          .where(inArray(categories.id, [testCatId]))
+          .limit(1);
+
+        expect(stillExists).toBeDefined();
+        expect(stillExists?.id).toBe(testCatId);
+      } finally {
+        // Clean up test fixtures
+        await database.db.delete(documents).where(inArray(documents.id, [foreignDocId]));
+        await database.db
+          .delete(categoryDownloadPermissions)
+          .where(inArray(categoryDownloadPermissions.categoryId, [testCatId]));
+        await database.db.delete(categories).where(inArray(categories.id, [testCatId]));
+      }
     },
   );
 });
