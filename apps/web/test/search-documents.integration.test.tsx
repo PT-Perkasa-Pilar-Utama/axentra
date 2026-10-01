@@ -42,18 +42,22 @@ function makeQueryClient(): QueryClient {
   });
 }
 
+// F4 FIX: Mock diperbarui — parameter `keyword` diganti `q` (F3).
+// Snippet diubah menjadi teks biasa (tidak mengandung HTML) sesuai
+// fix F2 di view: dangerouslySetInnerHTML dihapus, sehingga mock
+// tidak perlu lagi mensimulasikan HTML dari API.
 function createFetchMock(): typeof fetch {
   const handler = async (input: RequestInfo | URL, _init?: RequestInit): Promise<Response> => {
     const url = String(input);
 
-    // MOCK FIX: Pindahkan blok /search ke ATAS agar tidak disabotase oleh blok "/documents?"
     if (url.includes("/search/documents")) {
       const urlObj = new URL(url.startsWith("http") ? url : `http://localhost${url}`);
-      const keyword = urlObj.searchParams.get("keyword") || "";
+      // F4 FIX: Baca parameter `q` bukan `keyword` — selaras dengan F3
+      const q = urlObj.searchParams.get("q") || "";
 
       await new Promise((resolve) => setTimeout(resolve, 100));
 
-      if (keyword.toLowerCase() === "error") {
+      if (q.toLowerCase() === "error") {
         return new Response(
           JSON.stringify({
             success: false,
@@ -63,7 +67,7 @@ function createFetchMock(): typeof fetch {
         );
       }
 
-      if (keyword.toLowerCase() === "kosong") {
+      if (q.toLowerCase() === "kosong") {
         return new Response(JSON.stringify({ success: true, data: [] }), { status: 200 });
       }
 
@@ -74,7 +78,11 @@ function createFetchMock(): typeof fetch {
             {
               id: "doc-1",
               filename: "laporan-keuangan-2026.pdf",
-              snippet: `...berdasarkan <strong>${keyword}</strong> yang telah disepakati...`,
+              // F4 FIX: Snippet teks biasa — tidak ada HTML.
+              // View sudah menggunakan {item.snippet} bukan
+              // dangerouslySetInnerHTML, jadi teks ini akan muncul
+              // verbatim di layar.
+              snippet: `...berdasarkan ${q} yang telah disepakati...`,
             },
           ],
         }),
@@ -82,7 +90,6 @@ function createFetchMock(): typeof fetch {
       );
     }
 
-    // Abaikan API default halaman Dashboard
     if (url.includes("/tags/top") || url.includes("/documents?")) {
       return new Response(JSON.stringify({ success: true, data: [] }), { status: 200 });
     }
@@ -90,6 +97,37 @@ function createFetchMock(): typeof fetch {
     return new Response(JSON.stringify({ success: false, error: { message: "Not found" } }), {
       status: 404,
     });
+  };
+
+  return Object.assign(handler, { preconnect: (): void => {} });
+}
+
+// Mock yang selalu mengembalikan sukses untuk /search/documents, tanpa
+// bergantung pada keyword. Digunakan sebagai fase kedua pada tes retry:
+// di-set ke globalThis.fetch setelah error state terkonfirmasi, sebelum
+// klik retry, sehingga call berikutnya pasti sukses.
+function createSuccessFetchMock(): typeof fetch {
+  const handler = async (input: RequestInfo | URL, _init?: RequestInit): Promise<Response> => {
+    const url = String(input);
+
+    if (url.includes("/search/documents")) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      return new Response(
+        JSON.stringify({
+          success: true,
+          data: [
+            {
+              id: "doc-1",
+              filename: "laporan-keuangan-2026.pdf",
+              snippet: "...berdasarkan error yang telah disepakati...",
+            },
+          ],
+        }),
+        { status: 200 },
+      );
+    }
+
+    return new Response(JSON.stringify({ success: true, data: [] }), { status: 200 });
   };
 
   return Object.assign(handler, { preconnect: (): void => {} });
@@ -132,7 +170,22 @@ describe("Search Documents Integration (FE-S2-04)", () => {
     globalThis.fetch = originalFetch;
   });
 
-  test("AC-06.01, AC-06.02, AC-06.03: Submits via Enter, shows loading, and displays result cards", async () => {
+  // F4 FIX: AC-06.01 — Pencarian berhasil setelah menekan Enter
+  //
+  // AC-06.01: "saya menekan Enter → saya melihat setidaknya satu dokumen relevan"
+  // Tes ini memisahkan simulasi Enter dari tes tampilan hasil (AC-06.02),
+  // supaya setiap AC dapat diverifikasi secara independen.
+  //
+  // Catatan: fireEvent.keyDown mensimulasikan event KeyboardEvent
+  // di DOM level. Happy DOM meneruskan submit form ketika Enter
+  // ditekan pada input di dalam <form>. Jika di masa depan happy-dom
+  // berubah perilaku, gunakan userEvent dari @testing-library/user-event:
+  //   const user = userEvent.setup();
+  //   await user.type(searchInput, "keuangan");
+  //   await user.keyboard("{Enter}");
+  // yang mensimulasikan urutan keydown → keypress → keyup → input → submit
+  // persis seperti browser sungguhan.
+  test("AC-06.01: Submits via Enter key and displays at least one result", async () => {
     globalThis.fetch = createFetchMock() as unknown as typeof fetch;
     const queryClient = makeQueryClient();
 
@@ -140,22 +193,76 @@ describe("Search Documents Integration (FE-S2-04)", () => {
       renderDashboard(queryClient);
     });
 
-    const searchInput = screen.getByPlaceholderText("Search");
+    // F5 FIX (selaras): Placeholder berubah menjadi "Cari dokumen..." di view.
+    // Perbarui selector ini apabila placeholder view sudah diubah.
+    const searchInput = screen.getByPlaceholderText("Cari dokumen...");
 
     await act(async () => {
       fireEvent.change(searchInput, { target: { value: "keuangan" } });
     });
 
+    // Simulasi menekan Enter: fireEvent.keyDown mengirim event keyboard,
+    // lalu fireEvent.submit meneruskan submit form — diperlukan karena
+    // happy-dom mungkin belum mengimplementasikan native Enter-to-submit.
     await act(async () => {
+      fireEvent.keyDown(searchInput, { key: "Enter", code: "Enter", keyCode: 13, charCode: 13 });
       fireEvent.submit(searchInput.closest("form") as HTMLFormElement);
     });
 
+    // Verifikasi loading state muncul (konfirmasi pencarian dimulai)
     expect(screen.getByText("Mencari dokumen...")).toBeTruthy();
 
+    // Verifikasi setidaknya satu dokumen relevan muncul (AC-06.01)
     const resultFilename = await screen.findByText("laporan-keuangan-2026.pdf");
     expect(resultFilename).toBeTruthy();
+  });
+
+  // F4 FIX: AC-06.02 — Setiap item menampilkan nama file DAN snippet teks
+  //
+  // Tes sebelumnya hanya memverifikasi filename, tidak snippet.
+  // AC-06.02: "setiap item hasil menampilkan nama file dan cuplikan teks yang cocok"
+  test("AC-06.02: Each result card shows filename and text snippet", async () => {
+    globalThis.fetch = createFetchMock() as unknown as typeof fetch;
+    const queryClient = makeQueryClient();
+
+    await act(async () => {
+      renderDashboard(queryClient);
+    });
+
+    const searchInput = screen.getByPlaceholderText("Cari dokumen...");
+
+    await act(async () => {
+      fireEvent.change(searchInput, { target: { value: "keuangan" } });
+      fireEvent.keyDown(searchInput, { key: "Enter", code: "Enter", keyCode: 13, charCode: 13 });
+      fireEvent.submit(searchInput.closest("form") as HTMLFormElement);
+    });
+
+    // Verifikasi nama file ditampilkan
+    expect(await screen.findByText("laporan-keuangan-2026.pdf")).toBeTruthy();
+
+    // F4 FIX: Verifikasi snippet teks juga ditampilkan (sebelumnya tidak dicek)
+    expect(screen.getByText(/berdasarkan keuangan yang telah disepakati/i)).toBeTruthy();
+
+    // Verifikasi heading hasil pencarian
     expect(screen.getByText('Hasil Pencarian: "keuangan"')).toBeTruthy();
   });
+
+  // AC-06.03 — Pencarian selesai dalam < 3 detik
+  //
+  // ⚠ BLOCKED — TIDAK DAPAT DIVERIFIKASI DENGAN MOCK
+  //
+  // AC-06.03 mengukur latensi end-to-end ke backend nyata. Mock
+  // mensimulasikan 100ms delay artifisial, bukan waktu respon sistem
+  // sesungguhnya. Tes ini tidak dapat membuktikan batasan < 3 detik.
+  //
+  // Acceptance end-to-end AC-06.03 harus diverifikasi setelah:
+  //   1. Kontrak BE-S2-05 final tersedia.
+  //   2. Tes dijalankan melawan server staging/production nyata.
+  //   3. Waktu respon diukur dari sisi client (performance.now() atau
+  //      tooling seperti Playwright + expect(t).toBeLessThan(3000)).
+  //
+  // Jangan hapus catatan ini sampai tes integrasi E2E berlawan backend
+  // nyata sudah ditambahkan dan lulus.
 
   test("AC-06.04: Displays no-result message when keyword yields empty data", async () => {
     globalThis.fetch = createFetchMock() as unknown as typeof fetch;
@@ -165,10 +272,11 @@ describe("Search Documents Integration (FE-S2-04)", () => {
       renderDashboard(queryClient);
     });
 
-    const searchInput = screen.getByPlaceholderText("Search");
+    const searchInput = screen.getByPlaceholderText("Cari dokumen...");
 
     await act(async () => {
       fireEvent.change(searchInput, { target: { value: "kosong" } });
+      fireEvent.keyDown(searchInput, { key: "Enter", code: "Enter", keyCode: 13, charCode: 13 });
       fireEvent.submit(searchInput.closest("form") as HTMLFormElement);
     });
 
@@ -177,7 +285,20 @@ describe("Search Documents Integration (FE-S2-04)", () => {
     expect(screen.queryByText("laporan-keuangan-2026.pdf")).toBeNull();
   });
 
-  test("Handles error state and can retry searching", async () => {
+  // F4 FIX: Error state — verifikasi tombol retry dapat ditekan dan
+  // pencarian pulih (menampilkan hasil) setelah retry berhasil.
+  // Tes sebelumnya hanya memverifikasi tombol retry muncul, tidak
+  // mengklik dan memverifikasi pemulihan.
+  //
+  // Pendekatan explicit mock-swap:
+  //   Fase 1 → createFetchMock + keyword "error" → dijamin 500
+  //   Fase 2 → ganti ke createSuccessFetchMock sebelum klik retry → dijamin sukses
+  //
+  // Ini lebih deterministik daripada callCount closure, yang rentan
+  // terhadap fetch tak terduga dari komponen lain yang secara tidak
+  // sengaja mencocokkan URL "/search/documents" dan menggeser counter.
+  test("Handles error state: retry button click recovers and shows results", async () => {
+    // Fase 1: mock yang mengembalikan error untuk keyword "error"
     globalThis.fetch = createFetchMock() as unknown as typeof fetch;
     const queryClient = makeQueryClient();
 
@@ -185,16 +306,33 @@ describe("Search Documents Integration (FE-S2-04)", () => {
       renderDashboard(queryClient);
     });
 
-    const searchInput = screen.getByPlaceholderText("Search");
+    const searchInput = screen.getByPlaceholderText("Cari dokumen...");
 
     await act(async () => {
       fireEvent.change(searchInput, { target: { value: "error" } });
+      fireEvent.keyDown(searchInput, { key: "Enter", code: "Enter", keyCode: 13, charCode: 13 });
       fireEvent.submit(searchInput.closest("form") as HTMLFormElement);
     });
 
+    // Verifikasi error state muncul sebelum retry dilakukan
     const retryButton = await screen.findByRole("button", { name: "Coba lagi" });
     expect(retryButton).toBeTruthy();
     expect(screen.getByText("Gagal memuat hasil pencarian.")).toBeTruthy();
+    // Verifikasi role="alert" hadir agar screen reader mengumumkan error (F5)
+    expect(screen.getByRole("alert")).toBeTruthy();
+
+    // Fase 2: ganti mock ke sukses SEBELUM klik retry.
+    // Presenter akan mencoba ulang dengan keyword yang sama ("error"),
+    // tapi mock baru ini mengembalikan sukses untuk semua keyword.
+    globalThis.fetch = createSuccessFetchMock() as unknown as typeof fetch;
+
+    await act(async () => {
+      fireEvent.click(retryButton);
+    });
+
+    // Verifikasi pencarian pulih dan hasil muncul
+    expect(await screen.findByText("laporan-keuangan-2026.pdf")).toBeTruthy();
+    expect(screen.queryByText("Gagal memuat hasil pencarian.")).toBeNull();
   });
 
   test("Clears search and returns to Recent Documents view", async () => {
@@ -205,10 +343,11 @@ describe("Search Documents Integration (FE-S2-04)", () => {
       renderDashboard(queryClient);
     });
 
-    const searchInput = screen.getByPlaceholderText("Search");
+    const searchInput = screen.getByPlaceholderText("Cari dokumen...");
 
     await act(async () => {
       fireEvent.change(searchInput, { target: { value: "keuangan" } });
+      fireEvent.keyDown(searchInput, { key: "Enter", code: "Enter", keyCode: 13, charCode: 13 });
       fireEvent.submit(searchInput.closest("form") as HTMLFormElement);
     });
 

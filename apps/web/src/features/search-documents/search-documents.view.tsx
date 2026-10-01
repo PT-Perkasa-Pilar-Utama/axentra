@@ -28,9 +28,9 @@ export function SearchBarView({ presenter }: SearchViewProps): React.JSX.Element
         type="search"
         value={presenter.inputValue}
         onChange={(e) => presenter.handleInputChange(e.target.value)}
-        placeholder="Search"
+        placeholder="Cari dokumen..."
         className="block w-full rounded-full border border-gray-200 bg-white py-2 pl-9 pr-4 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#6fa84f] focus:outline-none focus:ring-1 focus:ring-[#6fa84f]"
-        aria-label="Search documents"
+        aria-label="Cari dokumen"
       />
     </form>
   );
@@ -49,7 +49,7 @@ export function SearchResultsView({ presenter }: SearchViewProps): React.JSX.Ele
         <button
           type="button"
           onClick={presenter.clearSearch}
-          className="text-xs font-medium text-[#65a448] hover:text-green-800 hover:underline focus:outline-none"
+          className="rounded text-xs font-medium text-[#65a448] hover:text-green-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6fa84f] focus-visible:ring-offset-1"
         >
           Bersihkan Pencarian
         </button>
@@ -70,7 +70,10 @@ export function SearchResultsView({ presenter }: SearchViewProps): React.JSX.Ele
       )}
 
       {presenter.isError && !presenter.isLoading && (
-        <div className="flex min-h-48 flex-col items-center justify-center gap-3 rounded-2xl border border-[#e1e5e9] bg-white py-12">
+        <div
+          role="alert"
+          className="flex min-h-48 flex-col items-center justify-center gap-3 rounded-2xl border border-[#e1e5e9] bg-white py-12"
+        >
           <p className="text-sm text-rose-600">Gagal memuat hasil pencarian.</p>
           <button
             type="button"
@@ -105,10 +108,7 @@ export function SearchResultsView({ presenter }: SearchViewProps): React.JSX.Ele
 
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-[#535a63]">{item.filename}</p>
-                <p
-                  className="mt-1 text-xs text-gray-500"
-                  dangerouslySetInnerHTML={{ __html: item.snippet }}
-                />
+                <p className="mt-1 text-xs text-gray-500">{item.snippet}</p>
               </div>
             </li>
           ))}
