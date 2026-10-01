@@ -55,6 +55,8 @@ export type DocumentProcessingRepository = {
 };
 
 export class DrizzleDocumentProcessingRepository implements DocumentProcessingRepository {
+  public readonly createdCategoryIds: string[] = [];
+
   public constructor(private readonly db: PostgresJsDatabase) {}
 
   public async listRecoverableDocuments(): Promise<ReadonlyArray<FailedProcessingDocument>> {
@@ -233,6 +235,7 @@ export class DrizzleDocumentProcessingRepository implements DocumentProcessingRe
 
           if (inserted) {
             categoryId = inserted.id;
+            this.createdCategoryIds.push(inserted.id);
             await tx
               .insert(categoryDownloadPermissions)
               .values({
