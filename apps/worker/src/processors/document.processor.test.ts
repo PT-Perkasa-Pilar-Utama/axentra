@@ -341,4 +341,157 @@ endobj
     expect(tags).toContain("procurement");
     expect(tags).not.toContain("sample");
   });
+
+  describe("Auto-Category Assignment (Task BE-S2-04 / AC-05.01 & AC-05.02)", () => {
+    it("assigns Reporting category, creates category with inactive download permission per AC-05.01", async () => {
+      const repository = new InMemoryDocumentProcessingRepository();
+      const docId = "33333333-3333-4333-8333-333333333333";
+      repository.documents.set(docId, {
+        id: docId,
+        title: "Dokumen-Laporan.pdf",
+        processingStatus: "queued",
+      });
+      const storageKey = `docs/${docId}/Dokumen-Laporan.pdf`;
+      repository.files.set(docId, {
+        id: "file-cat-1",
+        documentId: docId,
+        storageKey,
+        originalName: "Dokumen-Laporan.pdf",
+        mimeType: "application/pdf",
+      });
+
+      const pdfContent = `%PDF-1.4
+1 0 obj
+<< /Author (Finance Lead) >>
+endobj
+2 0 obj
+<< /Length 100 >>
+stream
+BT
+/F1 12 Tf
+(This document contains Q3 Reporting data and performance Reporting summary.) Tj
+ET
+endstream
+endobj
+%%EOF`;
+      const filesMap = new Map<string, Uint8Array>();
+      filesMap.set(storageKey, Buffer.from(pdfContent, "latin1"));
+      const storage = createMockStorage(filesMap);
+
+      await processDocumentJob(
+        {
+          jobId: "job-cat-1",
+          documentId: docId,
+          schemaVersion: 1,
+          requestedAt: new Date().toISOString(),
+        },
+        { repository, storage },
+      );
+
+      const doc = repository.documents.get(docId);
+      expect(doc?.processingStatus).toBe("completed");
+      expect(doc?.categoryId).toBeDefined();
+
+      const createdCat = Array.from(repository.categories.values()).find(
+        (c) => c.name === "Reporting",
+      );
+      expect(createdCat).toBeDefined();
+      expect(createdCat?.slug).toBe("reporting");
+      expect(doc?.categoryId).toBe(createdCat?.id);
+
+      const permission = repository.permissions.get(createdCat?.id ?? "");
+      expect(permission).toBeDefined();
+      expect(permission?.downloadEnabled).toBe(false);
+    });
+
+    it("assigns different categories for Reporting and Contract documents per AC-05.02", async () => {
+      const repository = new InMemoryDocumentProcessingRepository();
+      const doc1Id = "44444444-4444-4444-8444-444444444444";
+      const doc2Id = "55555555-5555-4555-8555-555555555555";
+
+      repository.documents.set(doc1Id, {
+        id: doc1Id,
+        title: "doc1.pdf",
+        processingStatus: "queued",
+      });
+      repository.documents.set(doc2Id, {
+        id: doc2Id,
+        title: "doc2.pdf",
+        processingStatus: "queued",
+      });
+
+      const storageKey1 = `docs/${doc1Id}/doc1.pdf`;
+      const storageKey2 = `docs/${doc2Id}/doc2.pdf`;
+
+      repository.files.set(doc1Id, {
+        id: "f-1",
+        documentId: doc1Id,
+        storageKey: storageKey1,
+        originalName: "doc1.pdf",
+        mimeType: "application/pdf",
+      });
+      repository.files.set(doc2Id, {
+        id: "f-2",
+        documentId: doc2Id,
+        storageKey: storageKey2,
+        originalName: "doc2.pdf",
+        mimeType: "application/pdf",
+      });
+
+      const pdf1 = `%PDF-1.4
+1 0 obj
+<< /Length 50 >>
+stream
+BT (Isi konten mengenai Reporting tahunan.) Tj ET
+endstream
+endobj
+%%EOF`;
+      const pdf2 = `%PDF-1.4
+1 0 obj
+<< /Length 50 >>
+stream
+BT (Isi konten mengenai Contract pengadaan sistem.) Tj ET
+endstream
+endobj
+%%EOF`;
+
+      const filesMap = new Map<string, Uint8Array>([
+        [storageKey1, Buffer.from(pdf1, "latin1")],
+        [storageKey2, Buffer.from(pdf2, "latin1")],
+      ]);
+      const storage = createMockStorage(filesMap);
+
+      await processDocumentJob(
+        {
+          jobId: "j-1",
+          documentId: doc1Id,
+          schemaVersion: 1,
+          requestedAt: new Date().toISOString(),
+        },
+        { repository, storage },
+      );
+      await processDocumentJob(
+        {
+          jobId: "j-2",
+          documentId: doc2Id,
+          schemaVersion: 1,
+          requestedAt: new Date().toISOString(),
+        },
+        { repository, storage },
+      );
+
+      const doc1 = repository.documents.get(doc1Id);
+      const doc2 = repository.documents.get(doc2Id);
+
+      expect(doc1?.categoryId).toBeDefined();
+      expect(doc2?.categoryId).toBeDefined();
+      expect(doc1?.categoryId).not.toBe(doc2?.categoryId);
+
+      const cat1 = repository.categories.get(doc1?.categoryId ?? "");
+      const cat2 = repository.categories.get(doc2?.categoryId ?? "");
+
+      expect(cat1?.name).toBe("Reporting");
+      expect(cat2?.name).toBe("Contract");
+    });
+  });
 });

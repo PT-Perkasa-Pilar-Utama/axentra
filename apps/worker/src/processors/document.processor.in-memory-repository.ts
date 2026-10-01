@@ -10,7 +10,11 @@ import type {
 export class InMemoryDocumentProcessingRepository implements DocumentProcessingRepository {
   public readonly documents = new Map<
     string,
-    DocumentProcessingRecord & { errorMessage?: string | null; updatedAt?: Date }
+    DocumentProcessingRecord & {
+      categoryId?: string | null;
+      errorMessage?: string | null;
+      updatedAt?: Date;
+    }
   >();
   public readonly files = new Map<string, DocumentProcessingFileRecord>();
   public readonly metadata = new Map<
@@ -18,6 +22,11 @@ export class InMemoryDocumentProcessingRepository implements DocumentProcessingR
     CompleteDocumentMetadataInput & { documentId: string; updatedAt: Date }
   >();
   public readonly documentTags = new Map<string, ReadonlyArray<string>>();
+  public readonly categories = new Map<string, { id: string; name: string; slug: string }>();
+  public readonly permissions = new Map<
+    string,
+    { id: string; categoryId: string; downloadEnabled: boolean }
+  >();
   public shouldFailOnComplete = false;
 
   public constructor(
@@ -28,6 +37,10 @@ export class InMemoryDocumentProcessingRepository implements DocumentProcessingR
     private readonly onTagsSaved?: (
       documentId: string,
       tags: ReadonlyArray<string>,
+    ) => Promise<void> | void,
+    private readonly onCategorySaved?: (
+      documentId: string,
+      category: { id: string; name: string; slug: string; downloadEnabled: boolean },
     ) => Promise<void> | void,
   ) {}
 
@@ -86,10 +99,18 @@ export class InMemoryDocumentProcessingRepository implements DocumentProcessingR
     }
   }
 
+  public async listCategories(): Promise<ReadonlyArray<{ name: string; slug: string }>> {
+    return Array.from(this.categories.values()).map((c) => ({
+      name: c.name,
+      slug: c.slug,
+    }));
+  }
+
   public async completeWithMetadata(
     documentId: string,
     metadata: CompleteDocumentMetadataInput,
     tags?: ReadonlyArray<string> | undefined,
+    category?: { name: string; slug: string } | null | undefined,
   ): Promise<void> {
     if (this.shouldFailOnComplete) {
       throw new Error("Simulated transaction failure in completeWithMetadata");
@@ -108,11 +129,42 @@ export class InMemoryDocumentProcessingRepository implements DocumentProcessingR
       this.documentTags.set(documentId, capped);
       await this.onTagsSaved?.(documentId, capped);
     }
+    let categoryId: string | null = null;
+    if (category) {
+      const existing = Array.from(this.categories.values()).find(
+        (c) => c.slug === category.slug || c.name === category.name,
+      );
+      if (existing) {
+        categoryId = existing.id;
+      } else {
+        const newId = crypto.randomUUID();
+        this.categories.set(newId, {
+          id: newId,
+          name: category.name,
+          slug: category.slug,
+        });
+        this.permissions.set(newId, {
+          id: crypto.randomUUID(),
+          categoryId: newId,
+          downloadEnabled: false,
+        });
+        categoryId = newId;
+        await this.onCategorySaved?.(documentId, {
+          id: newId,
+          name: category.name,
+          slug: category.slug,
+          downloadEnabled: false,
+        });
+      }
+    }
     const doc = this.documents.get(documentId);
     if (doc) {
       doc.processingStatus = "completed";
       doc.errorMessage = null;
       doc.updatedAt = now;
+      if (categoryId) {
+        doc.categoryId = categoryId;
+      }
     }
     await this.onMetadataSaved?.(documentId, metadata);
   }
