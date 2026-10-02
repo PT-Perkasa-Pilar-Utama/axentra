@@ -4,6 +4,7 @@ import type { StorageAdapter } from "@axentra/storage";
 import { extractMetadataFromBuffer } from "./metadata.extractor";
 import { extractDocumentBodyText } from "./document-text.extractor";
 import { extractSmartTagsFromBuffer } from "./smart-tags.extractor";
+import { extractCategoryFromBuffer } from "./category.extractor";
 import type { DocumentProcessingRepository } from "./document.processor.repository";
 
 export * from "./document.processor.repository";
@@ -16,7 +17,7 @@ export type DocumentProcessorDependencies = {
 
 /**
  * Idempotently processes a document by loading its file from storage,
- * extracting metadata (such as author) and Smart Tags (up to 3 tags),
+ * extracting metadata, Smart Tags, and category (per AC-05.01, AC-05.02),
  * persisting them atomically, and transitioning processing_status to completed.
  */
 export async function processDocumentJob(
@@ -63,12 +64,20 @@ export async function processDocumentJob(
     // 5. Read file buffer from object storage
     const fileBuffer = await storage.getObject(file.storageKey);
 
-    // 6. Extract metadata, bounded body text, and smart tags
+    // 6. Extract metadata, bounded body text, smart tags, and category (AC-05.01, AC-05.02)
     const extracted = extractMetadataFromBuffer(file.originalName, file.mimeType, fileBuffer);
     const bodyText = extractDocumentBodyText(file.originalName, file.mimeType, fileBuffer);
     const tags = extractSmartTagsFromBuffer(file.originalName, file.mimeType, fileBuffer, bodyText);
+    const existingCats = repository.listCategories ? await repository.listCategories() : undefined;
+    const category = extractCategoryFromBuffer(
+      file.originalName,
+      file.mimeType,
+      fileBuffer,
+      bodyText,
+      existingCats,
+    );
 
-    // 7. Persist metadata and tags and mark document completed atomically within a transaction
+    // 7. Persist metadata, tags, and category and mark document completed atomically within a transaction
     await repository.completeWithMetadata(
       documentId,
       {
@@ -77,11 +86,18 @@ export async function processDocumentJob(
         extractedAt: extracted.extractedAt,
       },
       tags,
+      category,
     );
 
     logger?.info(
-      { jobId, documentId, author: extracted.author, tagCount: tags.length },
-      "Document metadata and smart tags extraction and processing completed successfully",
+      {
+        jobId,
+        documentId,
+        author: extracted.author,
+        tagCount: tags.length,
+        category: category?.name ?? null,
+      },
+      "Document metadata, smart tags, and category processing completed successfully",
     );
   } catch (error: unknown) {
     const causeMsg = (error as { cause?: { message?: string } })?.cause?.message;

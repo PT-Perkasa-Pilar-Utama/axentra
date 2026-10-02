@@ -1,6 +1,8 @@
 import { and, eq, isNull, or } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import {
+  categories,
+  categoryDownloadPermissions,
   documentFiles,
   documentMetadata,
   documentSmartTags,
@@ -47,10 +49,14 @@ export type DocumentProcessingRepository = {
     documentId: string,
     metadata: CompleteDocumentMetadataInput,
     tags?: ReadonlyArray<string> | undefined,
+    category?: { name: string; slug: string } | null | undefined,
   ) => Promise<void>;
+  listCategories?: () => Promise<ReadonlyArray<{ name: string; slug: string }>>;
 };
 
 export class DrizzleDocumentProcessingRepository implements DocumentProcessingRepository {
+  public readonly createdCategoryIds: string[] = [];
+
   public constructor(private readonly db: PostgresJsDatabase) {}
 
   public async listRecoverableDocuments(): Promise<ReadonlyArray<FailedProcessingDocument>> {
@@ -142,10 +148,20 @@ export class DrizzleDocumentProcessingRepository implements DocumentProcessingRe
       .where(eq(documents.id, documentId));
   }
 
+  public async listCategories(): Promise<ReadonlyArray<{ name: string; slug: string }>> {
+    return this.db
+      .select({
+        name: categories.name,
+        slug: categories.slug,
+      })
+      .from(categories);
+  }
+
   public async completeWithMetadata(
     documentId: string,
     metadata: CompleteDocumentMetadataInput,
     tags?: ReadonlyArray<string> | undefined,
+    category?: { name: string; slug: string } | null | undefined,
   ): Promise<void> {
     const now = new Date();
     await this.db.transaction(async (tx) => {
@@ -196,14 +212,61 @@ export class DrizzleDocumentProcessingRepository implements DocumentProcessingRe
         }
       }
 
-      await tx
-        .update(documents)
-        .set({
-          processingStatus: "completed",
-          errorMessage: null,
-          updatedAt: now,
-        })
-        .where(eq(documents.id, documentId));
+      let categoryId: string | null = null;
+      if (category) {
+        const [existing] = await tx
+          .select({ id: categories.id })
+          .from(categories)
+          .where(or(eq(categories.slug, category.slug), eq(categories.name, category.name)))
+          .limit(1);
+
+        if (existing) {
+          categoryId = existing.id;
+        } else {
+          const [inserted] = await tx
+            .insert(categories)
+            .values({
+              name: category.name,
+              slug: category.slug,
+              createdAt: now,
+              updatedAt: now,
+            })
+            .returning({ id: categories.id });
+
+          if (inserted) {
+            categoryId = inserted.id;
+            this.createdCategoryIds.push(inserted.id);
+            await tx
+              .insert(categoryDownloadPermissions)
+              .values({
+                categoryId: inserted.id,
+                downloadEnabled: false,
+                createdAt: now,
+                updatedAt: now,
+              })
+              .onConflictDoNothing({
+                target: categoryDownloadPermissions.categoryId,
+              });
+          }
+        }
+      }
+
+      const updateValues: {
+        processingStatus: "completed";
+        errorMessage: null;
+        updatedAt: Date;
+        categoryId?: string;
+      } = {
+        processingStatus: "completed",
+        errorMessage: null,
+        updatedAt: now,
+      };
+
+      if (categoryId) {
+        updateValues.categoryId = categoryId;
+      }
+
+      await tx.update(documents).set(updateValues).where(eq(documents.id, documentId));
     });
   }
 }

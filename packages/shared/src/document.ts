@@ -15,6 +15,18 @@ export const categorySummarySchema = z.object({
 });
 export type CategorySummary = z.infer<typeof categorySummarySchema>;
 
+export const documentCategoryResponseSchema = z.object({
+  success: z.literal(true),
+  data: categorySummarySchema.nullable(),
+});
+export type DocumentCategoryResponse = z.infer<typeof documentCategoryResponseSchema>;
+
+export const categoriesResponseSchema = z.object({
+  success: z.literal(true),
+  data: z.array(categorySummarySchema),
+});
+export type CategoriesResponse = z.infer<typeof categoriesResponseSchema>;
+
 export const smartTagSchema = z.object({
   id: z.string().uuid(),
   name: z.string().min(1),

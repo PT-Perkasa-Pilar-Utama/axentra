@@ -2,18 +2,13 @@
 
 Source: BA user stories US-04, US-05, US-06.
 
-The Top Tags API is implemented in BE-S2-02. Tag filtering for search and list endpoints is implemented in BE-S2-03. Categories and full-text keyword extraction search remain planned.
+The Top Tags API is implemented in BE-S2-02. Tag filtering for search and list endpoints is implemented in BE-S2-03. Category listing and auto-assignment are implemented in BE-S2-04. Full-text keyword extraction search remains planned in BE-S2-05.
 
 ## Implemented Endpoints
 
 ```text
 GET /api/v1/tags/top
 GET /api/v1/search/documents
-```
-
-## Planned Endpoints
-
-```text
 GET /api/v1/categories
 ```
 
@@ -137,8 +132,42 @@ This endpoint only supplies the tag choices relevant to a context. Single-tag an
 
 ### `GET /api/v1/categories`
 
-Planned behavior:
+Returns all auto-created and configured categories (AC-05.01).
 
-- Return auto-created and configured categories.
-- Include download permission state for Head of Team views.
-- Member Team category visibility must respect authorization.
+- **Status:** Implemented (BE-S2-04 / Sprint 2)
+- **Authorization:** Bearer token required. Allowed roles: `member_team`, `head_of_team`.
+
+#### Response schema
+
+Success (`200 OK`):
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "11111111-1111-4111-8111-111111111111",
+      "name": "Contract",
+      "slug": "contract",
+      "downloadEnabled": false,
+      "createdAt": "2026-09-22T00:00:00.000Z",
+      "updatedAt": "2026-09-22T00:00:00.000Z"
+    },
+    {
+      "id": "22222222-2222-4222-8222-222222222222",
+      "name": "Reporting",
+      "slug": "reporting",
+      "downloadEnabled": false,
+      "createdAt": "2026-09-22T00:00:00.000Z",
+      "updatedAt": "2026-09-22T00:00:00.000Z"
+    }
+  ]
+}
+```
+
+If no categories exist, returns `"data": []`.
+
+**Error responses:**
+
+- `401 UNAUTHORIZED`: Missing or invalid Bearer token.
+- `403 FORBIDDEN`: Role not permitted.
