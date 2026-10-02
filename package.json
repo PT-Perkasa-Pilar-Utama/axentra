@@ -24,7 +24,7 @@
     "test:backend": "bun --cwd apps/api test && bun --cwd apps/worker test",
     "test:frontend": "bun --cwd apps/web test",
     "test:be-then-fe": "bun run test:backend && bun run test:frontend",
-    "test:integration": "cross-env RUN_INTEGRATION_TESTS=1 AXENTRA_DISPOSABLE_TEST_DB=1 bun test test/infrastructure.integration.test.ts test/top-tags.integration.test.ts test/related-documents.integration.test.ts test/smart-tags.integration.test.ts test/tag-filtering.integration.test.ts test/auto-category.integration.test.ts",
+    "test:integration": "cross-env RUN_INTEGRATION_TESTS=1 bun test test/infrastructure.integration.test.ts test/top-tags.integration.test.ts test/related-documents.integration.test.ts test/smart-tags.integration.test.ts test/tag-filtering.integration.test.ts test/auto-category.integration.test.ts",
     "db:generate": "bun run --cwd packages/db generate",
     "db:migrate": "bun run --cwd packages/db migrate",
     "db:studio": "bun run --cwd packages/db studio",
