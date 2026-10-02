@@ -77,8 +77,8 @@ export function assertDisposableTestDatabase(
 }
 
 export type SafeCleanupOptions = {
+  databaseUrl: string;
   preExistingCategoryIds?: Set<string>;
-  databaseUrl?: string;
   env?: Record<string, string | undefined>;
 };
 
@@ -91,7 +91,7 @@ export type SafeCleanupResult = {
  * Multi-layer safe category cleanup helper.
  *
  * Guarantees that cleanup NEVER deletes categories that do not belong to the test:
- * 1. Validates disposable database guard.
+ * 1. Fail-closed disposable database validation: Requires a verified disposable databaseUrl.
  * 2. Deduplicates candidate category IDs actually inserted by the test worker.
  * 3. Excludes pre-existing category IDs captured at suite setup.
  * 4. Referential integrity guard: Verifies NO remaining documents in the database
@@ -101,11 +101,21 @@ export type SafeCleanupResult = {
 export async function safeCleanupTestCategories(
   database: DatabaseClient,
   candidateCategoryIds: string[],
-  options: SafeCleanupOptions = {},
+  options: SafeCleanupOptions,
 ): Promise<SafeCleanupResult> {
-  if (options.databaseUrl) {
-    assertDisposableTestDatabase(options.databaseUrl, options.env);
+  // Fail-closed requirement (Finding F1 / Round 3):
+  // Helper MUST always fail closed if target database is not explicitly validated as disposable.
+  if (
+    !options ||
+    typeof options.databaseUrl !== "string" ||
+    options.databaseUrl.trim().length === 0
+  ) {
+    throw new Error(
+      "Safety guard violation: safeCleanupTestCategories requires an explicit databaseUrl to validate disposable status before executing cleanup.",
+    );
   }
+
+  assertDisposableTestDatabase(options.databaseUrl, options.env);
 
   const result: SafeCleanupResult = {
     deletedCategoryIds: [],

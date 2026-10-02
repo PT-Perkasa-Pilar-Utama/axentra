@@ -45,7 +45,7 @@ describe("Auto-Category Assignment PostgreSQL Integration (Task BE-S2-04 / AC-05
   const createdDocumentIds: string[] = [];
   const createdCategoryIds: string[] = [];
   let preExistingCategoryIds = new Set<string>();
-  let databaseUrl: string | undefined;
+  let databaseUrl = "";
 
   beforeAll(async () => {
     if (!runIntegrationTests) return;
@@ -474,23 +474,26 @@ endobj
       }
 
       const [
-        { categories, categoryDownloadPermissions },
+        { categories, categoryDownloadPermissions, documents, documentFiles },
         { DrizzleDocumentProcessingRepository },
+        { processDocumentJob },
         { safeCleanupTestCategories },
       ] = await Promise.all([
         import("@axentra/db"),
         import("../apps/worker/src/processors/document.processor.repository"),
+        import("../apps/worker/src/processors/document.processor"),
         import("./helpers/disposable-database"),
       ]);
 
       const externalCategoryId = crypto.randomUUID();
-      const externalSlug = `external-partner-${Date.now()}`;
+      const externalCategoryName = "Finance";
+      const externalCategorySlug = "finance";
 
-      // Insert an external category created by another actor after setup snapshot
+      // 1. Insert an external category created by another actor after setup snapshot
       await database.db.insert(categories).values({
         id: externalCategoryId,
-        name: "External Partner",
-        slug: externalSlug,
+        name: externalCategoryName,
+        slug: externalCategorySlug,
         createdAt: new Date(),
         updatedAt: new Date(),
       });
@@ -501,14 +504,82 @@ endobj
         updatedAt: new Date(),
       });
 
+      // Confirm category was created after the initial snapshot
+      expect(preExistingCategoryIds.has(externalCategoryId)).toBe(false);
+
+      const regDocId = crypto.randomUUID();
+      const neutralFilename = "doc-finance-audit-record.pdf";
+      const storageKey = `integration-tests/${regDocId}/${neutralFilename}`;
+
+      // 2. Create document queued for processing
+      await database.db.insert(documents).values({
+        id: regDocId,
+        title: neutralFilename,
+        processingStatus: "queued",
+      });
+      await database.db.insert(documentFiles).values({
+        documentId: regDocId,
+        storageKey,
+        originalName: neutralFilename,
+        mimeType: "application/pdf",
+        fileSize: 1024,
+        fileExtension: "pdf",
+      });
+
+      // 3. Create PDF buffer containing 'finance' keyword in body text
+      const pdfContent = `%PDF-1.4
+1 0 obj
+<< /Author (Corporate Treasurer) >>
+endobj
+2 0 obj
+<< /Length 120 >>
+stream
+BT
+/F1 12 Tf
+(Dokumen ini memuat laporan finance dan keuangan operasional triwulan.) Tj
+ET
+endstream
+endobj
+%%EOF`;
+      const filesMap = new Map<string, Uint8Array>();
+      filesMap.set(storageKey, Buffer.from(pdfContent, "latin1"));
+      const storage = createMockStorage(filesMap);
+
       try {
-        // Instantiate a worker repository
+        // 4. Process the document through the worker pipeline
         const workerRepo = new DrizzleDocumentProcessingRepository(database.db);
+        await processDocumentJob(
+          {
+            jobId: `job-${regDocId}`,
+            documentId: regDocId,
+            schemaVersion: 1,
+            requestedAt: new Date().toISOString(),
+          },
+          { repository: workerRepo, storage },
+        );
 
-        // Worker repository tracks ONLY categories actually inserted by this worker run
+        // 5. Verify worker assigned and reused the external category
+        const [processedDoc] = await database.db
+          .select()
+          .from(documents)
+          .where(inArray(documents.id, [regDocId]))
+          .limit(1);
+
+        expect(processedDoc?.processingStatus).toBe("completed");
+        expect(processedDoc?.categoryId).toBe(externalCategoryId);
+
+        // Worker repository tracks ONLY categories actually inserted by this worker run.
+        // Because externalCategoryId was reused, it is NOT in createdCategoryIds!
         expect(workerRepo.createdCategoryIds).not.toContain(externalCategoryId);
+        expect(workerRepo.createdCategoryIds.length).toBe(0);
 
-        // Execute multi-layer safe cleanup with workerRepo's tracked created categories
+        // 6. Delete test document before running category cleanup (mimicking afterAll suite cleanup)
+        await database.db
+          .delete(documentFiles)
+          .where(inArray(documentFiles.documentId, [regDocId]));
+        await database.db.delete(documents).where(inArray(documents.id, [regDocId]));
+
+        // 7. Execute multi-layer safe cleanup with workerRepo's tracked created categories
         const cleanupResult = await safeCleanupTestCategories(
           database,
           workerRepo.createdCategoryIds,
@@ -518,25 +589,34 @@ endobj
         // Verify the external category was never considered or deleted
         expect(cleanupResult.deletedCategoryIds).not.toContain(externalCategoryId);
 
-        // Verify the external category remains intact in the database
+        // Verify the external category remains intact in the database with original name & permission
         const [stillExists] = await database.db
-          .select({ id: categories.id })
+          .select({ id: categories.id, name: categories.name })
           .from(categories)
           .where(inArray(categories.id, [externalCategoryId]))
           .limit(1);
 
         expect(stillExists).toBeDefined();
         expect(stillExists?.id).toBe(externalCategoryId);
+        expect(stillExists?.name).toBe(externalCategoryName);
 
         const [permStillExists] = await database.db
-          .select({ id: categoryDownloadPermissions.id })
+          .select({
+            id: categoryDownloadPermissions.id,
+            downloadEnabled: categoryDownloadPermissions.downloadEnabled,
+          })
           .from(categoryDownloadPermissions)
           .where(inArray(categoryDownloadPermissions.categoryId, [externalCategoryId]))
           .limit(1);
 
         expect(permStillExists).toBeDefined();
+        expect(permStillExists?.downloadEnabled).toBe(true);
       } finally {
-        // Explicitly clean up only this test's fixture
+        // Explicitly clean up test fixtures
+        await database.db
+          .delete(documentFiles)
+          .where(inArray(documentFiles.documentId, [regDocId]));
+        await database.db.delete(documents).where(inArray(documents.id, [regDocId]));
         await database.db
           .delete(categoryDownloadPermissions)
           .where(inArray(categoryDownloadPermissions.categoryId, [externalCategoryId]));

@@ -132,12 +132,16 @@ describe("safeCleanupTestCategories Multi-Layer Guard (Finding F1)", () => {
       },
     });
 
+    const validDisposableUrl =
+      "postgres://axentra:local-postgres-password@localhost:5432/axentra_test";
+
     // Helper to run cleanup with current category mock tracking
     // For preExistingCatId, it should be skipped immediately without DB query
     // For referencedCatId, currentQueriedCat is set to referencedCatId -> returns doc -> skipped
     // For safeCatId, currentQueriedCat is set to safeCatId -> returns [] -> deleted
     currentQueriedCat = referencedCatId;
     const resultReferenced = await safeCleanupTestCategories(mockDbClient, [referencedCatId], {
+      databaseUrl: validDisposableUrl,
       preExistingCategoryIds: preExistingSet,
     });
     expect(resultReferenced.skippedCategoryIds).toContain(referencedCatId);
@@ -145,6 +149,7 @@ describe("safeCleanupTestCategories Multi-Layer Guard (Finding F1)", () => {
 
     // Pre-existing category is skipped immediately
     const resultPreExisting = await safeCleanupTestCategories(mockDbClient, [preExistingCatId], {
+      databaseUrl: validDisposableUrl,
       preExistingCategoryIds: preExistingSet,
     });
     expect(resultPreExisting.skippedCategoryIds).toContain(preExistingCatId);
@@ -153,9 +158,28 @@ describe("safeCleanupTestCategories Multi-Layer Guard (Finding F1)", () => {
     // Truly safe test-only category with no referencing documents is deleted
     currentQueriedCat = safeCatId;
     const resultSafe = await safeCleanupTestCategories(mockDbClient, [safeCatId], {
+      databaseUrl: validDisposableUrl,
       preExistingCategoryIds: preExistingSet,
     });
     expect(resultSafe.deletedCategoryIds).toContain(safeCatId);
     expect(resultSafe.skippedCategoryIds).not.toContain(safeCatId);
+  });
+
+  it("fails closed if databaseUrl is omitted or not validated as disposable (Round 3 F1)", async () => {
+    const mockDbClient = { db: {} } as unknown as DatabaseClient;
+
+    // 1. Omitted databaseUrl
+    // @ts-expect-error runtime validation
+    await expect(safeCleanupTestCategories(mockDbClient, ["cat-1"], {})).rejects.toThrow(
+      "Safety guard violation: safeCleanupTestCategories requires an explicit databaseUrl",
+    );
+
+    // 2. Persistent / non-disposable databaseUrl
+    await expect(
+      safeCleanupTestCategories(mockDbClient, ["cat-1"], {
+        databaseUrl: "postgres://axentra:local-postgres-password@localhost:5432/axentra",
+        env: {},
+      }),
+    ).rejects.toThrow("Safety guard violation: Database");
   });
 });
