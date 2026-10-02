@@ -8,7 +8,7 @@ import type { DatabaseClient } from "@axentra/db";
  */
 export function isDisposableTestDatabase(
   databaseUrl: string,
-  env: Record<string, string | undefined> = Bun.env,
+  _env: Record<string, string | undefined> = Bun.env,
 ): boolean {
   try {
     const parsed = new URL(databaseUrl);
@@ -32,31 +32,25 @@ export function isDisposableTestDatabase(
       return false;
     }
 
-    // 1. Explicit test database naming (e.g. axentra_test, test, dms_disposable)
+    // Persistent development databases (e.g. 'axentra' from infra/local/docker-compose.yml,
+    // 'development', 'axentra_dev') are NEVER considered disposable, even under generic CI or test flags (Finding F1 / Round 4).
+    if (
+      lowerDbName === "axentra" ||
+      lowerDbName === "axentra_dev" ||
+      lowerDbName === "development" ||
+      lowerDbName === "dev"
+    ) {
+      return false;
+    }
+
+    // Explicit test database naming required (e.g. axentra_test, test, dms_disposable)
     const isExplicitTestDbName =
       dbName === "test" ||
       dbName.endsWith("_test") ||
       dbName.endsWith("_disposable") ||
-      dbName === "axentra_test";
+      dbName.startsWith("test_");
 
-    if (isExplicitTestDbName) {
-      return true;
-    }
-
-    // 2. Explicit opt-in environment flag authorizing disposable test cleanup
-    const hasExplicitDisposableFlag =
-      env.AXENTRA_DISPOSABLE_TEST_DB === "1" ||
-      env.AXENTRA_DISPOSABLE_TEST_DB === "true" ||
-      env.ALLOW_DISPOSABLE_DB_CLEANUP === "true" ||
-      env.ALLOW_DISPOSABLE_DB_CLEANUP === "1";
-
-    if (hasExplicitDisposableFlag) {
-      return true;
-    }
-
-    // 3. Isolated CI container execution
-    const isCiTestEnv = env.CI === "true" && env.APP_ENV === "test";
-    return isCiTestEnv;
+    return isExplicitTestDbName;
   } catch {
     return false;
   }
@@ -70,8 +64,7 @@ export function assertDisposableTestDatabase(
     throw new Error(
       `Safety guard violation: Database '${databaseUrl}' is not an explicitly validated disposable test database. ` +
         `Integration test cleanup is refused to prevent data loss on shared or persistent local development databases. ` +
-        `To run tests against a disposable database, use a database named '*_test', set AXENTRA_DISPOSABLE_TEST_DB=1, ` +
-        `or run in a CI test environment.`,
+        `To run tests against a disposable database, use a dedicated test database (e.g. '*_test', 'axentra_test', 'test').`,
     );
   }
 }
