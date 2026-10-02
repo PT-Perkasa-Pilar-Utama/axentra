@@ -1,90 +1,220 @@
 import crypto from "node:crypto";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { inArray } from "drizzle-orm";
-import type {
-  DatabaseClient,
-  closeDatabase as CloseDatabase,
-  createDatabaseClient as CreateDatabaseClient,
-} from "@axentra/db";
+import { eq, inArray } from "drizzle-orm";
+import type { DatabaseClient, closeDatabase as CloseDatabase } from "@axentra/db";
+import type { Worker } from "bullmq";
+import type { QueueProducer, RedisProbe } from "@axentra/queue";
 import type { StorageAdapter } from "@axentra/storage";
 import type {
   ApiSuccessEnvelope,
   CategorySummary,
   DocumentCategoryResponse,
+  DocumentProcessingJob,
 } from "@axentra/shared";
+import { uploadDocumentSuccessResponseSchema } from "@axentra/shared";
+import type { createApp as CreateApp } from "../apps/api/src/app";
+import type { closeWorkerWithinDeadline as CloseWorkerWithinDeadline } from "../apps/worker/src/lifecycle";
+import type { DrizzleDocumentProcessingRepository as DrizzleWorkerRepo } from "../apps/worker/src/processors/document.processor.repository";
 
 const runIntegrationTests = Bun.env.RUN_INTEGRATION_TESTS === "1";
 const integrationTest = runIntegrationTests ? test : test.skip;
 
-function createMockStorage(filesMap: Map<string, Uint8Array>): StorageAdapter {
-  return {
-    initialize: async () => undefined,
-    checkHealth: async () => undefined,
-    putObject: async () => undefined,
-    getObject: async (key: string) => {
-      const found = filesMap.get(key);
-      if (!found) throw new Error("Object not found in mock storage");
-      return found;
-    },
-    deleteObject: async () => undefined,
-    headObject: async () => ({
-      key: "dummy",
-      contentLength: 100,
-      contentType: "application/pdf",
-      checksumSha256: undefined,
-    }),
-    createDownloadUrl: async () => "https://example.com/download",
-    close: async () => undefined,
-  };
-}
-
-describe("Auto-Category Assignment PostgreSQL Integration (Task BE-S2-04 / AC-05.01 & AC-05.02)", () => {
+describe("Auto-Category Assignment Real Queue & Storage Integration (Task BE-S2-04 / AC-05.01 & AC-05.02 / F4)", () => {
   let database: DatabaseClient | undefined;
+  let redis: RedisProbe | undefined;
+  let storage: StorageAdapter | undefined;
+  let producer: QueueProducer | undefined;
+  let worker: Worker | undefined;
+  let workerRepo: DrizzleWorkerRepo | undefined;
+  let app: ReturnType<CreateApp> | undefined;
   let closeDatabase: CloseDatabase;
-  let createDatabaseClient: CreateDatabaseClient;
+  let closeWorkerWithinDeadline: CloseWorkerWithinDeadline;
+
   const createdDocumentIds: string[] = [];
+  const createdStorageKeys: string[] = [];
   const createdCategoryIds: string[] = [];
   let preExistingCategoryIds = new Set<string>();
   let databaseUrl = "";
 
+  const pendingJobResolvers = new Map<string, () => void>();
+
   beforeAll(async () => {
     if (!runIntegrationTests) return;
 
-    const [{ loadApiConfigFromRuntime }, db, { assertDisposableTestDatabase }] = await Promise.all([
+    const [
+      { loadApiConfigFromRuntime },
+      db,
+      queue,
+      storageAdapter,
+      observability,
+      api,
+      lifecycle,
+      docProcessor,
+      workerRepository,
+      docRepo,
+      dupRepo,
+      docCategoryRepo,
+      catRepo,
+      docService,
+      catService,
+      { assertDisposableTestDatabase },
+    ] = await Promise.all([
       import("@axentra/config"),
       import("@axentra/db"),
+      import("@axentra/queue"),
+      import("@axentra/storage"),
+      import("@axentra/observability"),
+      import("../apps/api/src/app"),
+      import("../apps/worker/src/lifecycle"),
+      import("../apps/worker/src/processors/document.processor"),
+      import("../apps/worker/src/processors/document.processor.repository"),
+      import("../apps/api/src/modules/documents/documents.repository"),
+      import("../apps/api/src/modules/documents/duplicate.repository"),
+      import("../apps/api/src/modules/documents/category.repository"),
+      import("../apps/api/src/modules/categories/categories.repository"),
+      import("../apps/api/src/modules/documents/documents.service"),
+      import("../apps/api/src/modules/categories/categories.service"),
       import("./helpers/disposable-database"),
     ]);
+
     closeDatabase = db.closeDatabase;
-    createDatabaseClient = db.createDatabaseClient;
+    closeWorkerWithinDeadline = lifecycle.closeWorkerWithinDeadline;
+
     const config = loadApiConfigFromRuntime();
-    databaseUrl = config.DATABASE_URL;
+    databaseUrl =
+      Bun.env.TEST_DATABASE_URL ??
+      Bun.env.DATABASE_URL ??
+      "postgres://axentra:local-postgres-password@localhost:5432/axentra_test";
 
-    // Explicit disposable test database validation (F1)
-    assertDisposableTestDatabase(config.DATABASE_URL);
+    // F1: Strict disposable test database validation
+    assertDisposableTestDatabase(databaseUrl);
 
-    database = createDatabaseClient(config.DATABASE_URL);
-    await db.checkDatabase(database);
+    database = db.createDatabaseClient(databaseUrl);
+    redis = queue.createRedisProbe(config.REDIS_URL, config.REDIS_HEALTH_TIMEOUT_MS);
+    storage = storageAdapter.createS3StorageAdapter(config);
+
+    await Promise.all([db.checkDatabase(database), redis.checkHealth(), storage.initialize()]);
 
     // Snapshot pre-existing categories for exclusion guard (F1)
     const preExisting = await database.db.select({ id: db.categories.id }).from(db.categories);
     preExistingCategoryIds = new Set(preExisting.map((c) => c.id));
+
+    // Isolated test queue
+    const queueName = `axentra-auto-category-${crypto.randomUUID()}`;
+    producer = queue.createQueueProducer(queueName, config.REDIS_URL);
+
+    // Real BullMQ worker wired to real MinIO storage & PostgreSQL (F4)
+    workerRepo = new workerRepository.DrizzleDocumentProcessingRepository(database.db);
+    const workerLogger = observability.createLogger({
+      service: "axentra-worker-test",
+      environment: "test",
+      version: "0.1.0",
+      level: "fatal",
+    });
+
+    const handleDocumentProcessing = async (payload: DocumentProcessingJob): Promise<void> => {
+      if (workerRepo === undefined || storage === undefined) return;
+      const jobScopedLogger = observability.jobLogger(workerLogger, payload.jobId);
+      await docProcessor.processDocumentJob(payload, {
+        repository: workerRepo,
+        storage,
+        logger: jobScopedLogger,
+      });
+
+      for (const id of workerRepo.createdCategoryIds) {
+        if (!createdCategoryIds.includes(id)) {
+          createdCategoryIds.push(id);
+        }
+      }
+
+      const resolver = pendingJobResolvers.get(payload.documentId);
+      if (resolver) {
+        resolver();
+        pendingJobResolvers.delete(payload.documentId);
+      }
+    };
+
+    worker = queue.createQueueWorker(queueName, config.REDIS_URL, 1, {
+      handleSystemHealthCheck: async () => undefined,
+      handleDocumentProcessing,
+    });
+    await worker.waitUntilReady();
+
+    const integrationTokenVerifier = {
+      verifyToken(token: string) {
+        if (token === "integration-member-token") {
+          return {
+            id: "11111111-1111-4111-8111-111111111111",
+            email: "member@axentra.local",
+            role: "member_team" as const,
+            name: "Integration Member",
+          };
+        }
+        return null;
+      },
+    };
+
+    const apiLogger = observability.createLogger({
+      service: "axentra-api-test",
+      environment: "test",
+      version: "0.1.0",
+      level: "fatal",
+    });
+
+    const documentService = docService.createDocumentService({
+      repository: new docRepo.DocumentRepository(database.db),
+      storage,
+      queue: producer,
+      contentHashRepository: new dupRepo.DrizzleDocumentContentHashRepository(database.db),
+      categoryRepository: new docCategoryRepo.DrizzleDocumentCategoryRepository(database.db),
+      logger: apiLogger,
+    });
+
+    const categoriesService = catService.createCategoriesService(
+      new catRepo.DrizzleCategoriesRepository(database.db),
+    );
+
+    app = api.createApp({
+      logger: apiLogger,
+      version: "0.1.0",
+      readinessChecks: [],
+      tokenVerifier: integrationTokenVerifier,
+      documentService,
+      categoriesService,
+      enableUploadRoute: true,
+    });
   });
 
   afterAll(async () => {
+    if (worker !== undefined) await closeWorkerWithinDeadline(worker, 2000);
+    if (producer !== undefined) await producer.close();
+    if (redis !== undefined) await redis.close();
+
+    if (storage !== undefined) {
+      for (const key of createdStorageKeys) {
+        try {
+          await storage.deleteObject(key);
+        } catch {
+          // ignore cleanup failures
+        }
+      }
+      await storage.close();
+    }
+
     if (database !== undefined) {
-      const { documents, documentFiles } = await import("@axentra/db");
+      const { documents, documentFiles, documentContentHashes } = await import("@axentra/db");
       const { safeCleanupTestCategories } = await import("./helpers/disposable-database");
 
-      // 1. Clean up only documents created by this test suite
       if (createdDocumentIds.length > 0) {
+        await database.db
+          .delete(documentContentHashes)
+          .where(inArray(documentContentHashes.documentId, createdDocumentIds));
         await database.db
           .delete(documentFiles)
           .where(inArray(documentFiles.documentId, createdDocumentIds));
         await database.db.delete(documents).where(inArray(documents.id, createdDocumentIds));
       }
 
-      // 2. Multi-layer safe category cleanup (F1)
       await safeCleanupTestCategories(database, createdCategoryIds, {
         preExistingCategoryIds,
         databaseUrl,
@@ -94,57 +224,92 @@ describe("Auto-Category Assignment PostgreSQL Integration (Task BE-S2-04 / AC-05
     }
   });
 
+  async function uploadPdfDocument(
+    filename: string,
+    content: string,
+  ): Promise<{ docId: string; storageKey: string }> {
+    if (app === undefined || database === undefined) {
+      throw new Error("Integration app was not initialized");
+    }
+    const { documentFiles, documentContentHashes } = await import("@axentra/db");
+
+    const pdfBytes = new TextEncoder().encode(content);
+    const expectedHash = crypto.createHash("sha256").update(pdfBytes).digest("hex");
+
+    const formData = new FormData();
+    formData.append("file", new File([pdfBytes], filename, { type: "application/pdf" }));
+
+    const response = await app.request("/api/v1/documents/upload", {
+      method: "POST",
+      headers: { authorization: "Bearer integration-member-token" },
+      body: formData,
+    });
+
+    expect(response.status).toBe(200);
+    const body = uploadDocumentSuccessResponseSchema.parse(await response.json());
+    expect(body.success).toBe(true);
+
+    const hashRows = await database.db
+      .select()
+      .from(documentContentHashes)
+      .where(eq(documentContentHashes.contentHash, expectedHash))
+      .limit(1);
+
+    const docId = hashRows[0]?.documentId;
+    if (!docId) throw new Error("Document ID not found in database after upload");
+
+    const fileRows = await database.db
+      .select()
+      .from(documentFiles)
+      .where(eq(documentFiles.documentId, docId))
+      .limit(1);
+
+    const storageKey = fileRows[0]?.storageKey;
+    if (!storageKey) throw new Error("Storage key not found in database after upload");
+
+    createdDocumentIds.push(docId);
+    createdStorageKeys.push(storageKey);
+
+    return { docId, storageKey };
+  }
+
+  async function waitForDocumentProcessing(docId: string, timeoutMs = 15000): Promise<void> {
+    if (database === undefined) throw new Error("Database not initialized");
+    const { documents } = await import("@axentra/db");
+
+    const [existing] = await database.db
+      .select({ status: documents.processingStatus })
+      .from(documents)
+      .where(eq(documents.id, docId))
+      .limit(1);
+
+    if (existing?.status === "completed") return;
+
+    return new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pendingJobResolvers.delete(docId);
+        reject(new Error(`Timed out waiting for worker processing of document ${docId}`));
+      }, timeoutMs);
+
+      pendingJobResolvers.set(docId, () => {
+        clearTimeout(timer);
+        resolve();
+      });
+    });
+  }
+
   integrationTest(
-    "AC-05.01: assigns Reporting category from content, auto-creates category with inactive download permission, and serves via API",
+    "AC-05.01: end-to-end API upload -> queue -> worker (MinIO read) -> assigns Reporting category with inactive permission (F4)",
     async () => {
-      if (database === undefined) {
-        throw new Error("PostgreSQL integration database was not initialized");
+      if (database === undefined || storage === undefined || app === undefined) {
+        throw new Error("Integration infrastructure not initialized");
       }
+      const { documents, categories, categoryDownloadPermissions } = await import("@axentra/db");
 
-      const [
-        { documents, documentFiles, categories, categoryDownloadPermissions },
-        { DrizzleDocumentCategoryRepository },
-        { DrizzleCategoriesRepository },
-        { DrizzleDocumentProcessingRepository },
-        { processDocumentJob },
-        { createApp },
-        { createDocumentService },
-        { createCategoriesService },
-        { createLogger },
-      ] = await Promise.all([
-        import("@axentra/db"),
-        import("../apps/api/src/modules/documents/category.repository"),
-        import("../apps/api/src/modules/categories/categories.repository"),
-        import("../apps/worker/src/processors/document.processor.repository"),
-        import("../apps/worker/src/processors/document.processor"),
-        import("../apps/api/src/app"),
-        import("../apps/api/src/modules/documents/documents.service"),
-        import("../apps/api/src/modules/categories/categories.service"),
-        import("@axentra/observability"),
-      ]);
-
-      const docId = crypto.randomUUID();
-      createdDocumentIds.push(docId);
       // Neutral filename that cannot trigger filename fallback (F2)
       const neutralFilename = "doc-content-sample-a.pdf";
-      const storageKey = `integration-tests/${docId}/${neutralFilename}`;
-
-      await database.db.insert(documents).values({
-        id: docId,
-        title: neutralFilename,
-        processingStatus: "queued",
-      });
-
-      await database.db.insert(documentFiles).values({
-        documentId: docId,
-        storageKey,
-        originalName: neutralFilename,
-        mimeType: "application/pdf",
-        fileSize: 1024,
-        fileExtension: "pdf",
-      });
-
       const pdfContent = `%PDF-1.4
+% run-${crypto.randomUUID()}
 1 0 obj
 << /Author (Finance Lead) >>
 endobj
@@ -159,95 +324,62 @@ endstream
 endobj
 %%EOF`;
 
-      const filesMap = new Map<string, Uint8Array>();
-      filesMap.set(storageKey, Buffer.from(pdfContent, "latin1"));
-      const storage = createMockStorage(filesMap);
+      // 1. Upload through authenticated API
+      const { docId, storageKey } = await uploadPdfDocument(neutralFilename, pdfContent);
 
-      const workerRepo = new DrizzleDocumentProcessingRepository(database.db);
-      await processDocumentJob(
-        {
-          jobId: `job-${docId}`,
-          documentId: docId,
-          schemaVersion: 1,
-          requestedAt: new Date().toISOString(),
-        },
-        { repository: workerRepo, storage },
-      );
+      // Verify object exists in real MinIO storage
+      const storedBytes = await storage.getObject(storageKey);
+      expect(storedBytes.length).toBeGreaterThan(0);
 
-      // Verify category created in database
+      // 2. Consume job through real BullMQ queue worker
+      await waitForDocumentProcessing(docId);
+
+      // 3. Verify PostgreSQL persistence
       const [doc] = await database.db
         .select()
         .from(documents)
-        .where(inArray(documents.id, [docId]))
+        .where(eq(documents.id, docId))
         .limit(1);
 
       expect(doc?.processingStatus).toBe("completed");
       expect(doc?.categoryId).not.toBeNull();
 
-      for (const id of workerRepo.createdCategoryIds) {
-        if (!createdCategoryIds.includes(id)) {
-          createdCategoryIds.push(id);
-        }
-      }
-
       const [categoryRow] = await database.db
         .select()
         .from(categories)
-        .where(inArray(categories.id, [doc?.categoryId ?? ""]))
+        .where(eq(categories.id, doc?.categoryId ?? ""))
         .limit(1);
 
       expect(categoryRow?.name).toBe("Reporting");
       expect(categoryRow?.slug).toBe("reporting");
 
-      // Verify category download permission is inactive (default false)
+      // Verify category download permission is inactive by default (false)
       const [permissionRow] = await database.db
         .select()
         .from(categoryDownloadPermissions)
-        .where(inArray(categoryDownloadPermissions.categoryId, [categoryRow?.id ?? ""]))
+        .where(eq(categoryDownloadPermissions.categoryId, categoryRow?.id ?? ""))
         .limit(1);
 
       expect(permissionRow).toBeDefined();
       expect(permissionRow?.downloadEnabled).toBe(false);
 
-      // Test API endpoints
-      const app = createApp({
-        logger: createLogger({
-          service: "axentra-api",
-          environment: "test",
-          version: "0.1.0",
-          level: "fatal",
-        }),
-        version: "0.1.0",
-        readinessChecks: [],
-        tokenVerifier: {
-          verifyToken: () => ({
-            id: "usr-member",
-            email: "member@axentra.local",
-            role: "member_team",
-            name: "Member User",
-          }),
-        },
-        documentService: createDocumentService({
-          categoryRepository: new DrizzleDocumentCategoryRepository(database.db),
-        }),
-        categoriesService: createCategoriesService(new DrizzleCategoriesRepository(database.db)),
-      });
-
-      // 1. GET /api/v1/documents/:id/category
+      // 4. Verify API response shapes match shared schema (F3)
+      // GET /api/v1/documents/:id/category
       const docCatRes = await app.request(`/api/v1/documents/${docId}/category`, {
         method: "GET",
-        headers: { Authorization: "Bearer test" },
+        headers: { authorization: "Bearer integration-member-token" },
       });
       expect(docCatRes.status).toBe(200);
       const docCatBody = (await docCatRes.json()) as DocumentCategoryResponse;
       expect(docCatBody.success).toBe(true);
       expect(docCatBody.data?.name).toBe("Reporting");
+      expect(docCatBody.data?.slug).toBe("reporting");
       expect(docCatBody.data?.downloadEnabled).toBe(false);
 
-      // 2. GET /api/v1/categories
+      // GET /api/v1/categories
       const catListRes = await app.request("/api/v1/categories", {
         method: "GET",
-        headers: { Authorization: "Bearer test" },
+        headers: { authorization: "Bearer integration-member-token" },
       });
       expect(catListRes.status).toBe(200);
       const catListBody = (await catListRes.json()) as ApiSuccessEnvelope<
@@ -261,73 +393,18 @@ endobj
   );
 
   integrationTest(
-    "AC-05.02: assigns different categories for Reporting and Contract documents",
+    "AC-05.02: end-to-end API upload & worker processing assigns distinct categories for Reporting and Contract documents (F4)",
     async () => {
-      if (database === undefined) {
-        throw new Error("PostgreSQL integration database was not initialized");
+      if (database === undefined || app === undefined) {
+        throw new Error("Integration infrastructure not initialized");
       }
+      const { documents, categories } = await import("@axentra/db");
 
-      const [
-        { documents, documentFiles, categories },
-        { DrizzleDocumentCategoryRepository },
-        { DrizzleDocumentProcessingRepository },
-        { processDocumentJob },
-        { createApp },
-        { createDocumentService },
-        { createLogger },
-      ] = await Promise.all([
-        import("@axentra/db"),
-        import("../apps/api/src/modules/documents/category.repository"),
-        import("../apps/worker/src/processors/document.processor.repository"),
-        import("../apps/worker/src/processors/document.processor"),
-        import("../apps/api/src/app"),
-        import("../apps/api/src/modules/documents/documents.service"),
-        import("@axentra/observability"),
-      ]);
-
-      // Document 1 with neutral filename and Reporting content
-      const reportingDocId = crypto.randomUUID();
-      createdDocumentIds.push(reportingDocId);
       const neutralReportingFilename = "doc-content-sample-b.pdf";
-      const storageKeyReporting = `integration-tests/${reportingDocId}/${neutralReportingFilename}`;
-
-      await database.db.insert(documents).values({
-        id: reportingDocId,
-        title: neutralReportingFilename,
-        processingStatus: "queued",
-      });
-
-      await database.db.insert(documentFiles).values({
-        documentId: reportingDocId,
-        storageKey: storageKeyReporting,
-        originalName: neutralReportingFilename,
-        mimeType: "application/pdf",
-        fileSize: 1024,
-        fileExtension: "pdf",
-      });
-
-      // Document 2 with neutral filename and Contract content
-      const contractDocId = crypto.randomUUID();
-      createdDocumentIds.push(contractDocId);
       const neutralContractFilename = "doc-content-sample-c.pdf";
-      const storageKeyContract = `integration-tests/${contractDocId}/${neutralContractFilename}`;
-
-      await database.db.insert(documents).values({
-        id: contractDocId,
-        title: neutralContractFilename,
-        processingStatus: "queued",
-      });
-
-      await database.db.insert(documentFiles).values({
-        documentId: contractDocId,
-        storageKey: storageKeyContract,
-        originalName: neutralContractFilename,
-        mimeType: "application/pdf",
-        fileSize: 1024,
-        fileExtension: "pdf",
-      });
 
       const reportingPdf = `%PDF-1.4
+% run-${crypto.randomUUID()}
 1 0 obj
 << /Author (Finance Lead) >>
 endobj
@@ -343,6 +420,7 @@ endobj
 %%EOF`;
 
       const contractPdf = `%PDF-1.4
+% run-${crypto.randomUUID()}
 1 0 obj
 << /Author (Legal Lead) >>
 endobj
@@ -357,94 +435,57 @@ endstream
 endobj
 %%EOF`;
 
-      const filesMap = new Map<string, Uint8Array>();
-      filesMap.set(storageKeyReporting, Buffer.from(reportingPdf, "latin1"));
-      filesMap.set(storageKeyContract, Buffer.from(contractPdf, "latin1"));
-      const storage = createMockStorage(filesMap);
-
-      const workerRepo = new DrizzleDocumentProcessingRepository(database.db);
-      await processDocumentJob(
-        {
-          jobId: `job-${reportingDocId}`,
-          documentId: reportingDocId,
-          schemaVersion: 1,
-          requestedAt: new Date().toISOString(),
-        },
-        { repository: workerRepo, storage },
+      // 1. Upload both documents via authenticated API
+      const { docId: reportingDocId } = await uploadPdfDocument(
+        neutralReportingFilename,
+        reportingPdf,
       );
-      await processDocumentJob(
-        {
-          jobId: `job-${contractDocId}`,
-          documentId: contractDocId,
-          schemaVersion: 1,
-          requestedAt: new Date().toISOString(),
-        },
-        { repository: workerRepo, storage },
+      const { docId: contractDocId } = await uploadPdfDocument(
+        neutralContractFilename,
+        contractPdf,
       );
 
-      // Verify both documents in database received distinct categories
+      // 2. Consume both jobs via BullMQ worker
+      await Promise.all([
+        waitForDocumentProcessing(reportingDocId),
+        waitForDocumentProcessing(contractDocId),
+      ]);
+
+      // 3. Verify distinct categories assigned in database
       const [reportingDoc] = await database.db
         .select()
         .from(documents)
-        .where(inArray(documents.id, [reportingDocId]))
+        .where(eq(documents.id, reportingDocId))
         .limit(1);
 
       const [contractDoc] = await database.db
         .select()
         .from(documents)
-        .where(inArray(documents.id, [contractDocId]))
+        .where(eq(documents.id, contractDocId))
         .limit(1);
 
       expect(reportingDoc?.categoryId).not.toBeNull();
       expect(contractDoc?.categoryId).not.toBeNull();
       expect(reportingDoc?.categoryId).not.toBe(contractDoc?.categoryId);
 
-      // Track newly created category IDs from worker repository (F1: no snapshot comparison)
-      for (const id of workerRepo.createdCategoryIds) {
-        if (!createdCategoryIds.includes(id)) {
-          createdCategoryIds.push(id);
-        }
-      }
-
       const [reportingCategory] = await database.db
         .select()
         .from(categories)
-        .where(inArray(categories.id, [reportingDoc?.categoryId ?? ""]))
+        .where(eq(categories.id, reportingDoc?.categoryId ?? ""))
         .limit(1);
       const [contractCategory] = await database.db
         .select()
         .from(categories)
-        .where(inArray(categories.id, [contractDoc?.categoryId ?? ""]))
+        .where(eq(categories.id, contractDoc?.categoryId ?? ""))
         .limit(1);
 
       expect(reportingCategory?.name).toBe("Reporting");
       expect(contractCategory?.name).toBe("Contract");
 
-      const app = createApp({
-        logger: createLogger({
-          service: "axentra-api",
-          environment: "test",
-          version: "0.1.0",
-          level: "fatal",
-        }),
-        version: "0.1.0",
-        readinessChecks: [],
-        tokenVerifier: {
-          verifyToken: () => ({
-            id: "usr-member",
-            email: "member@axentra.local",
-            role: "member_team",
-            name: "Member User",
-          }),
-        },
-        documentService: createDocumentService({
-          categoryRepository: new DrizzleDocumentCategoryRepository(database.db),
-        }),
-      });
-
+      // 4. Verify API category responses for both documents
       const resReporting = await app.request(`/api/v1/documents/${reportingDocId}/category`, {
         method: "GET",
-        headers: { Authorization: "Bearer test" },
+        headers: { authorization: "Bearer integration-member-token" },
       });
       expect(resReporting.status).toBe(200);
       const bodyReporting = (await resReporting.json()) as DocumentCategoryResponse;
@@ -455,7 +496,7 @@ endobj
 
       const resContract = await app.request(`/api/v1/documents/${contractDocId}/category`, {
         method: "GET",
-        headers: { Authorization: "Bearer test" },
+        headers: { authorization: "Bearer integration-member-token" },
       });
       expect(resContract.status).toBe(200);
       const bodyContract = (await resContract.json()) as DocumentCategoryResponse;
@@ -467,29 +508,19 @@ endobj
   );
 
   integrationTest(
-    "regression (F1): categories created externally after setup are never deleted by cleanup even if worker reuses them",
+    "regression (F1): categories created externally after setup are reused by queue worker and never deleted by cleanup",
     async () => {
-      if (database === undefined) {
-        throw new Error("PostgreSQL integration database was not initialized");
+      if (database === undefined || workerRepo === undefined) {
+        throw new Error("Integration infrastructure not initialized");
       }
-
-      const [
-        { categories, categoryDownloadPermissions, documents, documentFiles },
-        { DrizzleDocumentProcessingRepository },
-        { processDocumentJob },
-        { safeCleanupTestCategories },
-      ] = await Promise.all([
-        import("@axentra/db"),
-        import("../apps/worker/src/processors/document.processor.repository"),
-        import("../apps/worker/src/processors/document.processor"),
-        import("./helpers/disposable-database"),
-      ]);
+      const { categories, categoryDownloadPermissions, documents } = await import("@axentra/db");
+      const { safeCleanupTestCategories } = await import("./helpers/disposable-database");
 
       const externalCategoryId = crypto.randomUUID();
       const externalCategoryName = "Finance";
       const externalCategorySlug = "finance";
 
-      // 1. Insert an external category created by another actor after setup snapshot
+      // 1. Insert external category created after snapshot
       await database.db.insert(categories).values({
         id: externalCategoryId,
         name: externalCategoryName,
@@ -504,30 +535,11 @@ endobj
         updatedAt: new Date(),
       });
 
-      // Confirm category was created after the initial snapshot
       expect(preExistingCategoryIds.has(externalCategoryId)).toBe(false);
 
-      const regDocId = crypto.randomUUID();
       const neutralFilename = "doc-finance-audit-record.pdf";
-      const storageKey = `integration-tests/${regDocId}/${neutralFilename}`;
-
-      // 2. Create document queued for processing
-      await database.db.insert(documents).values({
-        id: regDocId,
-        title: neutralFilename,
-        processingStatus: "queued",
-      });
-      await database.db.insert(documentFiles).values({
-        documentId: regDocId,
-        storageKey,
-        originalName: neutralFilename,
-        mimeType: "application/pdf",
-        fileSize: 1024,
-        fileExtension: "pdf",
-      });
-
-      // 3. Create PDF buffer containing 'finance' keyword in body text
       const pdfContent = `%PDF-1.4
+% run-${crypto.randomUUID()}
 1 0 obj
 << /Author (Corporate Treasurer) >>
 endobj
@@ -541,45 +553,26 @@ ET
 endstream
 endobj
 %%EOF`;
-      const filesMap = new Map<string, Uint8Array>();
-      filesMap.set(storageKey, Buffer.from(pdfContent, "latin1"));
-      const storage = createMockStorage(filesMap);
 
       try {
-        // 4. Process the document through the worker pipeline
-        const workerRepo = new DrizzleDocumentProcessingRepository(database.db);
-        await processDocumentJob(
-          {
-            jobId: `job-${regDocId}`,
-            documentId: regDocId,
-            schemaVersion: 1,
-            requestedAt: new Date().toISOString(),
-          },
-          { repository: workerRepo, storage },
-        );
+        // 2. Upload through real API and consume through BullMQ worker
+        const { docId: regDocId } = await uploadPdfDocument(neutralFilename, pdfContent);
+        await waitForDocumentProcessing(regDocId);
 
-        // 5. Verify worker assigned and reused the external category
+        // 3. Verify worker reused the external category
         const [processedDoc] = await database.db
           .select()
           .from(documents)
-          .where(inArray(documents.id, [regDocId]))
+          .where(eq(documents.id, regDocId))
           .limit(1);
 
         expect(processedDoc?.processingStatus).toBe("completed");
         expect(processedDoc?.categoryId).toBe(externalCategoryId);
 
         // Worker repository tracks ONLY categories actually inserted by this worker run.
-        // Because externalCategoryId was reused, it is NOT in createdCategoryIds!
         expect(workerRepo.createdCategoryIds).not.toContain(externalCategoryId);
-        expect(workerRepo.createdCategoryIds.length).toBe(0);
 
-        // 6. Delete test document before running category cleanup (mimicking afterAll suite cleanup)
-        await database.db
-          .delete(documentFiles)
-          .where(inArray(documentFiles.documentId, [regDocId]));
-        await database.db.delete(documents).where(inArray(documents.id, [regDocId]));
-
-        // 7. Execute multi-layer safe cleanup with workerRepo's tracked created categories
+        // 4. Execute multi-layer safe cleanup with tracked created categories
         const cleanupResult = await safeCleanupTestCategories(
           database,
           workerRepo.createdCategoryIds,
@@ -593,7 +586,7 @@ endobj
         const [stillExists] = await database.db
           .select({ id: categories.id, name: categories.name })
           .from(categories)
-          .where(inArray(categories.id, [externalCategoryId]))
+          .where(eq(categories.id, externalCategoryId))
           .limit(1);
 
         expect(stillExists).toBeDefined();
@@ -606,21 +599,16 @@ endobj
             downloadEnabled: categoryDownloadPermissions.downloadEnabled,
           })
           .from(categoryDownloadPermissions)
-          .where(inArray(categoryDownloadPermissions.categoryId, [externalCategoryId]))
+          .where(eq(categoryDownloadPermissions.categoryId, externalCategoryId))
           .limit(1);
 
         expect(permStillExists).toBeDefined();
         expect(permStillExists?.downloadEnabled).toBe(true);
       } finally {
-        // Explicitly clean up test fixtures
-        await database.db
-          .delete(documentFiles)
-          .where(inArray(documentFiles.documentId, [regDocId]));
-        await database.db.delete(documents).where(inArray(documents.id, [regDocId]));
         await database.db
           .delete(categoryDownloadPermissions)
-          .where(inArray(categoryDownloadPermissions.categoryId, [externalCategoryId]));
-        await database.db.delete(categories).where(inArray(categories.id, [externalCategoryId]));
+          .where(eq(categoryDownloadPermissions.categoryId, externalCategoryId));
+        await database.db.delete(categories).where(eq(categories.id, externalCategoryId));
       }
     },
   );
@@ -629,18 +617,14 @@ endobj
     "regression (F1): category created by test worker is preserved if another document references it",
     async () => {
       if (database === undefined) {
-        throw new Error("PostgreSQL integration database was not initialized");
+        throw new Error("Integration infrastructure not initialized");
       }
-
-      const [
-        { categories, categoryDownloadPermissions, documents },
-        { safeCleanupTestCategories },
-      ] = await Promise.all([import("@axentra/db"), import("./helpers/disposable-database")]);
+      const { categories, categoryDownloadPermissions, documents } = await import("@axentra/db");
+      const { safeCleanupTestCategories } = await import("./helpers/disposable-database");
 
       const testCatId = crypto.randomUUID();
       const foreignDocId = crypto.randomUUID();
 
-      // Simulate a category created during testing
       await database.db.insert(categories).values({
         id: testCatId,
         name: "Temporary Shared Test Cat",
@@ -655,7 +639,6 @@ endobj
         updatedAt: new Date(),
       });
 
-      // Insert an external document referencing this category
       await database.db.insert(documents).values({
         id: foreignDocId,
         title: "Foreign Document",
@@ -670,7 +653,6 @@ endobj
       });
 
       try {
-        // Even though testCatId is in candidateCategoryIds, referential integrity guard must preserve it
         const cleanupResult = await safeCleanupTestCategories(database, [testCatId], {
           preExistingCategoryIds,
           databaseUrl,
@@ -679,22 +661,20 @@ endobj
         expect(cleanupResult.skippedCategoryIds).toContain(testCatId);
         expect(cleanupResult.deletedCategoryIds).not.toContain(testCatId);
 
-        // Verify category was not deleted
         const [stillExists] = await database.db
           .select({ id: categories.id })
           .from(categories)
-          .where(inArray(categories.id, [testCatId]))
+          .where(eq(categories.id, testCatId))
           .limit(1);
 
         expect(stillExists).toBeDefined();
         expect(stillExists?.id).toBe(testCatId);
       } finally {
-        // Clean up test fixtures
-        await database.db.delete(documents).where(inArray(documents.id, [foreignDocId]));
+        await database.db.delete(documents).where(eq(documents.id, foreignDocId));
         await database.db
           .delete(categoryDownloadPermissions)
-          .where(inArray(categoryDownloadPermissions.categoryId, [testCatId]));
-        await database.db.delete(categories).where(inArray(categories.id, [testCatId]));
+          .where(eq(categoryDownloadPermissions.categoryId, testCatId));
+        await database.db.delete(categories).where(eq(categories.id, testCatId));
       }
     },
   );

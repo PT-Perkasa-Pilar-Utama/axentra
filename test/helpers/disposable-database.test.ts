@@ -48,28 +48,25 @@ describe("Disposable Database Safety Guard (Finding F1)", () => {
     expect(() => assertDisposableTestDatabase(testDbUrl, {})).not.toThrow();
   });
 
-  it("accepts local database with explicit disposable environment flag", () => {
+  it("rejects persistent local axentra database even under CI or test flags (Finding F1 / Round 4)", () => {
     const localDbUrl = "postgres://axentra:local-postgres-password@localhost:5432/axentra";
     expect(
       isDisposableTestDatabase(localDbUrl, {
         AXENTRA_DISPOSABLE_TEST_DB: "1",
       }),
-    ).toBe(true);
-    expect(() =>
-      assertDisposableTestDatabase(localDbUrl, {
-        AXENTRA_DISPOSABLE_TEST_DB: "1",
-      }),
-    ).not.toThrow();
-  });
-
-  it("accepts CI test environment", () => {
-    const ciDbUrl = "postgres://axentra:local-postgres-password@localhost:5432/axentra";
+    ).toBe(false);
     expect(
-      isDisposableTestDatabase(ciDbUrl, {
+      isDisposableTestDatabase(localDbUrl, {
         CI: "true",
         APP_ENV: "test",
       }),
-    ).toBe(true);
+    ).toBe(false);
+    expect(() =>
+      assertDisposableTestDatabase(localDbUrl, {
+        CI: "true",
+        APP_ENV: "test",
+      }),
+    ).toThrow("Safety guard violation: Database");
   });
 
   it("rejects malformed database URLs", () => {
