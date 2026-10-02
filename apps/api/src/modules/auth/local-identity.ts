@@ -3,7 +3,10 @@ import { authUserSchema, type AuthUser, type LoginRequest, type UserRole } from 
 import type { UserAuthenticator } from "./auth.service";
 
 const localIdentityRecordSchema = authUserSchema.extend({
-  passwordHash: z.string().min(1),
+  id: z.string().uuid(),
+  passwordHash: z.string().refine((val) => val.trim().length > 0, {
+    message: "passwordHash must not be empty or whitespace",
+  }),
 });
 
 const localIdentityDirectorySchema = z.array(localIdentityRecordSchema).min(1);

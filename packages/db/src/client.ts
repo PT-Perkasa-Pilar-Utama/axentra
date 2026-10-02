@@ -8,6 +8,21 @@ export type DatabaseClient = {
   sql: Sql;
 };
 
+type VerifiedDatabaseConnection = Readonly<{
+  sql: Sql;
+  hosts: readonly string[];
+}>;
+
+const verifiedDatabaseConnections = new WeakMap<object, VerifiedDatabaseConnection>();
+
+export function getVerifiedDatabaseConnection(db: unknown): VerifiedDatabaseConnection | undefined {
+  if (db === null || typeof db !== "object") {
+    return undefined;
+  }
+
+  return verifiedDatabaseConnections.get(db);
+}
+
 export function createDatabaseClient(databaseUrl: string): DatabaseClient {
   const sql = postgres(databaseUrl, {
     max: 10,
@@ -15,7 +30,26 @@ export function createDatabaseClient(databaseUrl: string): DatabaseClient {
     connect_timeout: 5,
     prepare: false,
   });
-  return { db: drizzle(sql), sql };
+  const db = drizzle(sql);
+  const options = sql.options;
+  const configuredHosts = options.host;
+  const hosts = Object.freeze(configuredHosts.map((host) => host.toLowerCase()));
+  Object.freeze(configuredHosts);
+  Object.defineProperty(options, "host", {
+    configurable: false,
+    enumerable: true,
+    value: configuredHosts,
+    writable: false,
+  });
+  Object.defineProperty(sql, "options", {
+    configurable: false,
+    enumerable: true,
+    value: options,
+    writable: false,
+  });
+  verifiedDatabaseConnections.set(db, Object.freeze({ sql, hosts }));
+
+  return { db, sql };
 }
 
 export async function checkDatabase(client: DatabaseClient): Promise<void> {
