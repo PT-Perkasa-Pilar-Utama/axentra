@@ -2,7 +2,6 @@ import type React from "react";
 
 import type { RecentDocumentsPresenter } from "./recent-documents.presenter";
 
-// Required empty-state copy (CODING_STANDARD section 11).
 const emptyMessage = "Tidak ada hasil yang ditemukan";
 
 function ChevronLeftIcon(): React.JSX.Element {
@@ -120,7 +119,8 @@ export function RecentDocumentsView({ presenter }: RecentDocumentsViewProps): Re
           {presenter.items.map((item) => (
             <li
               key={item.id}
-              className="grid min-h-[4.5rem] grid-cols-[1.25rem_minmax(0,1fr)] items-center gap-x-5 rounded-2xl border border-[#e1e5e9] bg-white px-5 py-3 md:grid-cols-[1.25rem_minmax(0,1fr)_minmax(10rem,auto)_minmax(6rem,auto)] md:px-8"
+              // Kolom grid diperbarui untuk menyisipkan area Smart Tags di tengah
+              className="grid min-h-[4.5rem] grid-cols-[1.25rem_minmax(0,1fr)] items-center gap-x-5 rounded-2xl border border-[#e1e5e9] bg-white px-5 py-3 md:grid-cols-[1.25rem_minmax(0,1.2fr)_minmax(0,1.5fr)_minmax(8rem,auto)_minmax(6rem,auto)] md:px-8"
             >
               <input
                 type="checkbox"
@@ -131,9 +131,22 @@ export function RecentDocumentsView({ presenter }: RecentDocumentsViewProps): Re
 
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-[#535a63]">{item.filename}</p>
+                {/* Mobile view tags fallback (opsional, disembunyikan di sini agar rapi) */}
                 <p className="mt-1 text-xs text-gray-500 md:hidden">
                   {item.statusLabel} · {item.dateLabel}
                 </p>
+              </div>
+
+              {/* Smart Tags (Di tengah, warna biru) */}
+              <div className="hidden flex-wrap items-center gap-1.5 md:flex">
+                {item.tags.map((tag) => (
+                  <span
+                    key={tag.id}
+                    className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-600"
+                  >
+                    {tag.name}
+                  </span>
+                ))}
               </div>
 
               <p className="hidden text-sm font-medium text-[#535a63] md:block">
