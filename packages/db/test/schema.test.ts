@@ -12,6 +12,8 @@ import {
   documents,
   processingStatusEnum,
   smartTags,
+  userRoleEnum,
+  users,
 } from "../src/schema";
 
 describe("database schema definitions", () => {
@@ -105,5 +107,25 @@ describe("database schema definitions", () => {
     expect(docTagCols.documentId).toBeDefined();
     expect(docTagCols.tagId).toBeDefined();
     expect(docTagCols.createdAt).toBeDefined();
+  });
+
+  it("defines user role enum values", () => {
+    expect(userRoleEnum.enumValues).toEqual(["member_team", "head_of_team", "admin"]);
+  });
+
+  it("defines users table columns and unique email constraint", () => {
+    const cols = getTableColumns(users);
+    expect(cols.id).toBeDefined();
+    expect(cols.email).toBeDefined();
+    expect(cols.name).toBeDefined();
+    expect(cols.passwordHash).toBeDefined();
+    expect(cols.role).toBeDefined();
+    expect(cols.createdAt).toBeDefined();
+    expect(cols.updatedAt).toBeDefined();
+
+    const config = getTableConfig(users);
+    const emailIndex = config.indexes.find((idx) => idx.config.name === "users_email_unique_idx");
+    expect(emailIndex).toBeDefined();
+    expect(emailIndex?.config.unique).toBe(true);
   });
 });

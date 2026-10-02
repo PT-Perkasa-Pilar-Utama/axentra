@@ -92,6 +92,7 @@
         "postgres": "^3.4.0",
       },
       "devDependencies": {
+        "@axentra/shared": "workspace:*",
         "drizzle-kit": "^0.31.10",
       },
     },

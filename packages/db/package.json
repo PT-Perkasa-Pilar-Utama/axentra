@@ -8,15 +8,17 @@
   },
   "scripts": {
     "type-check": "tsc --noEmit",
-    "generate": "bun --env-file=../../.env x drizzle-kit generate --config drizzle.config.ts",
+    "generate": "bun --env-file=../../.env drizzle-kit generate --config drizzle.config.ts",
     "migrate": "bun --env-file=../../.env src/migrate.ts",
-    "studio": "bun --env-file=../../.env x drizzle-kit studio --config drizzle.config.ts --host 127.0.0.1"
+    "seed": "bun --env-file=../../.env src/seed.ts",
+    "studio": "bun --env-file=../../.env drizzle-kit studio --config drizzle.config.ts --host 127.0.0.1"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.0",
     "postgres": "^3.4.0"
   },
   "devDependencies": {
+    "@axentra/shared": "workspace:*",
     "drizzle-kit": "^0.31.10"
   }
 }

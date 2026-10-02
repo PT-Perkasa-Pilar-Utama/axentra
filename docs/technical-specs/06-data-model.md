@@ -11,15 +11,15 @@ packages/db/src/schema/index.ts
 
 ## Implemented Database Boundary
 
-| Concern           | Status      | Description                                                                      |
-| ----------------- | ----------- | -------------------------------------------------------------------------------- |
-| PostgreSQL client | Implemented | `postgres` connection pool via `createDatabaseClient`                            |
-| Drizzle boundary  | Implemented | Type-safe schema definitions and relation mappings in `@axentra/db`              |
-| Migration runner  | Implemented | Standalone runner in `src/migrate.ts` executing committed SQL                    |
-| Health check      | Implemented | Ping query (`SELECT 1`) validating database readiness                            |
-| Document core     | Implemented | 8 domain tables covering documents, files, metadata, categories, tags (DB-S1-01) |
-| Identity/Users    | Deferred    | User & session tables deferred in Sprint 1 (dev auth used)                       |
-| Audit trail       | Planned     | `download_audit_events` planned in subsequent cards                              |
+| Concern           | Status               | Description                                                                          |
+| ----------------- | -------------------- | ------------------------------------------------------------------------------------ |
+| PostgreSQL client | Implemented          | `postgres` connection pool via `createDatabaseClient`                                |
+| Drizzle boundary  | Implemented          | Type-safe schema definitions and relation mappings in `@axentra/db`                  |
+| Migration runner  | Implemented          | Standalone runner in `src/migrate.ts` executing committed SQL                        |
+| Health check      | Implemented          | Ping query (`SELECT 1`) validating database readiness                                |
+| Document core     | Implemented          | 8 domain tables covering documents, files, metadata, categories, tags (DB-S1-01)     |
+| Identity/Users    | Implemented (Schema) | `users` table schema & migration added (DB-S1-01); runtime auth integration deferred |
+| Audit trail       | Planned              | `download_audit_events` planned in subsequent cards                                  |
 
 ## Table Conventions
 
@@ -192,6 +192,24 @@ Many-to-many association between documents and Smart Tags.
 - `document_smart_tags_document_id_idx` on `(document_id)`
 - `document_smart_tags_tag_id_idx` on `(tag_id)`
 
+#### 9. `users`
+
+The identity persistence table storing user credentials and role assignments.
+
+| Column          | Type          | Constraints                 | Description                                        |
+| --------------- | ------------- | --------------------------- | -------------------------------------------------- |
+| `id`            | `uuid`        | Primary Key, default random | Unique user identifier                             |
+| `email`         | `text`        | NOT NULL                    | Unique user email address                          |
+| `name`          | `text`        | Nullable                    | Display name (defaults to email if unprovided)     |
+| `password_hash` | `text`        | NOT NULL                    | Argon2id password hash                             |
+| `role`          | `user_role`   | NOT NULL                    | User role (`member_team`, `head_of_team`, `admin`) |
+| `created_at`    | `timestamptz` | NOT NULL, default now()     | Record creation timestamp                          |
+| `updated_at`    | `timestamptz` | NOT NULL, default now()     | Last update timestamp                              |
+
+**Indexes:**
+
+- `users_email_unique_idx` UNIQUE on `(email)`
+
 ---
 
 ## Status Vocabularies
@@ -206,6 +224,16 @@ Persisted PostgreSQL enum and shared contract:
 | `processing` | Worker has picked up the job and is extracting metadata, tags, category.                               |
 | `completed`  | Terminal success; metadata, files, tags, and category are persisted.                                   |
 | `failed`     | Processing or enqueue failed (`error_message` set). Enqueue failure remains recoverable by the worker. |
+
+### User Role Enum (`user_role`)
+
+Persisted PostgreSQL enum and shared contract:
+
+| Role           | Meaning                                                                  |
+| -------------- | ------------------------------------------------------------------------ |
+| `member_team`  | Standard team member; uploads, views, and downloads authorized documents |
+| `head_of_team` | Team lead; reviews analytics and manages category download permissions   |
+| `admin`        | System administrator; platform administration and configuration          |
 
 ---
 

@@ -11,17 +11,17 @@ import {
 
 describe("auth shared schemas", () => {
   describe("userRoleSchema and USER_ROLES", () => {
-    it("contains member_team and head_of_team", () => {
-      expect(USER_ROLES).toEqual(["member_team", "head_of_team"]);
+    it("contains member_team, head_of_team, and admin", () => {
+      expect(USER_ROLES).toEqual(["member_team", "head_of_team", "admin"]);
     });
 
     it("accepts valid roles", () => {
       expect(userRoleSchema.parse("member_team")).toBe("member_team");
       expect(userRoleSchema.parse("head_of_team")).toBe("head_of_team");
+      expect(userRoleSchema.parse("admin")).toBe("admin");
     });
 
     it("rejects invalid roles", () => {
-      expect(() => userRoleSchema.parse("admin")).toThrow();
       expect(() => userRoleSchema.parse("user")).toThrow();
       expect(() => userRoleSchema.parse("")).toThrow();
       expect(() => userRoleSchema.parse(123)).toThrow();
@@ -30,7 +30,8 @@ describe("auth shared schemas", () => {
     it("validates roles with isValidUserRole predicate", () => {
       expect(isValidUserRole("member_team")).toBe(true);
       expect(isValidUserRole("head_of_team")).toBe(true);
-      expect(isValidUserRole("admin")).toBe(false);
+      expect(isValidUserRole("admin")).toBe(true);
+      expect(isValidUserRole("user")).toBe(false);
       expect(isValidUserRole("")).toBe(false);
     });
   });

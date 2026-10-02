@@ -4,7 +4,7 @@ export {
   categoryDownloadPermissions,
   categoryDownloadPermissionsRelations,
 } from "./categories";
-export { processingStatusEnum } from "./enums";
+export { processingStatusEnum, userRoleEnum } from "./enums";
 export {
   documentContentHashes,
   documentContentHashesRelations,
@@ -21,3 +21,4 @@ export {
   smartTags,
   smartTagsRelations,
 } from "./tags";
+export { users } from "./users";

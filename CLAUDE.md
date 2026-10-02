@@ -134,7 +134,7 @@ axentra/
 
 - Business UI copy is Bahasa Indonesia. Code identifiers, error codes, database names, and API
   fields are English.
-- The business personas are `member_team` and `head_of_team`, as documented in
+- The authenticated user roles are `member_team`, `head_of_team`, and `admin`, as documented in
   `docs/technical-specs/09-authentication.md`.
 - Product behavior must match the linked BA acceptance criteria. Do not invent product roles,
   endpoints, requirements, or third-party provider behavior.
