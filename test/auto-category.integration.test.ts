@@ -58,6 +58,7 @@ describe("Auto-Category Assignment Real Queue & Storage Integration (Task BE-S2-
       docService,
       catService,
       { assertDisposableTestDatabase },
+      { ensureTestDatabaseReady },
     ] = await Promise.all([
       import("@axentra/config"),
       import("@axentra/db"),
@@ -75,6 +76,7 @@ describe("Auto-Category Assignment Real Queue & Storage Integration (Task BE-S2-
       import("../apps/api/src/modules/documents/documents.service"),
       import("../apps/api/src/modules/categories/categories.service"),
       import("./helpers/disposable-database"),
+      import("../infra/local/prepare-test-db"),
     ]);
 
     closeDatabase = db.closeDatabase;
@@ -86,8 +88,9 @@ describe("Auto-Category Assignment Real Queue & Storage Integration (Task BE-S2-
       Bun.env.DATABASE_URL ??
       "postgres://axentra:local-postgres-password@localhost:5432/axentra_test";
 
-    // F1: Strict disposable test database validation
+    // F1 & F5: Strict disposable test database validation & idempotent provisioning
     assertDisposableTestDatabase(databaseUrl);
+    await ensureTestDatabaseReady(databaseUrl);
 
     database = db.createDatabaseClient(databaseUrl);
     redis = queue.createRedisProbe(config.REDIS_URL, config.REDIS_HEALTH_TIMEOUT_MS);
