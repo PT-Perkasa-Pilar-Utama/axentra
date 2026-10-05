@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { recentDocumentSchema } from "@axentra/shared";
 import type { RecentDocument } from "@axentra/shared";
 import { apiRequest } from "../../lib/api-client";
@@ -22,4 +23,16 @@ export async function listRecentDocuments(
     `/documents?${params.toString()}`,
     recentDocumentSchema.passthrough().array(),
   ) as unknown as Promise<RecentDocument[]>;
+}
+
+const smartTagResponseSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+  createdAt: z.string().optional(),
+});
+
+export async function getDocumentSmartTags(
+  documentId: string,
+): Promise<{ id: string; name: string }[]> {
+  return apiRequest(`/documents/${documentId}/smart-tags`, smartTagResponseSchema.array());
 }

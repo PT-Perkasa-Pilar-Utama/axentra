@@ -1,5 +1,6 @@
 import type React from "react";
-
+import { useQuery } from "@tanstack/react-query";
+import { getDocumentSmartTags } from "./recent-documents.api";
 import type { RecentDocumentsPresenter } from "./recent-documents.presenter";
 
 const emptyMessage = "Tidak ada hasil yang ditemukan";
@@ -38,6 +39,37 @@ function ChevronRightIcon(): React.JSX.Element {
   );
 }
 
+function DocumentSmartTags({ documentId }: { documentId: string }): React.JSX.Element | null {
+  const { data: tags = [], isLoading } = useQuery({
+    queryKey: ["document-smart-tags", documentId],
+    queryFn: () => getDocumentSmartTags(documentId),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="hidden flex-wrap items-center gap-1.5 md:flex">
+        <div className="h-5 w-16 animate-pulse rounded-full bg-gray-200" />
+      </div>
+    );
+  }
+
+  if (tags.length === 0) return null;
+
+  return (
+    <div className="hidden flex-wrap items-center gap-1.5 md:flex">
+      {tags.slice(0, 3).map((tag) => (
+        <span
+          key={tag.id}
+          className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-600"
+        >
+          {tag.name}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export type RecentDocumentsViewProps = {
   presenter: RecentDocumentsPresenter;
 };
@@ -54,7 +86,6 @@ export function RecentDocumentsView({ presenter }: RecentDocumentsViewProps): Re
             type="button"
             disabled
             aria-label="Halaman sebelumnya"
-            title="Halaman sebelumnya belum tersedia"
             className="rounded p-1 text-gray-400 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <ChevronLeftIcon />
@@ -69,7 +100,6 @@ export function RecentDocumentsView({ presenter }: RecentDocumentsViewProps): Re
             type="button"
             disabled
             aria-label="Halaman berikutnya"
-            title="Halaman berikutnya belum tersedia"
             className="rounded p-1 text-[#65a448] hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <ChevronRightIcon />
@@ -77,7 +107,6 @@ export function RecentDocumentsView({ presenter }: RecentDocumentsViewProps): Re
         </nav>
       </div>
 
-      {/* Loading state */}
       {presenter.isLoading && (
         <div
           className="flex min-h-48 items-center justify-center gap-2 rounded-2xl border border-[#e1e5e9] bg-white py-12 text-sm text-gray-500"
@@ -92,7 +121,6 @@ export function RecentDocumentsView({ presenter }: RecentDocumentsViewProps): Re
         </div>
       )}
 
-      {/* Error state */}
       {presenter.isError && !presenter.isLoading && (
         <div className="flex min-h-48 flex-col items-center justify-center gap-3 rounded-2xl border border-[#e1e5e9] bg-white py-12">
           <p className="text-sm text-rose-600">Gagal memuat dokumen.</p>
@@ -106,20 +134,17 @@ export function RecentDocumentsView({ presenter }: RecentDocumentsViewProps): Re
         </div>
       )}
 
-      {/* Empty state */}
       {presenter.isEmpty && (
         <p className="flex min-h-48 items-center justify-center rounded-2xl border border-[#e1e5e9] bg-white px-4 py-12 text-center text-sm text-gray-500">
           {emptyMessage}
         </p>
       )}
 
-      {/* Document list */}
       {hasItems && (
         <ul aria-label="Daftar dokumen" className="space-y-1.5">
           {presenter.items.map((item) => (
             <li
               key={item.id}
-              // Kolom grid diperbarui untuk menyisipkan area Smart Tags di tengah
               className="grid min-h-[4.5rem] grid-cols-[1.25rem_minmax(0,1fr)] items-center gap-x-5 rounded-2xl border border-[#e1e5e9] bg-white px-5 py-3 md:grid-cols-[1.25rem_minmax(0,1.2fr)_minmax(0,1.5fr)_minmax(8rem,auto)_minmax(6rem,auto)] md:px-8"
             >
               <input
@@ -131,23 +156,13 @@ export function RecentDocumentsView({ presenter }: RecentDocumentsViewProps): Re
 
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-[#535a63]">{item.filename}</p>
-                {/* Mobile view tags fallback (opsional, disembunyikan di sini agar rapi) */}
                 <p className="mt-1 text-xs text-gray-500 md:hidden">
                   {item.statusLabel} · {item.dateLabel}
                 </p>
               </div>
 
-              {/* Smart Tags (Di tengah, warna biru) */}
-              <div className="hidden flex-wrap items-center gap-1.5 md:flex">
-                {item.tags.map((tag) => (
-                  <span
-                    key={tag.id}
-                    className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-600"
-                  >
-                    {tag.name}
-                  </span>
-                ))}
-              </div>
+              {/* Pemanggilan komponen Smart Tags diletakkan di sini */}
+              <DocumentSmartTags documentId={item.id} />
 
               <p className="hidden text-sm font-medium text-[#535a63] md:block">
                 {item.statusLabel}

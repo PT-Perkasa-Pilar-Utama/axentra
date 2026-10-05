@@ -106,6 +106,29 @@ function createFetchMock(
       );
     }
 
+    // MOCK BARU (Resolusi F1): Endpoint spesifik untuk mengambil tag per dokumen
+    if (url.includes("/smart-tags")) {
+      const urlBase = url.split("?")[0] ?? "";
+      const parts = urlBase.split("/");
+      const docId = parts[parts.length - 2]; // Mendapatkan ID dari /documents/:id/smart-tags
+
+      const baseDocs: RecentDocument[] =
+        documentsOverride ??
+        (stage.current === "empty"
+          ? []
+          : [recentDocument(stage.current === "queued" ? "queued" : "completed")]);
+
+      const targetDoc = baseDocs.find((d) => d.id === docId);
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          data: targetDoc?.tags ?? [],
+        }),
+        { status: 200 },
+      );
+    }
+
     if (url.includes("/documents?")) {
       expect(url).toContain("/api/v1/documents?");
 
@@ -120,19 +143,29 @@ function createFetchMock(
       }
 
       const baseDocs: RecentDocument[] =
-        documentsOverride ?? (stage.current === "empty" ? [] : [recentDocument(stage.current)]);
+        documentsOverride ??
+        (stage.current === "empty"
+          ? []
+          : [recentDocument(stage.current === "queued" ? "queued" : "completed")]);
 
-      const queryString = url.includes("?") ? url.split("?")[1] : "";
+      const queryString = url.includes("?") ? (url.split("?")[1] ?? "") : "";
       const params = new URLSearchParams(queryString);
-
       const requestedTags = params.getAll("tags");
 
       const filtered =
         requestedTags.length === 0
           ? baseDocs
-          : baseDocs.filter((doc) => doc.tags?.some((t) => requestedTags.includes(t.name)));
+          : baseDocs.filter((doc) =>
+              // PERBAIKAN (Resolusi F6): Menggunakan .every() untuk logika AND sesuai AC-04.04
+              requestedTags.every((reqTag) => doc.tags?.some((t) => t.name === reqTag)),
+            );
 
-      return new Response(buildListResponse(filtered), { status: 200 });
+      const responseData = filtered.map((doc) => {
+        const { tags: _tags, ...rest } = doc;
+        return rest;
+      });
+
+      return new Response(buildListResponse(responseData as RecentDocument[]), { status: 200 });
     }
 
     return new Response(
@@ -143,7 +176,6 @@ function createFetchMock(
 
   return Object.assign(handler, { preconnect: (): void => {} });
 }
-
 function renderDashboard(queryClient: QueryClient): ReturnType<typeof render> {
   const protectedRoute = productionRouter.routes.find((route) => route.path === undefined);
   const dashboardChild = protectedRoute?.children?.find((route) => route.path === "/dashboard");

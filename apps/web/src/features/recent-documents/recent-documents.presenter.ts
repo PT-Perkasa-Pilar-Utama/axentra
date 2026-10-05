@@ -14,7 +14,6 @@ export type RecentDocumentItem = {
   dateLabel: string;
   statusLabel: string;
   processingStatus: RecentDocument["processingStatus"];
-  tags: { id: string; name: string }[];
 };
 
 export type RecentDocumentsPresenter = {
@@ -56,7 +55,6 @@ function toRecentDocumentItem(doc: RecentDocument): RecentDocumentItem {
     dateLabel: formatDate(doc.createdAt),
     statusLabel: formatStatus(doc.processingStatus),
     processingStatus: doc.processingStatus,
-    tags: doc.tags ? doc.tags.slice(0, 3) : [],
   };
 }
 
