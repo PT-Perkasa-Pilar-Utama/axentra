@@ -90,13 +90,19 @@ describe("Auto-Category Assignment Real Queue & Storage Integration (Task BE-S2-
 
     // F1 & F5: Strict disposable test database validation & idempotent provisioning
     assertDisposableTestDatabase(databaseUrl);
-    await ensureTestDatabaseReady(databaseUrl);
 
     database = db.createDatabaseClient(databaseUrl);
+    try {
+      await db.checkDatabase(database);
+    } catch {
+      await ensureTestDatabaseReady(databaseUrl);
+      await db.checkDatabase(database);
+    }
+
     redis = queue.createRedisProbe(config.REDIS_URL, config.REDIS_HEALTH_TIMEOUT_MS);
     storage = storageAdapter.createS3StorageAdapter(config);
 
-    await Promise.all([db.checkDatabase(database), redis.checkHealth(), storage.initialize()]);
+    await Promise.all([redis.checkHealth(), storage.initialize()]);
 
     // Snapshot pre-existing categories for exclusion guard (F1)
     const preExisting = await database.db.select({ id: db.categories.id }).from(db.categories);

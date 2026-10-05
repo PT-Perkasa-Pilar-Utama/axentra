@@ -72,13 +72,13 @@ jobs:
       postgres:
         image: postgres:16.6-alpine
         env:
-          POSTGRES_DB: axentra_test
+          POSTGRES_DB: axentra
           POSTGRES_USER: axentra
           POSTGRES_PASSWORD: local-postgres-password
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U axentra -d axentra_test"
+          --health-cmd "pg_isready -U axentra -d axentra"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 12
@@ -96,7 +96,7 @@ jobs:
       APP_VERSION: 0.1.0
       LOG_LEVEL: warn
       API_PORT: 3001
-      DATABASE_URL: postgres://axentra:local-postgres-password@localhost:5432/axentra_test
+      DATABASE_URL: postgres://axentra:local-postgres-password@localhost:5432/axentra
       REDIS_URL: redis://localhost:6379/0
       S3_PROVIDER: minio
       S3_ENDPOINT: http://localhost:9000

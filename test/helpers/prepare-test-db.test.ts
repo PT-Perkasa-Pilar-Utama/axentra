@@ -1,5 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { resolveTestDatabaseUrl } from "../../infra/local/prepare-test-db";
+import { ensureTestDatabaseReady, resolveTestDatabaseUrl } from "../../infra/local/prepare-test-db";
+
+const runIntegrationTests = Bun.env.RUN_INTEGRATION_TESTS === "1";
+const integrationTest = runIntegrationTests ? it : it.skip;
 
 describe("Test Database Preparation Helper (Finding F5)", () => {
   it("resolves provided disposable URL when valid", () => {
@@ -61,4 +64,62 @@ describe("Test Database Preparation Helper (Finding F5)", () => {
       else delete Bun.env.TEST_DATABASE_URL;
     }
   });
+
+  integrationTest(
+    "idempotently provisions missing test database via CREATE DATABASE and applies migrations (Finding F5)",
+    async () => {
+      const postgres = (await import("postgres")).default;
+
+      const targetTestDbName = "axentra_missing_prov_test";
+      const targetTestDbUrl = `postgres://axentra:local-postgres-password@localhost:5432/${targetTestDbName}`;
+
+      // 1. Setup: Connect to maintenance DB and ensure target test database is dropped first
+      const adminSql = postgres(
+        "postgres://axentra:local-postgres-password@localhost:5432/axentra",
+        {
+          max: 1,
+          onnotice: () => undefined,
+        },
+      );
+
+      try {
+        await adminSql.unsafe(`DROP DATABASE IF EXISTS "${targetTestDbName}"`);
+
+        // Verify it does NOT exist before running ensureTestDatabaseReady
+        const preCheck =
+          await adminSql`SELECT 1 FROM pg_database WHERE datname = ${targetTestDbName}`;
+        expect(preCheck.length).toBe(0);
+
+        // 2. Call ensureTestDatabaseReady against the missing database URL
+        const preparedUrl = await ensureTestDatabaseReady(targetTestDbUrl);
+        expect(preparedUrl).toBe(targetTestDbUrl);
+
+        // 3. Verify database was actually created in PostgreSQL
+        const postCheck =
+          await adminSql`SELECT 1 FROM pg_database WHERE datname = ${targetTestDbName}`;
+        expect(postCheck.length).toBe(1);
+
+        // 4. Verify migrations were actually applied to the newly created database
+        const testDbSql = postgres(targetTestDbUrl, { max: 1, onnotice: () => undefined });
+        try {
+          const migrations =
+            await testDbSql`SELECT id, hash, created_at FROM "drizzle"."__drizzle_migrations"`;
+          expect(migrations.length).toBeGreaterThan(0);
+
+          // Verify application tables were created
+          const catTableCheck = await testDbSql`SELECT 1 FROM categories LIMIT 1`;
+          expect(catTableCheck).toBeDefined();
+        } finally {
+          await testDbSql.end();
+        }
+
+        // 5. Verify idempotency: calling ensureTestDatabaseReady a second time succeeds without error
+        await expect(ensureTestDatabaseReady(targetTestDbUrl)).resolves.toBe(targetTestDbUrl);
+      } finally {
+        // Teardown: Clean up temporary test database
+        await adminSql.unsafe(`DROP DATABASE IF EXISTS "${targetTestDbName}"`);
+        await adminSql.end();
+      }
+    },
+  );
 });
