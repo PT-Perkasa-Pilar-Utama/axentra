@@ -75,6 +75,7 @@ export async function processDocumentJob(
         author: extracted.author,
         rawMetadata: extracted.rawMetadata,
         extractedAt: extracted.extractedAt,
+        extractedText: bodyText,
       },
       tags,
     );

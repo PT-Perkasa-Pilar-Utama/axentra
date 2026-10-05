@@ -67,6 +67,7 @@ The central business record for an uploaded document.
 - `documents_processing_status_idx` on `(processing_status)`
 - `documents_category_id_idx` on `(category_id)`
 - `documents_created_at_idx` on `(created_at)`
+- `documents_title_trgm_idx` GIN on `(title gin_trgm_ops)` for substring search acceleration (BE-S2-05)
 
 #### 2. `document_files`
 
@@ -91,6 +92,7 @@ The physical binary object reference in S3-compatible storage.
 
 - `document_files_document_id_unique_idx` UNIQUE on `(document_id)` — enforces 1:1 invariant.
 - `document_files_storage_key_idx` on `(storage_key)`
+- `document_files_original_name_trgm_idx` GIN on `(original_name gin_trgm_ops)` for substring search acceleration (BE-S2-05)
 
 #### 3. `document_content_hashes`
 
@@ -113,20 +115,22 @@ Cryptographic content hashes for duplicate detection (AC-02.01, AC-02.02).
 
 Structured metadata extracted from document contents (AC-03.01).
 
-| Column         | Type          | Constraints                            | Description                                |
-| -------------- | ------------- | -------------------------------------- | ------------------------------------------ |
-| `id`           | `uuid`        | Primary Key, default random            | Metadata record identifier                 |
-| `document_id`  | `uuid`        | NOT NULL, FK -> `documents.id` CASCADE | Owning document identifier (1:1)           |
-| `author`       | `text`        | Nullable                               | Extracted author name                      |
-| `raw_metadata` | `jsonb`       | Nullable                               | Raw provider or extracted metadata payload |
-| `extracted_at` | `timestamptz` | Nullable                               | When extraction took place                 |
-| `created_at`   | `timestamptz` | NOT NULL, default now()                | Record creation timestamp                  |
-| `updated_at`   | `timestamptz` | NOT NULL, default now()                | Record update timestamp                    |
+| Column           | Type          | Constraints                            | Description                                            |
+| ---------------- | ------------- | -------------------------------------- | ------------------------------------------------------ |
+| `id`             | `uuid`        | Primary Key, default random            | Metadata record identifier                             |
+| `document_id`    | `uuid`        | NOT NULL, FK -> `documents.id` CASCADE | Owning document identifier (1:1)                       |
+| `author`         | `text`        | Nullable                               | Extracted author name                                  |
+| `extracted_text` | `text`        | Nullable                               | Extracted text content for full-text search (BE-S2-05) |
+| `raw_metadata`   | `jsonb`       | Nullable                               | Raw provider or extracted metadata payload             |
+| `extracted_at`   | `timestamptz` | Nullable                               | When extraction took place                             |
+| `created_at`     | `timestamptz` | NOT NULL, default now()                | Record creation timestamp                              |
+| `updated_at`     | `timestamptz` | NOT NULL, default now()                | Record update timestamp                                |
 
 **Indexes:**
 
 - `document_metadata_document_id_unique_idx` UNIQUE on `(document_id)`
 - `document_metadata_author_idx` on `(author)`
+- `document_metadata_extracted_text_trgm_idx` GIN on `(extracted_text gin_trgm_ops)` for substring search acceleration (BE-S2-05)
 
 #### 5. `categories`
 

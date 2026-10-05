@@ -54,6 +54,12 @@ describe("database schema definitions", () => {
     expect(cols.createdAt).toBeDefined();
     expect(cols.updatedAt).toBeDefined();
     expect(cols.deletedAt).toBeDefined();
+
+    const docConfig = getTableConfig(documents);
+    const titleTrgmIdx = docConfig.indexes.find(
+      (idx) => idx.config.name === "documents_title_trgm_idx",
+    );
+    expect(titleTrgmIdx).toBeDefined();
   });
 
   it("defines document_files table columns and unique document_id constraint", () => {
@@ -74,6 +80,11 @@ describe("database schema definitions", () => {
     );
     expect(docIdIndex).toBeDefined();
     expect(docIdIndex?.config.unique).toBe(true);
+
+    const origNameTrgmIdx = config.indexes.find(
+      (idx) => idx.config.name === "document_files_original_name_trgm_idx",
+    );
+    expect(origNameTrgmIdx).toBeDefined();
   });
 
   it("defines document_content_hashes table columns", () => {
@@ -90,10 +101,17 @@ describe("database schema definitions", () => {
     expect(cols.id).toBeDefined();
     expect(cols.documentId).toBeDefined();
     expect(cols.author).toBeDefined();
+    expect(cols.extractedText).toBeDefined();
     expect(cols.rawMetadata).toBeDefined();
     expect(cols.extractedAt).toBeDefined();
     expect(cols.createdAt).toBeDefined();
     expect(cols.updatedAt).toBeDefined();
+
+    const metaConfig = getTableConfig(documentMetadata);
+    const extTextTrgmIdx = metaConfig.indexes.find(
+      (idx) => idx.config.name === "document_metadata_extracted_text_trgm_idx",
+    );
+    expect(extTextTrgmIdx).toBeDefined();
   });
 
   it("defines smart_tags and document_smart_tags table columns", () => {

@@ -2,7 +2,7 @@
 
 Source: BA user stories US-04, US-05, US-06.
 
-The Top Tags API is implemented in BE-S2-02. Tag filtering for search and list endpoints is implemented in BE-S2-03. Categories and full-text keyword extraction search remain planned.
+The Top Tags API is implemented in BE-S2-02. Tag filtering for search and list endpoints is implemented in BE-S2-03. Full-text keyword and extracted content search with snippets is implemented in BE-S2-05. Categories remain planned (BE-S2-04).
 
 ## Implemented Endpoints
 
@@ -21,7 +21,7 @@ GET /api/v1/categories
 
 ### `GET /api/v1/search/documents`
 
-Status: Implemented for single-tag and multi-tag filtering (BE-S2-03); OCR/AI body text snippet search is planned in BE-S2-05.
+Status: Implemented for title, filename, and extracted content search with snippets (BE-S2-05 / AC-06.01 to AC-06.04), single-tag and multi-tag filtering (BE-S2-03), and category filtering.
 
 **Authorization:**
 
@@ -30,14 +30,14 @@ Status: Implemented for single-tag and multi-tag filtering (BE-S2-03); OCR/AI bo
 
 #### Query parameters:
 
-| Parameter    | Required | Values / limit                  | Purpose                                                                           |
-| ------------ | -------- | ------------------------------- | --------------------------------------------------------------------------------- |
-| `tags`       | No       | Repeated or CSV; max 20 tags    | Single-tag and multi-tag filtering (AND logic per AC-04.03, AC-04.04).            |
-| `tag`        | No       | String; max 50 chars            | Single-tag alias for `tags`.                                                      |
-| `q`          | No       | String; max 100 chars           | Title / filename keyword filter (full extracted text search planned in BE-S2-05). |
-| `categoryId` | No       | Valid UUID                      | Auto-category filter.                                                             |
-| `page`       | No       | Integer `1`–`1000`; default `1` | Page number.                                                                      |
-| `limit`      | No       | Integer `1`–`100`; default `20` | Page size.                                                                        |
+| Parameter    | Required | Values / limit                  | Purpose                                                                                |
+| ------------ | -------- | ------------------------------- | -------------------------------------------------------------------------------------- |
+| `tags`       | No       | Repeated or CSV; max 20 tags    | Single-tag and multi-tag filtering (AND logic per AC-04.03, AC-04.04).                 |
+| `tag`        | No       | String; max 50 chars            | Single-tag alias for `tags`.                                                           |
+| `q`          | No       | String; max 100 chars           | Title, filename, and extracted content keyword filter with snippets. Alias: `keyword`. |
+| `categoryId` | No       | Valid UUID                      | Auto-category filter.                                                                  |
+| `page`       | No       | Integer `1`–`1000`; default `1` | Page number.                                                                           |
+| `limit`      | No       | Integer `1`–`100`; default `20` | Page size.                                                                             |
 
 #### Response schema
 
@@ -52,7 +52,13 @@ Success (`200 OK`):
       "filename": "rencana-strategis.pdf",
       "processingStatus": "completed",
       "createdAt": "2026-09-22T00:00:00.000Z",
-      "snippet": null
+      "snippet": "Ringkasan rencana strategis manajemen dokumen perkasa...",
+      "highlights": [
+        {
+          "start": 18,
+          "end": 27
+        }
+      ]
     }
   ],
   "meta": {
@@ -62,6 +68,8 @@ Success (`200 OK`):
   }
 }
 ```
+
+The `snippet` is returned as clean plain text without HTML markup to ensure safety and prevent XSS. Structured `highlights` (`{ start: number, end: number }[]`) provide character offsets of the matched keyword within `snippet`, allowing UI consumers to render highlight elements safely as native components (e.g. React elements) without interpreting document content as HTML. When searching without a keyword (e.g., tag-only filtering), `snippet` is `null`.
 
 If no document matches, returns `"data": []` with `"meta": { "total": 0 }`. The frontend displays `Tidak ada hasil yang ditemukan`.
 
