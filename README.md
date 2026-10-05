@@ -37,6 +37,10 @@ bun install
 Copy-Item .env.example .env
 ```
 
+Before starting the API or running `bun run db:seed`, populate
+`AUTH_LOCAL_IDENTITY_DIRECTORY` in the local `.env` file as described in
+[Environment Configuration](docs/technical-specs/11-environment-configuration.md).
+
 Local PostgreSQL uses the standard host port `5432`.
 
 ### 3. Start local infrastructure

@@ -18,6 +18,8 @@ merge is preferred, and direct pushes to protected branches are prohibited.
 ## Local Workflow
 
 1. Copy `.env.example` to `.env`.
+   Populate the local auth directory as described in
+   [Environment Configuration](technical-specs/11-environment-configuration.md).
 2. Install with `bun install`.
 3. Start infrastructure with `bun run infra:up`.
 4. Apply migrations with `bun run db:migrate`.
