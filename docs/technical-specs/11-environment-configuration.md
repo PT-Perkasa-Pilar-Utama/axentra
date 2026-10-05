@@ -10,6 +10,15 @@ Copy `.env.example` to `.env`.
 Copy-Item .env.example .env
 ```
 
+`AUTH_LOCAL_IDENTITY_DIRECTORY` is intentionally blank in `.env.example`. Before running
+`bun run db:seed` or starting the API in development/test, populate it in the ignored local
+`.env` file. Use a Base64-encoded JSON array of records shaped as
+`{ id, email, role, name?, passwordHash }`; generate each Argon2id verifier locally with
+`Bun.password.hash(password, { algorithm: "argon2id" })`. Encode with `Buffer.from(JSON.stringify(records)).toString("base64")`
+and write the result only to `.env`. The API and `db:seed` use this same directory. Do not put passwords or
+verifiers in tracked files, shell history, or logs. Production auth ignores the directory, but the
+environment variable must still be non-empty.
+
 ## Variables
 
 | Variable                        | Process                | Purpose                                                    |

@@ -125,6 +125,10 @@ bun install
 Copy-Item .env.example .env
 ```
 
+Before starting the API or running `bun run db:seed`, populate
+`AUTH_LOCAL_IDENTITY_DIRECTORY` in the ignored local `.env` file following
+[Environment Configuration](technical-specs/11-environment-configuration.md).
+
 Review the generated `.env` before starting services. Local values should point to:
 
 | Dependency | Local value                    |
