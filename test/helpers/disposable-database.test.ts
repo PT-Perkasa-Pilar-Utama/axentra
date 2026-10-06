@@ -27,6 +27,48 @@ describe("Disposable Database Safety Guard (Finding F1)", () => {
     );
   });
 
+  it("rejects arbitrary .local or internal network hostnames without wildcard bypass (Finding F7)", () => {
+    const arbitraryLocalUrls = [
+      "postgres://user:pass@shared-db.internal.local:5432/axentra_test",
+      "postgres://user:pass@company.local:5432/axentra_test",
+      "postgres://user:pass@db.axentra.local:5432/axentra_test",
+      "postgres://user:pass@prod-db.company.local:5432/axentra_test",
+      "postgres://user:pass@192.168.1.100:5432/axentra_test",
+      "postgres://user:pass@10.0.0.1:5432/axentra_test",
+    ];
+
+    for (const url of arbitraryLocalUrls) {
+      expect(isDisposableTestDatabase(url, {})).toBe(false);
+      expect(() => assertDisposableTestDatabase(url, {})).toThrow(
+        "Safety guard violation: Database",
+      );
+    }
+  });
+
+  it("rejects URLs with host query parameter bypass (Finding F7)", () => {
+    const bypassUrl =
+      "postgres://axentra:local-postgres-password@localhost:5432/axentra_test?host=remote-server.com";
+    expect(isDisposableTestDatabase(bypassUrl, {})).toBe(false);
+    expect(() => assertDisposableTestDatabase(bypassUrl, {})).toThrow(
+      "Safety guard violation: Database",
+    );
+  });
+
+  it("accepts strictly authorized local hosts with valid disposable test database name", () => {
+    const allowedUrls = [
+      "postgres://axentra:local-postgres-password@localhost:5432/axentra_test",
+      "postgres://axentra:local-postgres-password@127.0.0.1:5432/axentra_test",
+      "postgres://axentra:local-postgres-password@[::1]:5432/axentra_test",
+      "postgres://axentra:local-postgres-password@host.docker.internal:5432/axentra_test",
+      "postgres://axentra:local-postgres-password@postgres:5432/axentra_test",
+    ];
+
+    for (const url of allowedUrls) {
+      expect(isDisposableTestDatabase(url, {})).toBe(true);
+      expect(() => assertDisposableTestDatabase(url, {})).not.toThrow();
+    }
+  });
+
   it("rejects production databases even on localhost with disposable flag set", () => {
     const prodLocalUrl =
       "postgres://axentra:local-postgres-password@localhost:5432/axentra_production";

@@ -2,15 +2,21 @@ import path from "node:path";
 import postgres from "postgres";
 import { closeDatabase, createDatabaseClient, runMigrations } from "@axentra/db";
 import {
+  ALLOWED_LOCAL_TEST_HOSTS,
   assertDisposableTestDatabase,
   isDisposableTestDatabase,
 } from "../../test/helpers/disposable-database";
 
+export const DEFAULT_LOCAL_TEST_DB_URL =
+  "postgres://axentra:local-postgres-password@localhost:5432/axentra_test";
+
 export function resolveTestDatabaseUrl(providedUrl?: string): string {
-  if (providedUrl && isDisposableTestDatabase(providedUrl)) {
+  if (providedUrl !== undefined) {
+    assertDisposableTestDatabase(providedUrl);
     return providedUrl;
   }
-  if (Bun.env.TEST_DATABASE_URL && isDisposableTestDatabase(Bun.env.TEST_DATABASE_URL)) {
+  if (Bun.env.TEST_DATABASE_URL) {
+    assertDisposableTestDatabase(Bun.env.TEST_DATABASE_URL);
     return Bun.env.TEST_DATABASE_URL;
   }
   if (Bun.env.DATABASE_URL && isDisposableTestDatabase(Bun.env.DATABASE_URL)) {
@@ -29,7 +35,7 @@ export function resolveTestDatabaseUrl(providedUrl?: string): string {
       // fallback to default
     }
   }
-  return "postgres://axentra:local-postgres-password@localhost:5432/axentra_test";
+  return DEFAULT_LOCAL_TEST_DB_URL;
 }
 
 /**
@@ -49,6 +55,13 @@ export async function ensureTestDatabaseReady(targetUrlInput?: string): Promise<
   const targetDbName = parsed.pathname.replace(/^\//, "");
   if (!targetDbName || !/^[a-zA-Z0-9_]+$/.test(targetDbName)) {
     throw new Error(`[test-db] Invalid target test database name: '${targetDbName}'`);
+  }
+
+  const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (!ALLOWED_LOCAL_TEST_HOSTS.has(host)) {
+    throw new Error(
+      `[test-db] Safety guard violation: Refusing to provision database on unauthorized host '${host}'.`,
+    );
   }
 
   // Connect to maintenance database to inspect and provision the target test database

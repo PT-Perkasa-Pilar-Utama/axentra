@@ -10,6 +10,18 @@ describe("Test Database Preparation Helper (Finding F5)", () => {
     expect(resolveTestDatabaseUrl(customUrl)).toBe(customUrl);
   });
 
+  it("rejects non-local .local hostnames in resolveTestDatabaseUrl (Finding F7)", () => {
+    const remoteLocalUrl =
+      "postgres://axentra:local-postgres-password@shared-db.internal.local:5432/axentra_test";
+    expect(() => resolveTestDatabaseUrl(remoteLocalUrl)).toThrow("Safety guard violation");
+  });
+
+  it("rejects non-local .local hostnames in ensureTestDatabaseReady (Finding F7)", async () => {
+    const remoteLocalUrl =
+      "postgres://axentra:local-postgres-password@shared-db.internal.local:5432/axentra_test";
+    await expect(ensureTestDatabaseReady(remoteLocalUrl)).rejects.toThrow("Safety guard violation");
+  });
+
   it("derives test database name from persistent local DATABASE_URL", () => {
     const origDbUrl = Bun.env.DATABASE_URL;
     const origTestDbUrl = Bun.env.TEST_DATABASE_URL;

@@ -192,7 +192,7 @@ describe("Auto-Category Assignment Real Queue & Storage Integration (Task BE-S2-
       categoriesService,
       enableUploadRoute: true,
     });
-  });
+  }, 30000);
 
   afterAll(async () => {
     if (worker !== undefined) await closeWorkerWithinDeadline(worker, 2000);
@@ -231,7 +231,7 @@ describe("Auto-Category Assignment Real Queue & Storage Integration (Task BE-S2-
 
       await closeDatabase(database);
     }
-  });
+  }, 30000);
 
   async function uploadPdfDocument(
     filename: string,

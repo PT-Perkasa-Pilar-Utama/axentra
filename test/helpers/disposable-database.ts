@@ -1,5 +1,13 @@
 import type { DatabaseClient } from "@axentra/db";
 
+export const ALLOWED_LOCAL_TEST_HOSTS = new Set([
+  "localhost",
+  "127.0.0.1",
+  "::1",
+  "host.docker.internal",
+  "postgres",
+]);
+
 /**
  * Helper to validate that a database URL and environment represent an explicitly
  * isolated, disposable test database before allowing integration test cleanup.
@@ -12,14 +20,20 @@ export function isDisposableTestDatabase(
 ): boolean {
   try {
     const parsed = new URL(databaseUrl);
-    const host = parsed.hostname;
-    const isLocalHost =
-      host === "localhost" ||
-      host === "127.0.0.1" ||
-      host === "postgres" ||
-      host.endsWith(".local");
 
-    // Remote or non-local hosts are never considered disposable
+    if (parsed.protocol !== "postgres:" && parsed.protocol !== "postgresql:") {
+      return false;
+    }
+
+    if (parsed.searchParams.has("host")) {
+      return false;
+    }
+
+    const rawHost = parsed.hostname.toLowerCase();
+    const normalizedHost = rawHost.replace(/^\[|\]$/g, "");
+    const isLocalHost = ALLOWED_LOCAL_TEST_HOSTS.has(normalizedHost);
+
+    // Remote, internal network, or arbitrary non-local hosts (including *.local) are never disposable (Finding F7)
     if (!isLocalHost) {
       return false;
     }
