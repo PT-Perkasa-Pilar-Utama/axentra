@@ -37,6 +37,8 @@ describe("Auto-Category Assignment Real Queue & Storage Integration (Task BE-S2-
   let databaseUrl = "";
 
   const pendingJobResolvers = new Map<string, () => void>();
+  type JobProcessingHook = (payload: DocumentProcessingJob) => Promise<boolean | void>;
+  let beforeProcessingHook: JobProcessingHook | undefined;
 
   beforeAll(async () => {
     if (!runIntegrationTests) return;
@@ -125,6 +127,11 @@ describe("Auto-Category Assignment Real Queue & Storage Integration (Task BE-S2-
       if (workerRepo === undefined || storage === undefined) return;
       const jobScopedLogger = observability.jobLogger(workerLogger, payload.jobId);
       try {
+        if (beforeProcessingHook) {
+          const handled = await beforeProcessingHook(payload);
+          if (handled) return;
+        }
+
         await docProcessor.processDocumentJob(payload, {
           repository: workerRepo,
           storage,
@@ -140,12 +147,12 @@ describe("Auto-Category Assignment Real Queue & Storage Integration (Task BE-S2-
         const resolver = pendingJobResolvers.get(payload.documentId);
         if (resolver) {
           resolver();
-          pendingJobResolvers.delete(payload.documentId);
         }
       }
     };
 
-    worker = queue.createQueueWorker(queueName, config.REDIS_URL, 1, {
+    // Concurrency 2 matches production worker configuration (F12)
+    worker = queue.createQueueWorker(queueName, config.REDIS_URL, 2, {
       handleSystemHealthCheck: async () => undefined,
       handleDocumentProcessing,
     });
@@ -205,9 +212,9 @@ describe("Auto-Category Assignment Real Queue & Storage Integration (Task BE-S2-
       for (const key of createdStorageKeys) {
         try {
           await storage.deleteObject(key);
-        } catch (error) {
-          // Report cleanup failure so errors are not silently swallowed (Finding F10)
-          console.warn(`[test-cleanup] Failed to delete test storage object '${key}':`, error);
+        } catch {
+          // Report sanitized cleanup failure without disclosing storage object key or raw vendor error (F11)
+          console.warn("[test-cleanup] Failed to delete test storage object during teardown");
         }
       }
       await storage.close();
@@ -320,13 +327,46 @@ describe("Auto-Category Assignment Real Queue & Storage Integration (Task BE-S2-
           if (doc.status === "completed") {
             cleanup();
             resolve();
-          } else if (doc.status === "failed") {
+            return;
+          }
+
+          // Check BullMQ queue job state to distinguish retryable attempts from exhausted failures (F13)
+          if (producer?.getJobState) {
+            const jobState = await producer.getJobState(docId);
+            if (jobState) {
+              if (jobState.state === "completed") {
+                cleanup();
+                resolve();
+                return;
+              }
+
+              if (jobState.state !== "failed" && jobState.attemptsMade < jobState.maxAttempts) {
+                // BullMQ retry is still pending or delayed; keep waiting for subsequent attempt (F13)
+                return;
+              }
+
+              if (jobState.state === "failed" || jobState.attemptsMade >= jobState.maxAttempts) {
+                cleanup();
+                reject(
+                  new Error(
+                    `Document processing failed for ${docId}: ${
+                      doc.errorMessage ?? jobState.failedReason ?? "retries exhausted"
+                    }`,
+                  ),
+                );
+                return;
+              }
+            }
+          }
+
+          if (doc.status === "failed") {
             cleanup();
             reject(
               new Error(
                 `Document processing failed for ${docId}: ${doc.errorMessage ?? "unknown failure"}`,
               ),
             );
+            return;
           }
         } catch (err) {
           if (!isSettled) {
@@ -741,5 +781,306 @@ endobj
         await database.db.delete(categories).where(eq(categories.id, testCatId));
       }
     },
+  );
+
+  integrationTest(
+    "F12 concurrency: concurrent worker processing for the same absent category completes both documents without unique constraint collision",
+    async () => {
+      if (database === undefined || storage === undefined || app === undefined) {
+        throw new Error("Integration infrastructure not initialized");
+      }
+      const { documents, categories, categoryDownloadPermissions } = await import("@axentra/db");
+
+      // Ensure the target category does not exist before test (F12)
+      const existingFinance = await database.db
+        .select({ id: categories.id })
+        .from(categories)
+        .where(eq(categories.slug, "finance"));
+      if (existingFinance.length > 0) {
+        await database.db.delete(categoryDownloadPermissions).where(
+          inArray(
+            categoryDownloadPermissions.categoryId,
+            existingFinance.map((c) => c.id),
+          ),
+        );
+        await database.db.delete(categories).where(eq(categories.slug, "finance"));
+      }
+
+      const pdfFinanceA = `%PDF-1.4
+% run-${crypto.randomUUID()}
+1 0 obj
+<< /Author (Finance Lead) >>
+endobj
+2 0 obj
+<< /Length 120 >>
+stream
+BT
+/F1 12 Tf
+72 712 Td
+(Laporan keuangan kuartal satu kas perseroan financial summary) Tj
+ET
+endstream
+endobj
+xref
+0 3
+0000000000 65535 f 
+0000000010 00000 n 
+0000000067 00000 n 
+trailer
+<< /Size 3 /Root 1 0 R >>
+startxref
+240
+%%EOF`;
+
+      const pdfFinanceB = `%PDF-1.4
+% run-${crypto.randomUUID()}
+1 0 obj
+<< /Author (Finance Auditor) >>
+endobj
+2 0 obj
+<< /Length 120 >>
+stream
+BT
+/F1 12 Tf
+72 712 Td
+(Ringkasan arus kas keuangan operasional dan financial ledger) Tj
+ET
+endstream
+endobj
+xref
+0 3
+0000000000 65535 f 
+0000000010 00000 n 
+0000000067 00000 n 
+trailer
+<< /Size 3 /Root 1 0 R >>
+startxref
+240
+%%EOF`;
+
+      // Upload both documents concurrently
+      const [doc1, doc2] = await Promise.all([
+        uploadPdfDocument("doc-concurrent-finance-a.pdf", pdfFinanceA),
+        uploadPdfDocument("doc-concurrent-finance-b.pdf", pdfFinanceB),
+      ]);
+
+      // Wait for both documents to finish processing
+      await Promise.all([
+        waitForDocumentProcessing(doc1.docId),
+        waitForDocumentProcessing(doc2.docId),
+      ]);
+
+      const [row1] = await database.db
+        .select({
+          status: documents.processingStatus,
+          categoryId: documents.categoryId,
+          errorMessage: documents.errorMessage,
+        })
+        .from(documents)
+        .where(eq(documents.id, doc1.docId))
+        .limit(1);
+
+      const [row2] = await database.db
+        .select({
+          status: documents.processingStatus,
+          categoryId: documents.categoryId,
+          errorMessage: documents.errorMessage,
+        })
+        .from(documents)
+        .where(eq(documents.id, doc2.docId))
+        .limit(1);
+
+      expect(row1?.status).toBe("completed");
+      expect(row2?.status).toBe("completed");
+      expect(row1?.errorMessage).toBeNull();
+      expect(row2?.errorMessage).toBeNull();
+
+      // Both documents must be assigned the same category ID
+      expect(row1?.categoryId).toBeDefined();
+      expect(row2?.categoryId).toBeDefined();
+      expect(row1?.categoryId).toBe(row2?.categoryId);
+
+      // Verify category record in DB
+      const financeCategories = await database.db
+        .select()
+        .from(categories)
+        .where(eq(categories.slug, "finance"));
+      expect(financeCategories.length).toBe(1);
+      expect(financeCategories[0]?.name).toBe("Finance");
+      const financeCatId = financeCategories[0]?.id;
+      expect(financeCatId).toBeDefined();
+      if (!financeCatId) throw new Error("Finance category was not created");
+      if (!createdCategoryIds.includes(financeCatId)) {
+        createdCategoryIds.push(financeCatId);
+      }
+
+      // Verify category permission is inactive
+      const [permission] = await database.db
+        .select()
+        .from(categoryDownloadPermissions)
+        .where(eq(categoryDownloadPermissions.categoryId, financeCatId))
+        .limit(1);
+      expect(permission).toBeDefined();
+      expect(permission?.downloadEnabled).toBe(false);
+    },
+  );
+
+  integrationTest(
+    "F13 retryable failure: waiter does not reject on transient first-attempt failure and completes on BullMQ retry",
+    async () => {
+      if (database === undefined || storage === undefined || app === undefined) {
+        throw new Error("Integration infrastructure not initialized");
+      }
+      const { documents, categories } = await import("@axentra/db");
+
+      const pdfLegal = `%PDF-1.4
+% run-${crypto.randomUUID()}
+1 0 obj
+<< /Author (Legal Counsel) >>
+endobj
+2 0 obj
+<< /Length 120 >>
+stream
+BT
+/F1 12 Tf
+72 712 Td
+(Dokumen regulasi legal hukum dan kepatuhan perusahaan) Tj
+ET
+endstream
+endobj
+xref
+0 3
+0000000000 65535 f 
+0000000010 00000 n 
+0000000067 00000 n 
+trailer
+<< /Size 3 /Root 1 0 R >>
+startxref
+240
+%%EOF`;
+
+      let attemptCount = 0;
+
+      beforeProcessingHook = async (payload) => {
+        attemptCount++;
+        if (attemptCount === 1) {
+          // First attempt throws transient failure
+          if (workerRepo) {
+            await workerRepo.markAsFailed(
+              payload.documentId,
+              "Transient database connectivity timeout",
+            );
+          }
+          throw new Error("Transient database connectivity timeout");
+        }
+      };
+
+      try {
+        const doc = await uploadPdfDocument("doc-transient-retry.pdf", pdfLegal);
+
+        // Wait for document processing through retry
+        await waitForDocumentProcessing(doc.docId, 15000);
+
+        expect(attemptCount).toBeGreaterThanOrEqual(2);
+
+        const [finalRow] = await database.db
+          .select({
+            status: documents.processingStatus,
+            categoryId: documents.categoryId,
+            errorMessage: documents.errorMessage,
+          })
+          .from(documents)
+          .where(eq(documents.id, doc.docId))
+          .limit(1);
+
+        expect(finalRow?.status).toBe("completed");
+        expect(finalRow?.errorMessage).toBeNull();
+        expect(finalRow?.categoryId).toBeDefined();
+
+        if (finalRow?.categoryId) {
+          const [cat] = await database.db
+            .select()
+            .from(categories)
+            .where(eq(categories.id, finalRow.categoryId))
+            .limit(1);
+          expect(cat?.name).toBe("Legal");
+          if (cat?.id && !createdCategoryIds.includes(cat.id)) {
+            createdCategoryIds.push(cat.id);
+          }
+        }
+      } finally {
+        beforeProcessingHook = undefined;
+      }
+    },
+    20000,
+  );
+
+  integrationTest(
+    "F13 exhausted retries: waiter rejects once BullMQ attempts are exhausted",
+    async () => {
+      if (database === undefined || storage === undefined || app === undefined) {
+        throw new Error("Integration infrastructure not initialized");
+      }
+      const { documents } = await import("@axentra/db");
+
+      const pdfFail = `%PDF-1.4
+% run-${crypto.randomUUID()}
+1 0 obj
+<< /Author (Test Author) >>
+endobj
+2 0 obj
+<< /Length 80 >>
+stream
+BT
+/F1 12 Tf
+72 712 Td
+(Dokumen uji kegagalan permanen) Tj
+ET
+endstream
+endobj
+xref
+0 3
+0000000000 65535 f 
+0000000010 00000 n 
+0000000067 00000 n 
+trailer
+<< /Size 3 /Root 1 0 R >>
+startxref
+200
+%%EOF`;
+
+      beforeProcessingHook = async (payload) => {
+        if (workerRepo) {
+          await workerRepo.markAsFailed(
+            payload.documentId,
+            "Unrecoverable corrupt payload failure",
+          );
+        }
+        throw new Error("Unrecoverable corrupt payload failure");
+      };
+
+      try {
+        const doc = await uploadPdfDocument("doc-permanent-fail.pdf", pdfFail);
+
+        await expect(waitForDocumentProcessing(doc.docId, 25000)).rejects.toThrow(
+          "Unrecoverable corrupt payload failure",
+        );
+
+        const [finalRow] = await database.db
+          .select({
+            status: documents.processingStatus,
+            errorMessage: documents.errorMessage,
+          })
+          .from(documents)
+          .where(eq(documents.id, doc.docId))
+          .limit(1);
+
+        expect(finalRow?.status).toBe("failed");
+        expect(finalRow?.errorMessage).toContain("Unrecoverable corrupt payload failure");
+      } finally {
+        beforeProcessingHook = undefined;
+      }
+    },
+    30000,
   );
 });

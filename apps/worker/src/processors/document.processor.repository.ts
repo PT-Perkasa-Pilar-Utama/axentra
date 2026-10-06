@@ -234,23 +234,36 @@ export class DrizzleDocumentProcessingRepository implements DocumentProcessingRe
               createdAt: now,
               updatedAt: now,
             })
+            .onConflictDoNothing()
             .returning({ id: categories.id });
 
           if (inserted) {
             categoryId = inserted.id;
             this.createdCategoryIds.push(inserted.id);
-            await tx
-              .insert(categoryDownloadPermissions)
-              .values({
-                categoryId: inserted.id,
-                downloadEnabled: false,
-                createdAt: now,
-                updatedAt: now,
-              })
-              .onConflictDoNothing({
-                target: categoryDownloadPermissions.categoryId,
-              });
+          } else {
+            const [canonical] = await tx
+              .select({ id: categories.id })
+              .from(categories)
+              .where(or(eq(categories.slug, category.slug), eq(categories.name, category.name)))
+              .limit(1);
+            if (canonical) {
+              categoryId = canonical.id;
+            }
           }
+        }
+
+        if (categoryId) {
+          await tx
+            .insert(categoryDownloadPermissions)
+            .values({
+              categoryId,
+              downloadEnabled: false,
+              createdAt: now,
+              updatedAt: now,
+            })
+            .onConflictDoNothing({
+              target: categoryDownloadPermissions.categoryId,
+            });
         }
       }
 

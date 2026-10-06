@@ -13,11 +13,19 @@ import {
 import { queueCommandConnectionOptions, redisConnectionOptions } from "./connection";
 import { reconcileRetainedDocumentJob } from "./reconciliation";
 
+export type QueueJobState = {
+  state: "completed" | "failed" | "delayed" | "active" | "waiting" | "unknown";
+  attemptsMade: number;
+  maxAttempts: number;
+  failedReason?: string | undefined;
+};
+
 export type QueueProducer = {
   enqueueSystemHealthCheck: (payload: SystemHealthCheckJob) => Promise<string>;
   enqueueDocumentProcessing: (payload: DocumentProcessingJob) => Promise<string>;
   enqueueDocumentProcess?: ((payload: DocumentProcessJob) => Promise<string>) | undefined;
   reconcileDocumentProcessing: (payload: DocumentProcessingJob) => Promise<string>;
+  getJobState?: ((jobId: string) => Promise<QueueJobState | null>) | undefined;
   close: () => Promise<void>;
 };
 
@@ -73,6 +81,18 @@ export function createQueueProducer(
         (jobId) => withCommandDeadline(queue.getJob(jobId), commandTimeoutMs),
         (next) => this.enqueueDocumentProcessing(next),
       );
+    },
+
+    async getJobState(jobId: string): Promise<QueueJobState | null> {
+      const job = await withCommandDeadline(queue.getJob(jobId), commandTimeoutMs);
+      if (!job) return null;
+      const state = (await job.getState()) as QueueJobState["state"];
+      return {
+        state,
+        attemptsMade: job.attemptsMade,
+        maxAttempts: job.opts.attempts ?? 1,
+        failedReason: job.failedReason,
+      };
     },
 
     async close(): Promise<void> {
