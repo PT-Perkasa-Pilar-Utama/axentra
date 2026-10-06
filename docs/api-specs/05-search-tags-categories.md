@@ -144,14 +144,22 @@ This endpoint only supplies the tag choices relevant to a context. Single-tag an
 
 ### `GET /api/v1/categories`
 
-Returns all auto-created and configured categories (AC-05.01).
+Returns bounded auto-created and configured categories (AC-05.01).
 
 - **Status:** Implemented (BE-S2-04 / Sprint 2)
 - **Authorization:** Bearer token required. Allowed roles: `member_team`, `head_of_team`.
 
+#### Query parameters
+
+| Parameter | Type    | Required | Description                                                            |
+| --------- | ------- | -------- | ---------------------------------------------------------------------- |
+| `limit`   | integer | No       | Maximum number of categories to return. Min: 1, max: 100, default: 50. |
+
 #### Response schema
 
 Success (`200 OK`):
+
+The response array is capped at a maximum of 100 categories (`CATEGORIES_MAX_LIMIT`).
 
 ```json
 {
@@ -181,5 +189,6 @@ If no categories exist, returns `"data": []`.
 
 **Error responses:**
 
+- `400 VALIDATION_ERROR`: Invalid `limit` parameter (e.g. non-numeric, `< 1`, or `> 100`).
 - `401 UNAUTHORIZED`: Missing or invalid Bearer token.
 - `403 FORBIDDEN`: Role not permitted.

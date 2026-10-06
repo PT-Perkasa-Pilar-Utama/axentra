@@ -130,4 +130,61 @@ describe("GET /api/v1/categories - Task BE-S2-04 (AC-05.01)", () => {
     expect(body.success).toBe(false);
     expect(body.error.code).toBe("FORBIDDEN");
   });
+
+  it("respects custom limit query parameter (Finding F8)", async () => {
+    const res = await app.request("/api/v1/categories?limit=1", {
+      method: "GET",
+      headers: {
+        Authorization: "Bearer valid-member-token",
+      },
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as ApiSuccessEnvelope<ReadonlyArray<CategorySummary>>;
+    expect(body.success).toBe(true);
+    expect(body.data.length).toBe(1);
+    expect(body.data[0]?.name).toBe("Contract");
+  });
+
+  it("returns 400 VALIDATION_ERROR when limit is less than 1 (Finding F8)", async () => {
+    const res = await app.request("/api/v1/categories?limit=0", {
+      method: "GET",
+      headers: {
+        Authorization: "Bearer valid-member-token",
+      },
+    });
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as ApiErrorEnvelope;
+    expect(body.success).toBe(false);
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("returns 400 VALIDATION_ERROR when limit exceeds CATEGORIES_MAX_LIMIT (100) (Finding F8)", async () => {
+    const res = await app.request("/api/v1/categories?limit=101", {
+      method: "GET",
+      headers: {
+        Authorization: "Bearer valid-member-token",
+      },
+    });
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as ApiErrorEnvelope;
+    expect(body.success).toBe(false);
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("returns 400 VALIDATION_ERROR when limit is not a number (Finding F8)", async () => {
+    const res = await app.request("/api/v1/categories?limit=not-a-number", {
+      method: "GET",
+      headers: {
+        Authorization: "Bearer valid-member-token",
+      },
+    });
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as ApiErrorEnvelope;
+    expect(body.success).toBe(false);
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+  });
 });

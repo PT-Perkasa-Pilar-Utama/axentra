@@ -124,22 +124,24 @@ describe("Auto-Category Assignment Real Queue & Storage Integration (Task BE-S2-
     const handleDocumentProcessing = async (payload: DocumentProcessingJob): Promise<void> => {
       if (workerRepo === undefined || storage === undefined) return;
       const jobScopedLogger = observability.jobLogger(workerLogger, payload.jobId);
-      await docProcessor.processDocumentJob(payload, {
-        repository: workerRepo,
-        storage,
-        logger: jobScopedLogger,
-      });
-
-      for (const id of workerRepo.createdCategoryIds) {
-        if (!createdCategoryIds.includes(id)) {
-          createdCategoryIds.push(id);
+      try {
+        await docProcessor.processDocumentJob(payload, {
+          repository: workerRepo,
+          storage,
+          logger: jobScopedLogger,
+        });
+      } finally {
+        for (const id of workerRepo.createdCategoryIds) {
+          if (!createdCategoryIds.includes(id)) {
+            createdCategoryIds.push(id);
+          }
         }
-      }
 
-      const resolver = pendingJobResolvers.get(payload.documentId);
-      if (resolver) {
-        resolver();
-        pendingJobResolvers.delete(payload.documentId);
+        const resolver = pendingJobResolvers.get(payload.documentId);
+        if (resolver) {
+          resolver();
+          pendingJobResolvers.delete(payload.documentId);
+        }
       }
     };
 
@@ -203,8 +205,9 @@ describe("Auto-Category Assignment Real Queue & Storage Integration (Task BE-S2-
       for (const key of createdStorageKeys) {
         try {
           await storage.deleteObject(key);
-        } catch {
-          // ignore cleanup failures
+        } catch (error) {
+          // Report cleanup failure so errors are not silently swallowed (Finding F10)
+          console.warn(`[test-cleanup] Failed to delete test storage object '${key}':`, error);
         }
       }
       await storage.close();
@@ -286,24 +289,76 @@ describe("Auto-Category Assignment Real Queue & Storage Integration (Task BE-S2-
     if (database === undefined) throw new Error("Database not initialized");
     const { documents } = await import("@axentra/db");
 
-    const [existing] = await database.db
-      .select({ status: documents.processingStatus })
-      .from(documents)
-      .where(eq(documents.id, docId))
-      .limit(1);
-
-    if (existing?.status === "completed") return;
+    const startTime = Date.now();
 
     return new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => {
+      let isSettled = false;
+      let intervalTimer: ReturnType<typeof setInterval> | null = null;
+      let timeoutTimer: ReturnType<typeof setTimeout> | null = null;
+
+      const cleanup = () => {
+        isSettled = true;
+        if (intervalTimer) clearInterval(intervalTimer);
+        if (timeoutTimer) clearTimeout(timeoutTimer);
         pendingJobResolvers.delete(docId);
+      };
+
+      const checkTerminalStatus = async () => {
+        if (isSettled || database === undefined) return;
+        try {
+          const [doc] = await database.db
+            .select({
+              status: documents.processingStatus,
+              errorMessage: documents.errorMessage,
+            })
+            .from(documents)
+            .where(eq(documents.id, docId))
+            .limit(1);
+
+          if (!doc || isSettled) return;
+
+          if (doc.status === "completed") {
+            cleanup();
+            resolve();
+          } else if (doc.status === "failed") {
+            cleanup();
+            reject(
+              new Error(
+                `Document processing failed for ${docId}: ${doc.errorMessage ?? "unknown failure"}`,
+              ),
+            );
+          }
+        } catch (err) {
+          if (!isSettled) {
+            cleanup();
+            reject(err);
+          }
+        }
+      };
+
+      // Register the worker notification callback first so completion is not missed (F9)
+      pendingJobResolvers.set(docId, () => {
+        void checkTerminalStatus();
+      });
+
+      // Poll periodically to catch any state already committed or missed (F9)
+      intervalTimer = setInterval(() => {
+        if (Date.now() - startTime > timeoutMs) {
+          cleanup();
+          reject(new Error(`Timed out waiting for worker processing of document ${docId}`));
+          return;
+        }
+        void checkTerminalStatus();
+      }, 100);
+
+      // Timeout fallback
+      timeoutTimer = setTimeout(() => {
+        cleanup();
         reject(new Error(`Timed out waiting for worker processing of document ${docId}`));
       }, timeoutMs);
 
-      pendingJobResolvers.set(docId, () => {
-        clearTimeout(timer);
-        resolve();
-      });
+      // Check immediately in case document already completed before waiter registered (F9)
+      void checkTerminalStatus();
     });
   }
 

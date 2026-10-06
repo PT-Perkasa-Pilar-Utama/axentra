@@ -3,14 +3,14 @@ import type { ICategoriesRepository } from "./categories.repository";
 import { InMemoryCategoriesRepository } from "./categories.repository";
 
 export type ICategoriesService = {
-  listCategories: () => Promise<ReadonlyArray<CategorySummary>>;
+  listCategories: (limit?: number) => Promise<ReadonlyArray<CategorySummary>>;
 };
 
 export class CategoriesService implements ICategoriesService {
   public constructor(private readonly repository: ICategoriesRepository) {}
 
-  public async listCategories(): Promise<ReadonlyArray<CategorySummary>> {
-    return this.repository.listCategories();
+  public async listCategories(limit?: number): Promise<ReadonlyArray<CategorySummary>> {
+    return this.repository.listCategories(limit);
   }
 }
 

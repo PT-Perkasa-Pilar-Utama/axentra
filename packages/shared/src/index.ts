@@ -16,6 +16,7 @@ export {
   userRoleSchema,
 } from "./auth";
 export type {
+  CategoriesQuery,
   CategoriesResponse,
   CategorySummary,
   DocumentCategoryResponse,
@@ -35,7 +36,10 @@ export type {
   SmartTag,
 } from "./document";
 export {
+  CATEGORIES_DEFAULT_LIMIT,
+  CATEGORIES_MAX_LIMIT,
   RELATED_DOCUMENTS_MAX_LIMIT,
+  categoriesQuerySchema,
   categoriesResponseSchema,
   categorySummarySchema,
   documentCategoryResponseSchema,

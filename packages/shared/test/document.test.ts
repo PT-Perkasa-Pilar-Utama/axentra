@@ -1,6 +1,9 @@
 import { describe, expect, it } from "bun:test";
 
 import {
+  CATEGORIES_DEFAULT_LIMIT,
+  CATEGORIES_MAX_LIMIT,
+  categoriesQuerySchema,
   categoriesResponseSchema,
   categorySummarySchema,
   documentCategoryResponseSchema,
@@ -157,8 +160,29 @@ describe("document shared schemas", () => {
     });
   });
 
-  describe("categoriesResponseSchema", () => {
-    it("accepts array of categories", () => {
+  describe("categoriesQuerySchema (Finding F8)", () => {
+    it("defaults limit to CATEGORIES_DEFAULT_LIMIT (50)", () => {
+      expect(categoriesQuerySchema.parse({})).toEqual({ limit: CATEGORIES_DEFAULT_LIMIT });
+    });
+
+    it("accepts valid custom limit within range [1, 100]", () => {
+      expect(categoriesQuerySchema.parse({ limit: 1 })).toEqual({ limit: 1 });
+      expect(categoriesQuerySchema.parse({ limit: "25" })).toEqual({ limit: 25 });
+      expect(categoriesQuerySchema.parse({ limit: CATEGORIES_MAX_LIMIT })).toEqual({
+        limit: CATEGORIES_MAX_LIMIT,
+      });
+    });
+
+    it("rejects non-numeric limit, limit < 1, and limit > CATEGORIES_MAX_LIMIT", () => {
+      expect(() => categoriesQuerySchema.parse({ limit: "invalid" })).toThrow();
+      expect(() => categoriesQuerySchema.parse({ limit: 0 })).toThrow();
+      expect(() => categoriesQuerySchema.parse({ limit: -5 })).toThrow();
+      expect(() => categoriesQuerySchema.parse({ limit: CATEGORIES_MAX_LIMIT + 1 })).toThrow();
+    });
+  });
+
+  describe("categoriesResponseSchema (Finding F8)", () => {
+    it("accepts array of categories within bound", () => {
       const valid = {
         success: true,
         data: [
@@ -173,6 +197,21 @@ describe("document shared schemas", () => {
         ],
       };
       expect(categoriesResponseSchema.parse(valid)).toEqual(valid);
+    });
+
+    it("rejects response exceeding CATEGORIES_MAX_LIMIT (100)", () => {
+      const oversized = {
+        success: true,
+        data: Array.from({ length: CATEGORIES_MAX_LIMIT + 1 }, (_, i) => ({
+          id: "11111111-1111-4111-8111-111111111111",
+          name: `Category ${i}`,
+          slug: `category-${i}`,
+          downloadEnabled: false,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        })),
+      };
+      expect(() => categoriesResponseSchema.parse(oversized)).toThrow();
     });
   });
 

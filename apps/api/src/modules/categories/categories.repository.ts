@@ -1,16 +1,23 @@
 import { asc, eq } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { categories, categoryDownloadPermissions } from "@axentra/db";
-import type { CategorySummary } from "@axentra/shared";
+import {
+  CATEGORIES_DEFAULT_LIMIT,
+  CATEGORIES_MAX_LIMIT,
+  type CategorySummary,
+} from "@axentra/shared";
 
 export type ICategoriesRepository = {
-  listCategories: () => Promise<ReadonlyArray<CategorySummary>>;
+  listCategories: (limit?: number) => Promise<ReadonlyArray<CategorySummary>>;
 };
 
 export class DrizzleCategoriesRepository implements ICategoriesRepository {
   public constructor(private readonly sqlDb: PostgresJsDatabase) {}
 
-  public async listCategories(): Promise<ReadonlyArray<CategorySummary>> {
+  public async listCategories(
+    limit: number = CATEGORIES_DEFAULT_LIMIT,
+  ): Promise<ReadonlyArray<CategorySummary>> {
+    const effectiveLimit = Math.min(Math.max(1, limit), CATEGORIES_MAX_LIMIT);
     const rows = await this.sqlDb
       .select({
         id: categories.id,
@@ -25,7 +32,8 @@ export class DrizzleCategoriesRepository implements ICategoriesRepository {
         categoryDownloadPermissions,
         eq(categories.id, categoryDownloadPermissions.categoryId),
       )
-      .orderBy(asc(categories.name));
+      .orderBy(asc(categories.name))
+      .limit(effectiveLimit);
 
     return rows.map((row) => ({
       id: row.id,
@@ -41,7 +49,12 @@ export class DrizzleCategoriesRepository implements ICategoriesRepository {
 export class InMemoryCategoriesRepository implements ICategoriesRepository {
   public readonly categories = new Map<string, CategorySummary>();
 
-  public async listCategories(): Promise<ReadonlyArray<CategorySummary>> {
-    return Array.from(this.categories.values()).sort((a, b) => a.name.localeCompare(b.name));
+  public async listCategories(
+    limit: number = CATEGORIES_DEFAULT_LIMIT,
+  ): Promise<ReadonlyArray<CategorySummary>> {
+    const effectiveLimit = Math.min(Math.max(1, limit), CATEGORIES_MAX_LIMIT);
+    return Array.from(this.categories.values())
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .slice(0, effectiveLimit);
   }
 }
