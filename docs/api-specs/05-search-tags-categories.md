@@ -71,6 +71,10 @@ Success (`200 OK`):
 
 The `snippet` is returned as clean plain text without HTML markup to ensure safety and prevent XSS. Structured `highlights` (`{ start: number, end: number }[]`) provide character offsets of the matched keyword within `snippet`, allowing UI consumers to render highlight elements safely as native components (e.g. React elements) without interpreting document content as HTML. When searching without a keyword (e.g., tag-only filtering), `snippet` is `null`.
 
+**Performance SLA (AC-06.03):**
+
+Target response time is under 3 seconds (typically < 500 ms) for any keyword search across title, original filename, and extracted body text against a representative corpus of 100+ documents (~2 KB body text per document), accelerated by PostgreSQL GIN trigram indexes (`pg_trgm`).
+
 If no document matches, returns `"data": []` with `"meta": { "total": 0 }`. The frontend displays `Tidak ada hasil yang ditemukan`.
 
 **Error responses:**

@@ -20,7 +20,7 @@
       "idx": 2,
       "version": "7",
       "when": 1791189315306,
-      "tag": "0002_common_storm",
+      "tag": "0002_add_document_search_trigram_indexes",
       "breakpoints": true
     }
   ]

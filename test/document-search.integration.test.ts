@@ -241,7 +241,7 @@ describe("Document Search PostgreSQL integration (BE-S2-05 / AC-06.01 to AC-06.0
   );
 
   integrationTest(
-    "F4: verifies pg_trgm GIN index presence and demonstrates under-3-second SLA at representative scale (50 documents)",
+    "F4: verifies pg_trgm GIN index presence, query plan utilization, and demonstrates under-3-second SLA at representative scale (100 documents with ~2 KB body text)",
     async () => {
       if (database === undefined) {
         throw new Error("PostgreSQL integration database was not initialized");
@@ -263,9 +263,9 @@ describe("Document Search PostgreSQL integration (BE-S2-05 / AC-06.01 to AC-06.0
       expect(indexNames).toContain("document_files_original_name_trgm_idx");
       expect(indexNames).toContain("document_metadata_extracted_text_trgm_idx");
 
-      // 2. Seed a representative dataset of 50 documents with realistic multi-paragraph body text (~2 KB each)
+      // 2. Seed a representative dataset of 100 documents with realistic multi-paragraph body text (~2 KB UTF-8 per document)
       const batchSuffix = crypto.randomUUID().slice(0, 8);
-      const corpusSize = 50;
+      const corpusSize = 100;
       const batchDocIds: string[] = [];
       const docInserts: Array<{
         id: string;
@@ -293,17 +293,24 @@ describe("Document Search PostgreSQL integration (BE-S2-05 / AC-06.01 to AC-06.0
         const id = crypto.randomUUID();
         batchDocIds.push(id);
 
-        const hasKeyword = i % 5 === 0; // 10 documents contain the keyword
+        const hasKeyword = i % 10 === 0; // 10 documents contain the keyword
         const title = `Dokumen Evaluasi Kinerja ${i} ${batchSuffix}`;
         const originalName = `evaluasi-kinerja-${i}-${batchSuffix}.pdf`;
+
+        // Generate ~2 KB of realistic multi-paragraph extracted text (~2,000 to ~2,200 characters)
         const bodyParagraphs = [
-          `Paragraf 1 pendahuluan dokumen nomor ${i} mengenai rencana tata kelola perusahaan perkasa.`,
+          `Paragraf 1 pendahuluan dokumen evaluasi operasional nomor ${i} mengenai tata kelola dan sistem manajemen arsip digital internal PT Perkasa Pilar Utama secara menyeluruh. Dokumen ini bertujuan untuk memastikan setiap berkas organisasi tersimpan rapi dengan metadata lengkap dan dapat ditemukan kembali dengan cepat melalui sistem pencarian terpadu perusahaan. Seluruh proses pengarsipan harus mematuhi kebijakan standard operating procedure internal.`,
           hasKeyword
-            ? `Paragraf 2 pembahasan inti mencakup ${targetKeyword} dengan target optimasi sistem dan arsitektur database terdistribusi.`
-            : `Paragraf 2 pembahasan teknis mencakup evaluasi operasional standar tanpa topik khusus untuk dokumen ini.`,
-          `Paragraf 3 analisis risiko dan mitigasi kegagalan pada infrastruktur komputasi awan dan penyimpanan objek MinIO.`,
-          `Paragraf 4 kesimpulan rekomendasi tindakan perbaikan berkelanjutan untuk seluruh unit bisnis.`,
+            ? `Paragraf 2 pembahasan strategis secara spesifik mencakup analisis mendalam mengenai ${targetKeyword} guna optimasi alur kerja tim, efisiensi arsitektur data relasional PostgreSQL, serta ketahanan penyimpanan berkas MinIO di seluruh lingkungan sistem DMS perusahaan. Integrasi kata kunci ini menjadi acuan utama dalam evaluasi pemrosesan teks dan pengujian performa kueri.`
+            : `Paragraf 2 pembahasan teknis mencakup evaluasi operasional berkala tanpa topik khusus, berfokus pada standarisasi format berkas PDF dan verifikasi integritas checksum kriptografis SHA-256 pada seluruh objek arsip yang dikelola di sistem organisasi. Implementasi ini menjamin bahwa tidak ada duplikasi data atau berkas yang rusak selama siklus hidup penyimpanan dokumen.`,
+          `Paragraf 3 analisis kepatuhan dan mitigasi risiko operasional mencakup pemantauan berkala log audit sistem, kontrol otorisasi berbasis peran untuk Head of Team dan Member Team, serta pemenuhan SLA retensi dokumen sesuai standar operasional prosedur yang berlaku di lingkungan kerja perusahaan perkasa. Kepatuhan ini diaudit secara berkala oleh tim penjamin mutu kearsipan digital.`,
+          `Paragraf 4 evaluasi kapasitas infrastruktur mencakup perencanaan throughput kueri database, pengindeksan trigram PostgreSQL untuk mempercepat pencarian teks parsial, serta pemisahan beban komputasi asynchronous worker BullMQ agar tidak mengganggu keandalan transaksi API utama. Penyesuaian konfigurasi pool koneksi database dilakukan agar beban kueri dapat terdistribusi secara seimbang.`,
+          `Paragraf 5 tinjauan aspek keamanan informasi meliputi enkripsi data pada media penyimpanan, pengelolaan kredensial terpusat, pengawasan terhadap akses dokumen berklasifikasi rahasia, serta pencegahan terhadap potensi kebocoran informasi melalui kanal publik atau endpoint yang tidak terproteksi.`,
+          `Paragraf 6 kesimpulan akhir dan rekomendasi tindak lanjut bagi pemangku kepentingan untuk meninjau secara teratur performa sistem kearsipan, efisiensi pemanfaatan ruang disk, dan kesiapan skalabilitas infrastruktur terhadap lonjakan berkas di masa mendatang. Laporan ini disahkan sebagai dokumen referensi evaluasi teknis tahunan.`,
         ].join("\n\n");
+
+        // Verify body text is genuinely near ~2 KB (~2,000 bytes)
+        expect(Buffer.byteLength(bodyParagraphs, "utf-8")).toBeGreaterThan(1900);
 
         docInserts.push({
           id,
@@ -316,7 +323,7 @@ describe("Document Search PostgreSQL integration (BE-S2-05 / AC-06.01 to AC-06.0
           storageKey: `files/${id}/${originalName}`,
           originalName,
           mimeType: "application/pdf",
-          fileSize: 2048,
+          fileSize: Buffer.byteLength(bodyParagraphs, "utf-8"),
           fileExtension: "pdf",
         });
         metadataInserts.push({
@@ -333,7 +340,38 @@ describe("Document Search PostgreSQL integration (BE-S2-05 / AC-06.01 to AC-06.0
         await database.db.insert(documentFiles).values(fileInserts);
         await database.db.insert(documentMetadata).values(metadataInserts);
 
-        // 3. Measure search duration against the representative corpus
+        // 3. Verify query planner recognizes and utilizes Bitmap Index Scan on pg_trgm GIN indexes for substring queries
+        await database.sql`ANALYZE documents`;
+        await database.sql`ANALYZE document_files`;
+        await database.sql`ANALYZE document_metadata`;
+
+        let planMetadataStr = "";
+        let planTitleStr = "";
+        let planFilesStr = "";
+
+        await database.sql.begin(async (tx) => {
+          await tx`SET LOCAL enable_seqscan = off`;
+          const [explainMetadata, explainTitle, explainFiles] = await Promise.all([
+            tx`EXPLAIN (FORMAT JSON) SELECT * FROM document_metadata WHERE extracted_text ILIKE '%plan_check%'`,
+            tx`EXPLAIN (FORMAT JSON) SELECT * FROM documents WHERE title ILIKE '%plan_check%'`,
+            tx`EXPLAIN (FORMAT JSON) SELECT * FROM document_files WHERE original_name ILIKE '%plan_check%'`,
+          ]);
+
+          planMetadataStr = JSON.stringify(explainMetadata);
+          planTitleStr = JSON.stringify(explainTitle);
+          planFilesStr = JSON.stringify(explainFiles);
+        });
+
+        expect(planMetadataStr).toContain("Bitmap Index Scan");
+        expect(planMetadataStr).toContain("document_metadata_extracted_text_trgm_idx");
+
+        expect(planTitleStr).toContain("Bitmap Index Scan");
+        expect(planTitleStr).toContain("documents_title_trgm_idx");
+
+        expect(planFilesStr).toContain("Bitmap Index Scan");
+        expect(planFilesStr).toContain("document_files_original_name_trgm_idx");
+
+        // 4. Measure search duration against the representative corpus (100 docs, ~200 KB text)
         const startTime = performance.now();
         const searchResult = await searchRepo.searchDocuments({
           q: targetKeyword,
