@@ -1,7 +1,6 @@
 import type React from "react";
-import { useQuery } from "@tanstack/react-query";
-import { getDocumentSmartTags } from "./recent-documents.api";
 import type { RecentDocumentsPresenter } from "./recent-documents.presenter";
+import { useDocumentSmartTagsPresenter } from "./recent-documents.presenter";
 
 const emptyMessage = "Tidak ada hasil yang ditemukan";
 
@@ -39,26 +38,53 @@ function ChevronRightIcon(): React.JSX.Element {
   );
 }
 
-function DocumentSmartTags({ documentId }: { documentId: string }): React.JSX.Element | null {
-  const { data: tags = [], isLoading } = useQuery({
-    queryKey: ["document-smart-tags", documentId],
-    queryFn: () => getDocumentSmartTags(documentId),
-    staleTime: 5 * 60 * 1000,
-  });
+function DocumentSmartTags({
+  documentId,
+  status,
+}: {
+  documentId: string;
+  status: string;
+}): React.JSX.Element | null {
+  const presenter = useDocumentSmartTagsPresenter(documentId, status);
 
-  if (isLoading) {
+  if (status !== "completed") return null;
+
+  if (presenter.isLoading) {
     return (
-      <div className="hidden flex-wrap items-center gap-1.5 md:flex">
-        <div className="h-5 w-16 animate-pulse rounded-full bg-gray-200" />
+      <div className="flex flex-wrap items-center gap-1.5">
+        <div className="h-5 w-16 animate-pulse rounded-full bg-blue-100" />
       </div>
     );
   }
 
-  if (tags.length === 0) return null;
+  if (presenter.isError) {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-rose-500">Gagal memuat tag</span>
+        <button
+          type="button"
+          onClick={() => {
+            void presenter.retry();
+          }}
+          className="rounded text-xs text-rose-700 underline hover:text-rose-800 focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500"
+        >
+          Coba lagi
+        </button>
+      </div>
+    );
+  }
+
+  if (presenter.isEmpty) {
+    return (
+      <div className="flex items-center">
+        <span className="text-xs text-gray-400">Tidak ada tag</span>
+      </div>
+    );
+  }
 
   return (
-    <div className="hidden flex-wrap items-center gap-1.5 md:flex">
-      {tags.slice(0, 3).map((tag) => (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {presenter.tags.slice(0, 3).map((tag) => (
         <span
           key={tag.id}
           className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-600"
@@ -161,8 +187,9 @@ export function RecentDocumentsView({ presenter }: RecentDocumentsViewProps): Re
                 </p>
               </div>
 
-              {/* Pemanggilan komponen Smart Tags diletakkan di sini */}
-              <DocumentSmartTags documentId={item.id} />
+              <div className="col-start-2 mt-1 flex flex-wrap items-center gap-1.5 md:col-start-auto md:mt-0">
+                <DocumentSmartTags documentId={item.id} status={item.processingStatus} />
+              </div>
 
               <p className="hidden text-sm font-medium text-[#535a63] md:block">
                 {item.statusLabel}

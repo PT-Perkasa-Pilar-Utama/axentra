@@ -345,4 +345,200 @@ describe("Recent documents and Tags integration", () => {
     expect(screen.queryByText("tanpa-tag.pdf")).toBeNull();
     expect(topTagButton.getAttribute("aria-pressed")).toBe("true");
   });
+
+  test("F3 regression: refreshes Top Tags when upload completes even if active filter hides the queued document", async () => {
+    const existingDoc = recentDocument("completed", [{ id: tagId, name: "Strategy", createdAt }]);
+    const newDocId = "44444444-4444-4444-8444-444444444444";
+    let isNewDocQueued = false;
+    let isNewDocCompleted = false;
+
+    const dynamicDocs = (): RecentDocument[] => {
+      const docs = [existingDoc];
+      if (isNewDocQueued) {
+        docs.push({
+          id: newDocId,
+          filename: "kontrak-baru.pdf",
+          processingStatus: "queued",
+          createdAt,
+          tags: [],
+        });
+      } else if (isNewDocCompleted) {
+        docs.push({
+          id: newDocId,
+          filename: "kontrak-baru.pdf",
+          processingStatus: "completed",
+          createdAt,
+          tags: [{ id: "77777777-7777-4777-8777-777777777777", name: "Finance", createdAt }],
+        });
+      }
+      return docs;
+    };
+
+    const topTagsList = (): { id: string; name: string; documentCount: number }[] => {
+      const tags = [{ id: tagId, name: "Strategy", documentCount: 5 }];
+      if (isNewDocCompleted) {
+        tags.push({
+          id: "77777777-7777-4777-8777-777777777777",
+          name: "Finance",
+          documentCount: 1,
+        });
+      }
+      return tags;
+    };
+
+    const handler = async (input: RequestInfo | URL): Promise<Response> => {
+      const url = String(input);
+      if (url.includes("/documents/upload")) {
+        isNewDocQueued = true;
+        const accepted: DocumentUploadAcceptedData = {
+          message: "File diterima untuk diproses",
+          count: 1,
+          files: [{ filename: "kontrak-baru.pdf", size: 123, documentType: "pdf" }],
+        };
+        return new Response(JSON.stringify({ success: true, data: accepted }), { status: 202 });
+      }
+
+      if (url.includes("/tags/top")) {
+        return new Response(JSON.stringify({ success: true, data: topTagsList() }), {
+          status: 200,
+        });
+      }
+
+      if (url.includes("/smart-tags")) {
+        const urlBase = url.split("?")[0] ?? "";
+        const parts = urlBase.split("/");
+        const docId = parts[parts.length - 2];
+        const targetDoc = dynamicDocs().find((d) => d.id === docId);
+        const isQueued = targetDoc?.processingStatus === "queued";
+        return new Response(
+          JSON.stringify({ success: true, data: isQueued ? [] : (targetDoc?.tags ?? []) }),
+          { status: 200 },
+        );
+      }
+
+      if (url.includes("/documents?")) {
+        const queryString = url.includes("?") ? (url.split("?")[1] ?? "") : "";
+        const params = new URLSearchParams(queryString);
+        const requestedTags = params.getAll("tags");
+        const allDocs = dynamicDocs();
+        const filtered =
+          requestedTags.length === 0
+            ? allDocs
+            : allDocs.filter((doc) =>
+                requestedTags.every((reqTag) => doc.tags?.some((t) => t.name === reqTag)),
+              );
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            data: filtered,
+            meta: { page: 1, limit: 5, total: filtered.length },
+          }),
+          { status: 200 },
+        );
+      }
+
+      return new Response(JSON.stringify({ success: false }), { status: 404 });
+    };
+
+    globalThis.fetch = handler as unknown as typeof fetch;
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    await act(async () => {
+      renderDashboard(queryClient);
+    });
+
+    expect(await screen.findByText("Strategy")).toBeTruthy();
+
+    const strategyButton = screen.getByRole("button", { name: "Strategy" });
+    await act(async () => {
+      fireEvent.click(strategyButton);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    const file = new File(["kontrak"], "kontrak-baru.pdf", { type: "application/pdf" });
+    await act(async () => {
+      fireEvent.change(screen.getByTestId("upload-file-input"), { target: { files: [file] } });
+    });
+
+    isNewDocQueued = false;
+    isNewDocCompleted = true;
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 2200));
+    });
+
+    expect(await screen.findByRole("button", { name: "Finance" })).toBeTruthy();
+  }, 10000);
+
+  test("F7 regression: does not cache empty smart tags while queued and renders tags on completion without waiting for staleTime", async () => {
+    let docStatus: RecentDocument["processingStatus"] = "queued";
+    let smartTagsCallCount = 0;
+
+    const testDoc: RecentDocument = {
+      id: "55555555-5555-5555-8555-555555555555",
+      filename: "f7-test.pdf",
+      processingStatus: docStatus,
+      createdAt,
+      tags: [{ id: "88888888-8888-4888-8888-888888888888", name: "SmartF7", createdAt }],
+    };
+
+    const handler = async (input: RequestInfo | URL): Promise<Response> => {
+      const url = String(input);
+      if (url.includes("/tags/top")) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            data: [{ id: tagId, name: "Strategy", documentCount: 5 }],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/smart-tags")) {
+        smartTagsCallCount++;
+        if (docStatus === "queued") {
+          return new Response(JSON.stringify({ success: true, data: [] }), { status: 200 });
+        }
+        return new Response(
+          JSON.stringify({
+            success: true,
+            data: [{ id: "88888888-8888-4888-8888-888888888888", name: "SmartF7" }],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/documents?")) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            data: [{ ...testDoc, processingStatus: docStatus }],
+            meta: { page: 1, limit: 5, total: 1 },
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ success: false }), { status: 404 });
+    };
+
+    globalThis.fetch = handler as unknown as typeof fetch;
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    await act(async () => {
+      renderDashboard(queryClient);
+    });
+
+    expect(await screen.findByText("f7-test.pdf")).toBeTruthy();
+    expect(screen.getByText("Dalam Antrean")).toBeTruthy();
+    expect(smartTagsCallCount).toBe(0);
+
+    docStatus = "completed";
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 2200));
+    });
+
+    expect(await screen.findByText("Selesai Diproses")).toBeTruthy();
+    expect(await screen.findByText("SmartF7")).toBeTruthy();
+    expect(smartTagsCallCount).toBeGreaterThanOrEqual(1);
+  }, 10000);
 });

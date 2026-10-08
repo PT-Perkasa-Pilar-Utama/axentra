@@ -21,10 +21,14 @@ export type TopTagsPresenter = {
   retry: () => Promise<void>;
 };
 
-export function useTopTagsPresenter(context: TopTagsContext, limit = 10): TopTagsPresenter {
+export function useTopTagsPresenter(
+  context: TopTagsContext,
+  limit = 10,
+  documentIds?: string[],
+): TopTagsPresenter {
   const query = useQuery({
-    queryKey: [...TOP_TAGS_QUERY_KEY, context, limit],
-    queryFn: () => getTopTags({ context, limit }),
+    queryKey: [...TOP_TAGS_QUERY_KEY, context, limit, documentIds ?? []],
+    queryFn: () => getTopTags({ context, limit, documentIds }),
     staleTime: 60 * 1000,
     retry: 1,
   });

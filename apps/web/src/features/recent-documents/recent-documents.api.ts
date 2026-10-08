@@ -19,10 +19,7 @@ export async function listRecentDocuments(
     params.append("tags", tag);
   }
 
-  return apiRequest(
-    `/documents?${params.toString()}`,
-    recentDocumentSchema.passthrough().array(),
-  ) as unknown as Promise<RecentDocument[]>;
+  return apiRequest(`/documents?${params.toString()}`, recentDocumentSchema.array());
 }
 
 const smartTagResponseSchema = z.object({

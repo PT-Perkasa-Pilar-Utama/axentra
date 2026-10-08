@@ -1,18 +1,13 @@
-import { z } from "zod";
 import { topTagSchema } from "@axentra/shared";
-import type { TopTag } from "@axentra/shared";
+import type { TopTag, TopTagsQuery } from "@axentra/shared";
 
 import { apiRequest } from "../../lib/api-client";
 
-export type { TopTag };
+export type { TopTag, TopTagsQuery };
 
-export type TopTagsContext = "dashboard" | "search";
+export type TopTagsContext = TopTagsQuery["context"];
 
-export type GetTopTagsParams = {
-  context: TopTagsContext;
-  limit?: number;
-  documentIds?: string[];
-};
+export type GetTopTagsParams = TopTagsQuery;
 
 export async function getTopTags(params: GetTopTagsParams): Promise<TopTag[]> {
   const query = new URLSearchParams({ context: params.context });
@@ -22,5 +17,5 @@ export async function getTopTags(params: GetTopTagsParams): Promise<TopTag[]> {
     query.append("documentIds", id);
   }
 
-  return apiRequest(`/tags/top?${query.toString()}`, z.array(topTagSchema));
+  return apiRequest(`/tags/top?${query.toString()}`, topTagSchema.array());
 }
