@@ -1,4 +1,4 @@
-import { and, count, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, ilike, inArray, isNull, sql } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import {
   documentFiles,
@@ -31,14 +31,24 @@ export class DrizzleSearchRepository implements ISearchRepository {
 
     if (query.q && query.q.trim().length > 0) {
       const pattern = `%${query.q.trim()}%`;
-      const matchPattern = or(
-        ilike(documents.title, pattern),
-        ilike(documentFiles.originalName, pattern),
-        ilike(documentMetadata.extractedText, pattern),
-      );
-      if (matchPattern !== undefined) {
-        conditions.push(matchPattern);
-      }
+      const matchingDocIdsQuery = this.db
+        .select({ id: documents.id })
+        .from(documents)
+        .where(ilike(documents.title, pattern))
+        .union(
+          this.db
+            .select({ id: documentFiles.documentId })
+            .from(documentFiles)
+            .where(ilike(documentFiles.originalName, pattern)),
+        )
+        .union(
+          this.db
+            .select({ id: documentMetadata.documentId })
+            .from(documentMetadata)
+            .where(ilike(documentMetadata.extractedText, pattern)),
+        );
+
+      conditions.push(inArray(documents.id, matchingDocIdsQuery));
     }
 
     const uniqueTags = query.tags

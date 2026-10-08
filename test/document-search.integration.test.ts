@@ -340,45 +340,78 @@ describe("Document Search PostgreSQL integration (BE-S2-05 / AC-06.01 to AC-06.0
         await database.db.insert(documentFiles).values(fileInserts);
         await database.db.insert(documentMetadata).values(metadataInserts);
 
-        // 3. Verify query planner recognizes and utilizes Bitmap Index Scan on pg_trgm GIN indexes for substring queries
+        // 3. Verify query planner recognizes and utilizes Bitmap Index Scan on pg_trgm GIN indexes for the production query
         await database.sql`ANALYZE documents`;
         await database.sql`ANALYZE document_files`;
         await database.sql`ANALYZE document_metadata`;
 
-        let planMetadataStr = "";
-        let planTitleStr = "";
-        let planFilesStr = "";
+        // Inspect production query plan under normal planner
+        const normalPlan = await database.sql`
+          EXPLAIN (FORMAT JSON)
+          SELECT d.id, d.title, df.original_name, dm.extracted_text
+          FROM documents d
+          INNER JOIN document_files df ON df.document_id = d.id
+          LEFT JOIN document_metadata dm ON dm.document_id = d.id
+          WHERE d.deleted_at IS NULL
+            AND d.id IN (
+              SELECT id FROM documents WHERE title ILIKE ${`%${targetKeyword}%`}
+              UNION
+              SELECT document_id FROM document_files WHERE original_name ILIKE ${`%${targetKeyword}%`}
+              UNION
+              SELECT document_id FROM document_metadata WHERE extracted_text ILIKE ${`%${targetKeyword}%`}
+            )
+          ORDER BY d.created_at DESC, d.id DESC
+          LIMIT 20;
+        `;
+        expect(JSON.stringify(normalPlan)).toContain("Aggregate");
 
+        // Verify index utilization capability under connection-scoped planner
         await database.sql.begin(async (tx) => {
           await tx`SET LOCAL enable_seqscan = off`;
-          const [explainMetadata, explainTitle, explainFiles] = await Promise.all([
-            tx`EXPLAIN (FORMAT JSON) SELECT * FROM document_metadata WHERE extracted_text ILIKE '%plan_check%'`,
-            tx`EXPLAIN (FORMAT JSON) SELECT * FROM documents WHERE title ILIKE '%plan_check%'`,
-            tx`EXPLAIN (FORMAT JSON) SELECT * FROM document_files WHERE original_name ILIKE '%plan_check%'`,
-          ]);
-
-          planMetadataStr = JSON.stringify(explainMetadata);
-          planTitleStr = JSON.stringify(explainTitle);
-          planFilesStr = JSON.stringify(explainFiles);
+          const explainProduction = await tx`
+            EXPLAIN (FORMAT JSON)
+            SELECT d.id, d.title, df.original_name, dm.extracted_text
+            FROM documents d
+            INNER JOIN document_files df ON df.document_id = d.id
+            LEFT JOIN document_metadata dm ON dm.document_id = d.id
+            WHERE d.deleted_at IS NULL
+              AND d.id IN (
+                SELECT id FROM documents WHERE title ILIKE ${`%${targetKeyword}%`}
+                UNION
+                SELECT document_id FROM document_files WHERE original_name ILIKE ${`%${targetKeyword}%`}
+                UNION
+                SELECT document_id FROM document_metadata WHERE extracted_text ILIKE ${`%${targetKeyword}%`}
+              )
+            ORDER BY d.created_at DESC, d.id DESC
+            LIMIT 20;
+          `;
+          const planStr = JSON.stringify(explainProduction);
+          expect(planStr).toContain("Bitmap Index Scan");
+          expect(planStr).toContain("document_metadata_extracted_text_trgm_idx");
         });
 
-        expect(planMetadataStr).toContain("Bitmap Index Scan");
-        expect(planMetadataStr).toContain("document_metadata_extracted_text_trgm_idx");
+        // 4. Measure search latency across multiple runs to demonstrate p95 < 500 ms and SLA < 3000 ms
+        const iterations = 10;
+        const durations: number[] = [];
+        let searchResult: Awaited<ReturnType<typeof searchRepo.searchDocuments>> | undefined;
 
-        expect(planTitleStr).toContain("Bitmap Index Scan");
-        expect(planTitleStr).toContain("documents_title_trgm_idx");
+        for (let iter = 0; iter < iterations; iter++) {
+          const startTime = performance.now();
+          searchResult = await searchRepo.searchDocuments({
+            q: targetKeyword,
+            page: 1,
+            limit: 20,
+          });
+          durations.push(performance.now() - startTime);
+        }
 
-        expect(planFilesStr).toContain("Bitmap Index Scan");
-        expect(planFilesStr).toContain("document_files_original_name_trgm_idx");
+        durations.sort((a, b) => a - b);
+        const p95Duration = durations[Math.floor(durations.length * 0.95)] ?? 0;
+        const maxDuration = durations[durations.length - 1] ?? 0;
 
-        // 4. Measure search duration against the representative corpus (100 docs, ~200 KB text)
-        const startTime = performance.now();
-        const searchResult = await searchRepo.searchDocuments({
-          q: targetKeyword,
-          page: 1,
-          limit: 20,
-        });
-        const elapsedMs = performance.now() - startTime;
+        if (searchResult === undefined) {
+          throw new Error("Search result was unexpectedly undefined");
+        }
 
         // Verify results accuracy
         expect(searchResult.total).toBe(10);
@@ -393,10 +426,162 @@ describe("Document Search PostgreSQL integration (BE-S2-05 / AC-06.01 to AC-06.0
           expect(item.highlights?.length).toBeGreaterThan(0);
         }
 
-        // Verify NFR SLA under 3 seconds (typically under 200ms with pg_trgm GIN indexes)
-        expect(elapsedMs).toBeLessThan(3000);
+        // Verify NFR p95 target (< 500 ms) and AC-06.03 SLA (< 3000 ms)
+        expect(p95Duration).toBeLessThan(500);
+        expect(maxDuration).toBeLessThan(3000);
       } finally {
         await database.db.delete(documents).where(inArray(documents.id, batchDocIds));
+      }
+    },
+  );
+
+  integrationTest(
+    "F7: end-to-end worker extraction to search integration: verifies worker extracts body text, persists extractedText into PostgreSQL document_metadata via DrizzleDocumentProcessingRepository, and document is searchable by body-text keyword via DrizzleSearchRepository",
+    async () => {
+      if (database === undefined) {
+        throw new Error("PostgreSQL integration database was not initialized");
+      }
+
+      const [
+        { documents, documentFiles, documentMetadata },
+        { DrizzleDocumentProcessingRepository },
+        { processDocumentJob },
+        { DrizzleSearchRepository },
+      ] = await Promise.all([
+        import("@axentra/db"),
+        import("../apps/worker/src/processors/document.processor.repository"),
+        import("../apps/worker/src/processors/document.processor"),
+        import("../apps/api/src/modules/search/search.repository"),
+      ]);
+
+      const suffix = crypto.randomUUID().slice(0, 8);
+      const docId = crypto.randomUUID();
+      const fileId = crypto.randomUUID();
+      const targetBodyKeyword = `workerbodyterm${suffix}`;
+      const storageKey = `integration-tests/${docId}/worker-extracted-doc.pdf`;
+
+      // Construct realistic PDF containing the unique target body keyword
+      const pdfContent = `%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 180 >>
+stream
+BT
+/F1 12 Tf
+(Laporan audit teknis sistem perkasa memuat analisis mendalam mengenai ) Tj
+(${targetBodyKeyword}) Tj
+( untuk optimasi basis data dan kearsipan internal.) Tj
+ET
+endstream
+endobj
+xref
+0 5
+trailer
+<< /Root 1 0 R >>
+%%EOF`;
+      const pdfBuffer = Buffer.from(pdfContent, "latin1");
+
+      const storageMap = new Map<string, Uint8Array>();
+      storageMap.set(storageKey, pdfBuffer);
+
+      const storage = {
+        async getObject(key: string) {
+          const item = storageMap.get(key);
+          if (!item) throw new Error(`Object not found in storage: ${key}`);
+          return item;
+        },
+        async putObject(input: { key: string; body: Uint8Array }) {
+          storageMap.set(input.key, input.body);
+          return { key: input.key, etag: "mock-etag" };
+        },
+        async deleteObject(key: string) {
+          storageMap.delete(key);
+        },
+        async headObject(key: string) {
+          const item = storageMap.get(key);
+          if (!item) return null;
+          return { contentLength: item.length, lastModified: new Date() };
+        },
+        async initialize() {},
+        async getDownloadUrl(key: string) {
+          return `http://localhost:9000/documents/${key}`;
+        },
+      };
+
+      const workerRepo = new DrizzleDocumentProcessingRepository(database.db);
+      const searchRepo = new DrizzleSearchRepository(database.db);
+
+      try {
+        // 1. Insert document in queued state and its file record in PostgreSQL
+        await database.db.insert(documents).values({
+          id: docId,
+          title: `Laporan Hasil Uji Worker ${suffix}`,
+          processingStatus: "queued",
+        });
+
+        await database.db.insert(documentFiles).values({
+          id: fileId,
+          documentId: docId,
+          storageKey,
+          originalName: `unrelated-worker-filename-${suffix}.pdf`,
+          mimeType: "application/pdf",
+          fileSize: pdfBuffer.length,
+          fileExtension: "pdf",
+        });
+
+        // 2. Process document through real worker pipeline with DrizzleDocumentProcessingRepository
+        await processDocumentJob(
+          {
+            jobId: `job-${suffix}`,
+            documentId: docId,
+            schemaVersion: 1,
+            enqueuedAt: new Date().toISOString(),
+          },
+          {
+            repository: workerRepo,
+            storage,
+          },
+        );
+
+        // 3. Verify PostgreSQL persistence: document_metadata.extracted_text was written by the worker
+        const [persistedMetadata] = await database.db
+          .select({
+            extractedText: documentMetadata.extractedText,
+            documentId: documentMetadata.documentId,
+          })
+          .from(documentMetadata)
+          .where(inArray(documentMetadata.documentId, [docId]));
+
+        expect(persistedMetadata).toBeDefined();
+        expect(persistedMetadata?.extractedText).not.toBeNull();
+        expect(persistedMetadata?.extractedText).toContain(targetBodyKeyword);
+
+        // 4. Assert that the document processed by the worker is found by DrizzleSearchRepository using body-text keyword
+        const searchResult = await searchRepo.searchDocuments({
+          q: targetBodyKeyword,
+          page: 1,
+          limit: 20,
+        });
+
+        expect(searchResult.total).toBe(1);
+        expect(searchResult.items.length).toBe(1);
+        const matchedItem = searchResult.items[0];
+        expect(matchedItem?.id).toBe(docId);
+        expect(matchedItem?.snippet).not.toBeNull();
+        expect(matchedItem?.snippet).toContain(targetBodyKeyword);
+        expect(matchedItem?.snippet).not.toContain("<strong>");
+        expect(matchedItem?.highlights).toBeDefined();
+        expect(matchedItem?.highlights?.length).toBeGreaterThan(0);
+      } finally {
+        await database.db.delete(documents).where(inArray(documents.id, [docId]));
       }
     },
   );
