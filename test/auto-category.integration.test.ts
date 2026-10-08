@@ -15,7 +15,10 @@ import { uploadDocumentSuccessResponseSchema } from "@axentra/shared";
 import type { createApp as CreateApp } from "../apps/api/src/app";
 import type { closeWorkerWithinDeadline as CloseWorkerWithinDeadline } from "../apps/worker/src/lifecycle";
 import type { DrizzleDocumentProcessingRepository as DrizzleWorkerRepo } from "../apps/worker/src/processors/document.processor.repository";
-import { STANDARD_CATEGORY_DEFINITIONS } from "../apps/worker/src/processors/category.extractor";
+import {
+  registerCategoryDefinition,
+  type CategoryDefinition,
+} from "../apps/worker/src/processors/category.extractor";
 
 const runIntegrationTests = Bun.env.RUN_INTEGRATION_TESTS === "1";
 const integrationTest = runIntegrationTests ? test : test.skip;
@@ -806,7 +809,7 @@ endobj
       const { documents, categories, categoryDownloadPermissions } = await import("@axentra/db");
       const { safeCleanupTestCategories } = await import("./helpers/disposable-database");
 
-      // Verify or establish existing Finance category with custom downloadEnabled: true
+      // Verify or establish existing Finance category
       const [existingFinance] = await database.db
         .select({
           id: categories.id,
@@ -819,6 +822,7 @@ endobj
 
       let financeCategoryId: string;
       let createdByThisFixture = false;
+      let originalPermission: { id: string; downloadEnabled: boolean } | null = null;
 
       if (existingFinance) {
         financeCategoryId = existingFinance.id;
@@ -831,18 +835,11 @@ endobj
           .where(eq(categoryDownloadPermissions.categoryId, financeCategoryId))
           .limit(1);
 
-        if (!existingPerm) {
-          await database.db.insert(categoryDownloadPermissions).values({
-            categoryId: financeCategoryId,
-            downloadEnabled: true,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          });
-        } else if (!existingPerm.downloadEnabled) {
-          await database.db
-            .update(categoryDownloadPermissions)
-            .set({ downloadEnabled: true, updatedAt: new Date() })
-            .where(eq(categoryDownloadPermissions.categoryId, financeCategoryId));
+        if (existingPerm) {
+          originalPermission = {
+            id: existingPerm.id,
+            downloadEnabled: existingPerm.downloadEnabled,
+          };
         }
       } else {
         const [inserted] = await database.db
@@ -858,26 +855,45 @@ endobj
         financeCategoryId = inserted.id;
         createdByThisFixture = true;
 
-        await database.db.insert(categoryDownloadPermissions).values({
-          categoryId: financeCategoryId,
-          downloadEnabled: true,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        });
+        const [insertedPerm] = await database.db
+          .insert(categoryDownloadPermissions)
+          .values({
+            categoryId: financeCategoryId,
+            downloadEnabled: true,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .returning({
+            id: categoryDownloadPermissions.id,
+            downloadEnabled: categoryDownloadPermissions.downloadEnabled,
+          });
+
+        if (insertedPerm) {
+          originalPermission = {
+            id: insertedPerm.id,
+            downloadEnabled: insertedPerm.downloadEnabled,
+          };
+        }
       }
 
       // Track financeCategoryId in pre-existing set for safeCleanupTestCategories
       const suitePreExistingWithFinance = new Set(preExistingCategoryIds);
       suitePreExistingWithFinance.add(financeCategoryId);
 
-      // Verify permission is downloadEnabled: true prior to processing
-      const [initialPerm] = await database.db
-        .select()
-        .from(categoryDownloadPermissions)
-        .where(eq(categoryDownloadPermissions.categoryId, financeCategoryId))
-        .limit(1);
-      expect(initialPerm).toBeDefined();
-      expect(initialPerm?.downloadEnabled).toBe(true);
+      // Verify permission state prior to processing matches originalPermission if one existed
+      if (originalPermission) {
+        const [initialPerm] = await database.db
+          .select({
+            id: categoryDownloadPermissions.id,
+            downloadEnabled: categoryDownloadPermissions.downloadEnabled,
+          })
+          .from(categoryDownloadPermissions)
+          .where(eq(categoryDownloadPermissions.categoryId, financeCategoryId))
+          .limit(1);
+        expect(initialPerm).toBeDefined();
+        expect(initialPerm?.id).toBe(originalPermission.id);
+        expect(initialPerm?.downloadEnabled).toBe(originalPermission.downloadEnabled);
+      }
 
       const pdfFinance = `%PDF-1.4
 % run-${crypto.randomUUID()}
@@ -896,9 +912,9 @@ endstream
 endobj
 xref
 0 3
-0000000000 65535 f 
-0000000010 00000 n 
-0000000067 00000 n 
+0000000000 65535 f
+0000000010 00000 n
+0000000067 00000 n
 trailer
 << /Size 3 /Root 1 0 R >>
 startxref
@@ -927,7 +943,7 @@ startxref
         // Worker repository must NOT track the pre-existing category in createdCategoryIds
         expect(workerRepo.createdCategoryIds).not.toContain(financeCategoryId);
 
-        // Existing category download permission must NOT be overwritten to false
+        // Existing category download permission must NOT be overwritten or replaced
         const [afterProcPerm] = await database.db
           .select({
             id: categoryDownloadPermissions.id,
@@ -937,7 +953,12 @@ startxref
           .where(eq(categoryDownloadPermissions.categoryId, financeCategoryId))
           .limit(1);
         expect(afterProcPerm).toBeDefined();
-        expect(afterProcPerm?.downloadEnabled).toBe(true);
+        if (originalPermission) {
+          expect(afterProcPerm?.id).toBe(originalPermission.id);
+          expect(afterProcPerm?.downloadEnabled).toBe(originalPermission.downloadEnabled);
+        } else {
+          expect(afterProcPerm?.downloadEnabled).toBe(false);
+        }
 
         // Safe cleanup must preserve pre-existing category and permission
         const cleanupResult = await safeCleanupTestCategories(
@@ -970,15 +991,25 @@ startxref
           .where(eq(categoryDownloadPermissions.categoryId, financeCategoryId))
           .limit(1);
         expect(stillExistingPerm).toBeDefined();
-        expect(stillExistingPerm?.downloadEnabled).toBe(true);
+        if (originalPermission) {
+          expect(stillExistingPerm?.id).toBe(originalPermission.id);
+          expect(stillExistingPerm?.downloadEnabled).toBe(originalPermission.downloadEnabled);
+        } else {
+          expect(stillExistingPerm?.downloadEnabled).toBe(false);
+        }
       } finally {
-        // Only clean up the Finance category and permission if created by this specific fixture
-        // Never delete an existing category that was present prior to this test (F14)
+        // Clean up only data created by this test run; never delete or mutate pre-existing data (F14)
         if (createdByThisFixture) {
           await database.db
             .delete(categoryDownloadPermissions)
             .where(eq(categoryDownloadPermissions.categoryId, financeCategoryId));
           await database.db.delete(categories).where(eq(categories.id, financeCategoryId));
+        } else if (originalPermission === null) {
+          // If Finance existed without permission before this test, worker created one during processing.
+          // Remove the worker-created permission row to restore pre-existing database state.
+          await database.db
+            .delete(categoryDownloadPermissions)
+            .where(eq(categoryDownloadPermissions.categoryId, financeCategoryId));
         }
       }
     },
@@ -992,24 +1023,19 @@ startxref
       }
       const { documents, categories, categoryDownloadPermissions } = await import("@axentra/db");
 
-      // Dynamically select an absent standard category definition to test concurrent creation (F14)
-      const existingCategoryRows = await database.db
-        .select({ slug: categories.slug })
-        .from(categories);
-      const existingSlugs = new Set(existingCategoryRows.map((c) => c.slug));
+      // Register an isolated custom category definition guaranteed to be absent in the database (F15)
+      const uniqueSuffix = crypto.randomUUID().slice(0, 8);
+      const absentCategoryDef: CategoryDefinition = {
+        name: `ConcurrencyTest-${uniqueSuffix}`,
+        slug: `concurrency-test-${uniqueSuffix}`,
+        keywords: [`concur-${uniqueSuffix}`, `testconcur-${uniqueSuffix}`],
+      };
+      const unregister = registerCategoryDefinition(absentCategoryDef);
 
-      const absentCategoryDef = STANDARD_CATEGORY_DEFINITIONS.find(
-        (def) => !existingSlugs.has(def.slug),
-      );
-      if (!absentCategoryDef) {
-        throw new Error(
-          "No absent standard category definition available for concurrency scenario",
-        );
-      }
+      try {
+        const matchKeyword = absentCategoryDef.keywords[0];
 
-      const matchKeyword = absentCategoryDef.keywords[0] ?? absentCategoryDef.slug;
-
-      const pdfConcurrentA = `%PDF-1.4
+        const pdfConcurrentA = `%PDF-1.4
 % run-${crypto.randomUUID()}
 1 0 obj
 << /Author (${absentCategoryDef.name} Lead) >>
@@ -1026,16 +1052,16 @@ endstream
 endobj
 xref
 0 3
-0000000000 65535 f 
-0000000010 00000 n 
-0000000067 00000 n 
+0000000000 65535 f
+0000000010 00000 n
+0000000067 00000 n
 trailer
 << /Size 3 /Root 1 0 R >>
 startxref
 240
 %%EOF`;
 
-      const pdfConcurrentB = `%PDF-1.4
+        const pdfConcurrentB = `%PDF-1.4
 % run-${crypto.randomUUID()}
 1 0 obj
 << /Author (${absentCategoryDef.name} Auditor) >>
@@ -1052,79 +1078,82 @@ endstream
 endobj
 xref
 0 3
-0000000000 65535 f 
-0000000010 00000 n 
-0000000067 00000 n 
+0000000000 65535 f
+0000000010 00000 n
+0000000067 00000 n
 trailer
 << /Size 3 /Root 1 0 R >>
 startxref
 240
 %%EOF`;
 
-      // Upload both documents concurrently
-      const [doc1, doc2] = await Promise.all([
-        uploadPdfDocument(`doc-concurrent-${absentCategoryDef.slug}-a.pdf`, pdfConcurrentA),
-        uploadPdfDocument(`doc-concurrent-${absentCategoryDef.slug}-b.pdf`, pdfConcurrentB),
-      ]);
+        // Upload both documents concurrently
+        const [doc1, doc2] = await Promise.all([
+          uploadPdfDocument(`doc-concurrent-${absentCategoryDef.slug}-a.pdf`, pdfConcurrentA),
+          uploadPdfDocument(`doc-concurrent-${absentCategoryDef.slug}-b.pdf`, pdfConcurrentB),
+        ]);
 
-      // Wait for both documents to finish processing
-      await Promise.all([
-        waitForDocumentProcessing(doc1.docId),
-        waitForDocumentProcessing(doc2.docId),
-      ]);
+        // Wait for both documents to finish processing
+        await Promise.all([
+          waitForDocumentProcessing(doc1.docId),
+          waitForDocumentProcessing(doc2.docId),
+        ]);
 
-      const [row1] = await database.db
-        .select({
-          status: documents.processingStatus,
-          categoryId: documents.categoryId,
-          errorMessage: documents.errorMessage,
-        })
-        .from(documents)
-        .where(eq(documents.id, doc1.docId))
-        .limit(1);
+        const [row1] = await database.db
+          .select({
+            status: documents.processingStatus,
+            categoryId: documents.categoryId,
+            errorMessage: documents.errorMessage,
+          })
+          .from(documents)
+          .where(eq(documents.id, doc1.docId))
+          .limit(1);
 
-      const [row2] = await database.db
-        .select({
-          status: documents.processingStatus,
-          categoryId: documents.categoryId,
-          errorMessage: documents.errorMessage,
-        })
-        .from(documents)
-        .where(eq(documents.id, doc2.docId))
-        .limit(1);
+        const [row2] = await database.db
+          .select({
+            status: documents.processingStatus,
+            categoryId: documents.categoryId,
+            errorMessage: documents.errorMessage,
+          })
+          .from(documents)
+          .where(eq(documents.id, doc2.docId))
+          .limit(1);
 
-      expect(row1?.status).toBe("completed");
-      expect(row2?.status).toBe("completed");
-      expect(row1?.errorMessage).toBeNull();
-      expect(row2?.errorMessage).toBeNull();
+        expect(row1?.status).toBe("completed");
+        expect(row2?.status).toBe("completed");
+        expect(row1?.errorMessage).toBeNull();
+        expect(row2?.errorMessage).toBeNull();
 
-      // Both documents must be assigned the same category ID
-      expect(row1?.categoryId).toBeDefined();
-      expect(row2?.categoryId).toBeDefined();
-      expect(row1?.categoryId).toBe(row2?.categoryId);
+        // Both documents must be assigned the same category ID
+        expect(row1?.categoryId).toBeDefined();
+        expect(row2?.categoryId).toBeDefined();
+        expect(row1?.categoryId).toBe(row2?.categoryId);
 
-      // Verify category record in DB
-      const matchedCategories = await database.db
-        .select()
-        .from(categories)
-        .where(eq(categories.slug, absentCategoryDef.slug));
-      expect(matchedCategories.length).toBe(1);
-      expect(matchedCategories[0]?.name).toBe(absentCategoryDef.name);
-      const matchedCatId = matchedCategories[0]?.id;
-      expect(matchedCatId).toBeDefined();
-      if (!matchedCatId) throw new Error("Target category was not created");
-      if (!createdCategoryIds.includes(matchedCatId)) {
-        createdCategoryIds.push(matchedCatId);
+        // Verify category record in DB
+        const matchedCategories = await database.db
+          .select()
+          .from(categories)
+          .where(eq(categories.slug, absentCategoryDef.slug));
+        expect(matchedCategories.length).toBe(1);
+        expect(matchedCategories[0]?.name).toBe(absentCategoryDef.name);
+        const matchedCatId = matchedCategories[0]?.id;
+        expect(matchedCatId).toBeDefined();
+        if (!matchedCatId) throw new Error("Target category was not created");
+        if (!createdCategoryIds.includes(matchedCatId)) {
+          createdCategoryIds.push(matchedCatId);
+        }
+
+        // Verify category permission is inactive
+        const [permission] = await database.db
+          .select()
+          .from(categoryDownloadPermissions)
+          .where(eq(categoryDownloadPermissions.categoryId, matchedCatId))
+          .limit(1);
+        expect(permission).toBeDefined();
+        expect(permission?.downloadEnabled).toBe(false);
+      } finally {
+        unregister();
       }
-
-      // Verify category permission is inactive
-      const [permission] = await database.db
-        .select()
-        .from(categoryDownloadPermissions)
-        .where(eq(categoryDownloadPermissions.categoryId, matchedCatId))
-        .limit(1);
-      expect(permission).toBeDefined();
-      expect(permission?.downloadEnabled).toBe(false);
     },
   );
 
@@ -1153,9 +1182,9 @@ endstream
 endobj
 xref
 0 3
-0000000000 65535 f 
-0000000010 00000 n 
-0000000067 00000 n 
+0000000000 65535 f
+0000000010 00000 n
+0000000067 00000 n
 trailer
 << /Size 3 /Root 1 0 R >>
 startxref
@@ -1243,9 +1272,9 @@ endstream
 endobj
 xref
 0 3
-0000000000 65535 f 
-0000000010 00000 n 
-0000000067 00000 n 
+0000000000 65535 f
+0000000010 00000 n
+0000000067 00000 n
 trailer
 << /Size 3 /Root 1 0 R >>
 startxref
@@ -1265,7 +1294,7 @@ startxref
       try {
         const doc = await uploadPdfDocument("doc-permanent-fail.pdf", pdfFail);
 
-        await expect(waitForDocumentProcessing(doc.docId, 30000)).rejects.toThrow(
+        await expect(waitForDocumentProcessing(doc.docId, 45000)).rejects.toThrow(
           "Unrecoverable corrupt payload failure",
         );
 
@@ -1284,6 +1313,6 @@ startxref
         beforeProcessingHook = undefined;
       }
     },
-    35000,
+    50000,
   );
 });

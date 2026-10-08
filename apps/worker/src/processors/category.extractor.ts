@@ -153,6 +153,22 @@ function scoreCategoriesInText(
   return best ? best.category : null;
 }
 
+const dynamicCategoryDefinitions: CategoryDefinition[] = [];
+
+/**
+ * Registers an additional category definition for extraction (e.g. custom or test isolation categories).
+ * Returns an unregister callback to restore the original state.
+ */
+export function registerCategoryDefinition(definition: CategoryDefinition): () => void {
+  dynamicCategoryDefinitions.push(definition);
+  return () => {
+    const index = dynamicCategoryDefinitions.indexOf(definition);
+    if (index !== -1) {
+      dynamicCategoryDefinitions.splice(index, 1);
+    }
+  };
+}
+
 /**
  * Extracts a category from document content or metadata/filename fallback.
  * Priority:
@@ -167,7 +183,10 @@ export function extractCategoryFromBuffer(
   existingCategories?: ReadonlyArray<{ name: string; slug: string }> | undefined,
 ): ExtractedCategory | null {
   // 1. Build category definitions list including any project-specific existing categories
-  const definitions: CategoryDefinition[] = [...STANDARD_CATEGORY_DEFINITIONS];
+  const definitions: CategoryDefinition[] = [
+    ...STANDARD_CATEGORY_DEFINITIONS,
+    ...dynamicCategoryDefinitions,
+  ];
 
   if (existingCategories && existingCategories.length > 0) {
     for (const existing of existingCategories) {

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { extractCategoryFromBuffer, slugifyCategory } from "./category.extractor";
+import {
+  extractCategoryFromBuffer,
+  registerCategoryDefinition,
+  slugifyCategory,
+} from "./category.extractor";
 
 describe("category.extractor", () => {
   const dummyBuffer = new Uint8Array([1, 2, 3]);
@@ -134,6 +138,29 @@ endobj
       );
 
       expect(category).toBeNull();
+    });
+
+    it("matches dynamic category definition registered via registerCategoryDefinition and unregisters cleanly", () => {
+      const customDef = {
+        name: "Custom Audit",
+        slug: "custom-audit",
+        keywords: ["customaudit", "custom audit"],
+      };
+      const unregister = registerCategoryDefinition(customDef);
+      const content = "Pembahasan khusus dokumen customaudit internal.";
+
+      const matched = extractCategoryFromBuffer("doc.txt", "text/plain", dummyBuffer, content);
+      expect(matched?.name).toBe("Custom Audit");
+      expect(matched?.slug).toBe("custom-audit");
+
+      unregister();
+      const afterUnregister = extractCategoryFromBuffer(
+        "doc.txt",
+        "text/plain",
+        dummyBuffer,
+        content,
+      );
+      expect(afterUnregister).toBeNull();
     });
   });
 });
