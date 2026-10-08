@@ -52,7 +52,6 @@ function createFetchMock(): typeof fetch {
 
     if (url.includes("/search/documents")) {
       const urlObj = new URL(url.startsWith("http") ? url : `http://localhost${url}`);
-      // F4 FIX: Baca parameter `q` bukan `keyword` — selaras dengan F3
       const q = urlObj.searchParams.get("q") || "";
 
       await new Promise((resolve) => setTimeout(resolve, 100));
@@ -76,13 +75,12 @@ function createFetchMock(): typeof fetch {
           success: true,
           data: [
             {
-              id: "doc-1",
+              id: "11111111-1111-4111-8111-111111111111", // format UUID diperlukan
               filename: "laporan-keuangan-2026.pdf",
-              // F4 FIX: Snippet teks biasa — tidak ada HTML.
-              // View sudah menggunakan {item.snippet} bukan
-              // dangerouslySetInnerHTML, jadi teks ini akan muncul
-              // verbatim di layar.
+              processingStatus: "completed",
+              createdAt: "2026-09-22T00:00:00.000Z",
               snippet: `...berdasarkan ${q} yang telah disepakati...`,
+              highlights: [],
             },
           ],
         }),
@@ -102,10 +100,6 @@ function createFetchMock(): typeof fetch {
   return Object.assign(handler, { preconnect: (): void => {} });
 }
 
-// Mock yang selalu mengembalikan sukses untuk /search/documents, tanpa
-// bergantung pada keyword. Digunakan sebagai fase kedua pada tes retry:
-// di-set ke globalThis.fetch setelah error state terkonfirmasi, sebelum
-// klik retry, sehingga call berikutnya pasti sukses.
 function createSuccessFetchMock(): typeof fetch {
   const handler = async (input: RequestInfo | URL, _init?: RequestInit): Promise<Response> => {
     const url = String(input);
@@ -117,9 +111,12 @@ function createSuccessFetchMock(): typeof fetch {
           success: true,
           data: [
             {
-              id: "doc-1",
+              id: "11111111-1111-4111-8111-111111111111", // format UUID diperlukan
               filename: "laporan-keuangan-2026.pdf",
+              processingStatus: "completed",
+              createdAt: "2026-09-22T00:00:00.000Z",
               snippet: "...berdasarkan error yang telah disepakati...",
+              highlights: [],
             },
           ],
         }),

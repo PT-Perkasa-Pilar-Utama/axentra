@@ -2,16 +2,26 @@ import { z } from "zod";
 import { apiRequest } from "../../lib/api-client";
 
 const searchResultItemSchema = z.object({
-  id: z.string(),
+  id: z.string().uuid(),
   filename: z.string(),
-  snippet: z.string(),
+  processingStatus: z.string(),
+  createdAt: z.string(),
+  snippet: z.string().nullable(),
+  highlights: z
+    .array(
+      z.object({
+        start: z.number(),
+        end: z.number(),
+      }),
+    )
+    .default([]),
 });
 
 export type SearchResultItem = z.infer<typeof searchResultItemSchema>;
 
-export async function searchDocuments(keyword: string): Promise<SearchResultItem[]> {
+export async function searchDocuments(q: string): Promise<SearchResultItem[]> {
   return apiRequest(
-    `/search/documents?q=${encodeURIComponent(keyword)}`,
+    `/search/documents?q=${encodeURIComponent(q)}`,
     z.array(searchResultItemSchema),
   );
 }

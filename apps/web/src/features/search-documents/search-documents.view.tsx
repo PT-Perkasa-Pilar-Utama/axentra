@@ -108,7 +108,9 @@ export function SearchResultsView({ presenter }: SearchViewProps): React.JSX.Ele
 
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-[#535a63]">{item.filename}</p>
-                <p className="mt-1 text-xs text-gray-500">{item.snippet}</p>
+                <p className="mt-1 text-xs text-gray-500">
+                  {item.snippet ?? "Tidak ada cuplikan teks."}
+                </p>
               </div>
             </li>
           ))}
