@@ -95,6 +95,7 @@ describe("Document Worker Processor (Task BE-S1-05 / F2 & F7)", () => {
     const persistedMeta = repository.metadata.get(validJob.documentId);
     expect(persistedMeta).toBeDefined();
     expect(persistedMeta?.author).toBe("Dr. Siti Rahma");
+    expect(persistedMeta?.extractedText).toBeDefined();
   });
 
   it("is idempotent: skips document that is already completed", async () => {

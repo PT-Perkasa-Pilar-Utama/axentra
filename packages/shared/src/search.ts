@@ -43,6 +43,14 @@ export const searchDocumentSchema = z.object({
   processingStatus: processingStatusSchema,
   createdAt: z.string().datetime(),
   snippet: z.string().nullable().optional(),
+  highlights: z
+    .array(
+      z.object({
+        start: z.number().int().nonnegative(),
+        end: z.number().int().nonnegative(),
+      }),
+    )
+    .optional(),
 });
 
 export type SearchDocument = z.infer<typeof searchDocumentSchema>;

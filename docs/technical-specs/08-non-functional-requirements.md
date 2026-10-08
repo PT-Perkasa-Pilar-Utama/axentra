@@ -9,12 +9,13 @@
 
 ## Performance
 
-| Area             | Requirement                                             |
-| ---------------- | ------------------------------------------------------- |
-| API health       | Fast enough for orchestrator probes                     |
-| Readiness checks | Bounded at the dependency check level                   |
-| Web shell        | Buildable through Vite and suitable for browser caching |
-| Queue jobs       | Carry identifiers and fetch data as needed              |
+| Area                       | Requirement                                                                                                                                                                                                                                       |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| API health                 | Fast enough for orchestrator probes                                                                                                                                                                                                               |
+| Readiness checks           | Bounded at the dependency check level                                                                                                                                                                                                             |
+| Web shell                  | Buildable through Vite and suitable for browser caching                                                                                                                                                                                           |
+| Queue jobs                 | Carry identifiers and fetch data as needed                                                                                                                                                                                                        |
+| Document search (AC-06.03) | Keyword search across title, original filename, and extracted content completes in under 3 seconds (target p95 < 500 ms) on representative corpus of 100+ documents with ~2 KB extracted text per document, accelerated by `pg_trgm` GIN indexes. |
 
 ## Observability
 

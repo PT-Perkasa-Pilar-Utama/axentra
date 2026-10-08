@@ -15,6 +15,13 @@
       "when": 1790306505373,
       "tag": "0001_zippy_puff_adder",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791189315306,
+      "tag": "0002_add_document_search_trigram_indexes",
+      "breakpoints": true
     }
   ]
 }

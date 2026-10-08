@@ -1,7 +1,14 @@
-import { and, count, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, ilike, inArray, isNull, sql } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import { documentFiles, documentSmartTags, documents, smartTags } from "@axentra/db";
+import {
+  documentFiles,
+  documentMetadata,
+  documentSmartTags,
+  documents,
+  smartTags,
+} from "@axentra/db";
 import type { SearchDocument, SearchDocumentsQuery } from "@axentra/shared";
+import { resolveDocumentSnippet } from "./snippet";
 
 export type SearchQueryResult = {
   items: ReadonlyArray<SearchDocument>;
@@ -24,13 +31,24 @@ export class DrizzleSearchRepository implements ISearchRepository {
 
     if (query.q && query.q.trim().length > 0) {
       const pattern = `%${query.q.trim()}%`;
-      const matchPattern = or(
-        ilike(documents.title, pattern),
-        ilike(documentFiles.originalName, pattern),
-      );
-      if (matchPattern !== undefined) {
-        conditions.push(matchPattern);
-      }
+      const matchingDocIdsQuery = this.db
+        .select({ id: documents.id })
+        .from(documents)
+        .where(ilike(documents.title, pattern))
+        .union(
+          this.db
+            .select({ id: documentFiles.documentId })
+            .from(documentFiles)
+            .where(ilike(documentFiles.originalName, pattern)),
+        )
+        .union(
+          this.db
+            .select({ id: documentMetadata.documentId })
+            .from(documentMetadata)
+            .where(ilike(documentMetadata.extractedText, pattern)),
+        );
+
+      conditions.push(inArray(documents.id, matchingDocIdsQuery));
     }
 
     const uniqueTags = query.tags
@@ -57,6 +75,7 @@ export class DrizzleSearchRepository implements ISearchRepository {
       .select({ total: count() })
       .from(documents)
       .innerJoin(documentFiles, eq(documentFiles.documentId, documents.id))
+      .leftJoin(documentMetadata, eq(documentMetadata.documentId, documents.id))
       .where(combinedWhere);
 
     const total = Number(counted?.total ?? 0);
@@ -64,25 +83,36 @@ export class DrizzleSearchRepository implements ISearchRepository {
     const rows = await this.db
       .select({
         id: documents.id,
+        title: documents.title,
         filename: documentFiles.originalName,
         processingStatus: documents.processingStatus,
         createdAt: documents.createdAt,
+        extractedText: documentMetadata.extractedText,
       })
       .from(documents)
       .innerJoin(documentFiles, eq(documentFiles.documentId, documents.id))
+      .leftJoin(documentMetadata, eq(documentMetadata.documentId, documents.id))
       .where(combinedWhere)
       .orderBy(desc(documents.createdAt), desc(documents.id))
       .limit(query.limit)
       .offset((query.page - 1) * query.limit);
 
     return {
-      items: rows.map((row) => ({
-        id: row.id,
-        filename: row.filename,
-        processingStatus: row.processingStatus,
-        createdAt: row.createdAt.toISOString(),
-        snippet: null,
-      })),
+      items: rows.map((row) => {
+        const snippetResult = resolveDocumentSnippet(query.q, {
+          extractedText: row.extractedText,
+          title: row.title,
+          originalName: row.filename,
+        });
+        return {
+          id: row.id,
+          filename: row.filename,
+          processingStatus: row.processingStatus,
+          createdAt: row.createdAt.toISOString(),
+          snippet: snippetResult.snippet,
+          highlights: snippetResult.highlights.length > 0 ? snippetResult.highlights : undefined,
+        };
+      }),
       total,
     };
   }
@@ -91,19 +121,28 @@ export class DrizzleSearchRepository implements ISearchRepository {
 export class InMemorySearchRepository implements ISearchRepository {
   private readonly documents: Array<{
     doc: SearchDocument;
+    title?: string | undefined;
+    extractedText?: string | undefined;
     categoryId?: string | undefined;
     tags: Set<string>;
   }> = [];
 
   public addDocument(
     doc: SearchDocument,
-    options?: { categoryId?: string | undefined; tags?: ReadonlyArray<string> | undefined },
+    options?: {
+      title?: string | undefined;
+      extractedText?: string | undefined;
+      categoryId?: string | undefined;
+      tags?: ReadonlyArray<string> | undefined;
+    },
   ): void {
     const tagSet = new Set(
       (options?.tags ?? []).map((t) => t.trim().toLowerCase()).filter((t) => t.length > 0),
     );
     this.documents.push({
       doc,
+      title: options?.title,
+      extractedText: options?.extractedText,
       categoryId: options?.categoryId,
       tags: tagSet,
     });
@@ -124,7 +163,12 @@ export class InMemorySearchRepository implements ISearchRepository {
 
     if (query.q && query.q.trim().length > 0) {
       const qLower = query.q.trim().toLowerCase();
-      filtered = filtered.filter((d) => d.doc.filename.toLowerCase().includes(qLower));
+      filtered = filtered.filter(
+        (d) =>
+          d.doc.filename.toLowerCase().includes(qLower) ||
+          (d.title && d.title.toLowerCase().includes(qLower)) ||
+          (d.extractedText && d.extractedText.toLowerCase().includes(qLower)),
+      );
     }
 
     if (uniqueTags.length > 0) {
@@ -132,7 +176,18 @@ export class InMemorySearchRepository implements ISearchRepository {
     }
 
     const start = (query.page - 1) * query.limit;
-    const pageItems = filtered.slice(start, start + query.limit).map((d) => d.doc);
+    const pageItems = filtered.slice(start, start + query.limit).map((d) => {
+      const snippetResult = resolveDocumentSnippet(query.q, {
+        extractedText: d.extractedText,
+        title: d.title,
+        originalName: d.doc.filename,
+      });
+      return {
+        ...d.doc,
+        snippet: snippetResult.snippet ?? d.doc.snippet ?? null,
+        highlights: snippetResult.highlights.length > 0 ? snippetResult.highlights : undefined,
+      };
+    });
 
     return {
       items: pageItems,

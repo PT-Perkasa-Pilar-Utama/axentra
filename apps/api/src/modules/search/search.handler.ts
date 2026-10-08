@@ -17,7 +17,7 @@ export function createSearchDocumentsHandler(
       context.req.queries("tags") ?? context.req.query("tags") ?? context.req.query("tag");
 
     const parsed = searchDocumentsQuerySchema.safeParse({
-      q: context.req.query("q"),
+      q: context.req.query("q") ?? context.req.query("keyword"),
       tags: rawTags,
       categoryId: context.req.query("categoryId"),
       page: context.req.query("page"),

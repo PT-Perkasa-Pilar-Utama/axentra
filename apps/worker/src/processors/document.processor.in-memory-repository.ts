@@ -98,6 +98,7 @@ export class InMemoryDocumentProcessingRepository implements DocumentProcessingR
     this.metadata.set(documentId, {
       documentId,
       author: metadata.author,
+      extractedText: metadata.extractedText,
       rawMetadata: metadata.rawMetadata,
       extractedAt: metadata.extractedAt,
       updatedAt: now,

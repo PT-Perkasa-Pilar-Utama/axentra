@@ -27,6 +27,7 @@ export type CompleteDocumentMetadataInput = {
   author: string | null;
   rawMetadata: Record<string, unknown>;
   extractedAt: Date;
+  extractedText?: string | null | undefined;
 };
 
 export type FailedProcessingDocument = {
@@ -154,6 +155,7 @@ export class DrizzleDocumentProcessingRepository implements DocumentProcessingRe
         .values({
           documentId,
           author: metadata.author,
+          extractedText: metadata.extractedText ?? null,
           rawMetadata: metadata.rawMetadata,
           extractedAt: metadata.extractedAt,
           updatedAt: now,
@@ -162,6 +164,7 @@ export class DrizzleDocumentProcessingRepository implements DocumentProcessingRe
           target: documentMetadata.documentId,
           set: {
             author: metadata.author,
+            extractedText: metadata.extractedText ?? null,
             rawMetadata: metadata.rawMetadata,
             extractedAt: metadata.extractedAt,
             updatedAt: now,
