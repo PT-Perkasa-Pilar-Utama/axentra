@@ -241,7 +241,7 @@ describe("Document Search PostgreSQL integration (BE-S2-05 / AC-06.01 to AC-06.0
   );
 
   integrationTest(
-    "F4: verifies pg_trgm GIN index presence, query plan utilization, and demonstrates under-3-second SLA at representative scale (100 documents with ~2 KB body text)",
+    "F4: verifies pg_trgm GIN index presence, query plan utilization under normal PostgreSQL planner, and demonstrates under-3-second SLA at representative scale (5,000 documents with ~2 KB body text)",
     async () => {
       if (database === undefined) {
         throw new Error("PostgreSQL integration database was not initialized");
@@ -263,9 +263,9 @@ describe("Document Search PostgreSQL integration (BE-S2-05 / AC-06.01 to AC-06.0
       expect(indexNames).toContain("document_files_original_name_trgm_idx");
       expect(indexNames).toContain("document_metadata_extracted_text_trgm_idx");
 
-      // 2. Seed a representative dataset of 100 documents with realistic multi-paragraph body text (~2 KB UTF-8 per document)
+      // 2. Seed a representative dataset of 5,000 documents with realistic multi-paragraph body text (~2 KB UTF-8 per document)
       const batchSuffix = crypto.randomUUID().slice(0, 8);
-      const corpusSize = 100;
+      const corpusSize = 5000;
       const batchDocIds: string[] = [];
       const docInserts: Array<{
         id: string;
@@ -293,7 +293,7 @@ describe("Document Search PostgreSQL integration (BE-S2-05 / AC-06.01 to AC-06.0
         const id = crypto.randomUUID();
         batchDocIds.push(id);
 
-        const hasKeyword = i % 10 === 0; // 10 documents contain the keyword
+        const hasKeyword = i % 500 === 0; // Exactly 10 documents contain the keyword
         const title = `Dokumen Evaluasi Kinerja ${i} ${batchSuffix}`;
         const originalName = `evaluasi-kinerja-${i}-${batchSuffix}.pdf`;
 
@@ -309,8 +309,10 @@ describe("Document Search PostgreSQL integration (BE-S2-05 / AC-06.01 to AC-06.0
           `Paragraf 6 kesimpulan akhir dan rekomendasi tindak lanjut bagi pemangku kepentingan untuk meninjau secara teratur performa sistem kearsipan, efisiensi pemanfaatan ruang disk, dan kesiapan skalabilitas infrastruktur terhadap lonjakan berkas di masa mendatang. Laporan ini disahkan sebagai dokumen referensi evaluasi teknis tahunan.`,
         ].join("\n\n");
 
-        // Verify body text is genuinely near ~2 KB (~2,000 bytes)
-        expect(Buffer.byteLength(bodyParagraphs, "utf-8")).toBeGreaterThan(1900);
+        if (i === 0) {
+          // Verify body text is genuinely near ~2 KB (~2,000 bytes)
+          expect(Buffer.byteLength(bodyParagraphs, "utf-8")).toBeGreaterThan(1900);
+        }
 
         docInserts.push({
           id,
@@ -340,12 +342,12 @@ describe("Document Search PostgreSQL integration (BE-S2-05 / AC-06.01 to AC-06.0
         await database.db.insert(documentFiles).values(fileInserts);
         await database.db.insert(documentMetadata).values(metadataInserts);
 
-        // 3. Verify query planner recognizes and utilizes Bitmap Index Scan on pg_trgm GIN indexes for the production query
+        // 3. Verify query planner recognizes and utilizes Bitmap Index Scan on pg_trgm GIN indexes under the normal planner
         await database.sql`ANALYZE documents`;
         await database.sql`ANALYZE document_files`;
         await database.sql`ANALYZE document_metadata`;
 
-        // Inspect production query plan under normal planner
+        // Inspect production query plan under the normal PostgreSQL planner (no session override / no enable_seqscan=off)
         const normalPlan = await database.sql`
           EXPLAIN (FORMAT JSON)
           SELECT d.id, d.title, df.original_name, dm.extracted_text
@@ -363,32 +365,9 @@ describe("Document Search PostgreSQL integration (BE-S2-05 / AC-06.01 to AC-06.0
           ORDER BY d.created_at DESC, d.id DESC
           LIMIT 20;
         `;
-        expect(JSON.stringify(normalPlan)).toContain("Aggregate");
-
-        // Verify index utilization capability under connection-scoped planner
-        await database.sql.begin(async (tx) => {
-          await tx`SET LOCAL enable_seqscan = off`;
-          const explainProduction = await tx`
-            EXPLAIN (FORMAT JSON)
-            SELECT d.id, d.title, df.original_name, dm.extracted_text
-            FROM documents d
-            INNER JOIN document_files df ON df.document_id = d.id
-            LEFT JOIN document_metadata dm ON dm.document_id = d.id
-            WHERE d.deleted_at IS NULL
-              AND d.id IN (
-                SELECT id FROM documents WHERE title ILIKE ${`%${targetKeyword}%`}
-                UNION
-                SELECT document_id FROM document_files WHERE original_name ILIKE ${`%${targetKeyword}%`}
-                UNION
-                SELECT document_id FROM document_metadata WHERE extracted_text ILIKE ${`%${targetKeyword}%`}
-              )
-            ORDER BY d.created_at DESC, d.id DESC
-            LIMIT 20;
-          `;
-          const planStr = JSON.stringify(explainProduction);
-          expect(planStr).toContain("Bitmap Index Scan");
-          expect(planStr).toContain("document_metadata_extracted_text_trgm_idx");
-        });
+        const normalPlanStr = JSON.stringify(normalPlan);
+        expect(normalPlanStr).toContain("Bitmap Index Scan");
+        expect(normalPlanStr).toContain("document_metadata_extracted_text_trgm_idx");
 
         // 4. Measure search latency across multiple runs to demonstrate p95 < 500 ms and SLA < 3000 ms
         const iterations = 10;
@@ -408,6 +387,10 @@ describe("Document Search PostgreSQL integration (BE-S2-05 / AC-06.01 to AC-06.0
         durations.sort((a, b) => a - b);
         const p95Duration = durations[Math.floor(durations.length * 0.95)] ?? 0;
         const maxDuration = durations[durations.length - 1] ?? 0;
+
+        console.info(
+          `[AC-06.03 SLA Benchmark] p95=${p95Duration.toFixed(2)}ms, max=${maxDuration.toFixed(2)}ms across ${iterations} runs (${corpusSize} documents seeded, targetKeyword=${targetKeyword})`,
+        );
 
         if (searchResult === undefined) {
           throw new Error("Search result was unexpectedly undefined");
@@ -430,7 +413,7 @@ describe("Document Search PostgreSQL integration (BE-S2-05 / AC-06.01 to AC-06.0
         expect(p95Duration).toBeLessThan(500);
         expect(maxDuration).toBeLessThan(3000);
       } finally {
-        await database.db.delete(documents).where(inArray(documents.id, batchDocIds));
+        await database.sql`DELETE FROM documents WHERE title LIKE ${`% ${batchSuffix}`}`;
       }
     },
   );
