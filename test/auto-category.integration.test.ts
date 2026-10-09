@@ -19,6 +19,7 @@ import {
   registerCategoryDefinition,
   type CategoryDefinition,
 } from "../apps/worker/src/processors/category.extractor";
+import { buildConformingPdf } from "./helpers/pdf-fixture";
 
 const runIntegrationTests = Bun.env.RUN_INTEGRATION_TESTS === "1";
 const integrationTest = runIntegrationTests ? test : test.skip;
@@ -416,21 +417,11 @@ describe("Auto-Category Assignment Real Queue & Storage Integration (Task BE-S2-
 
       // Neutral filename that cannot trigger filename fallback (F2)
       const neutralFilename = "doc-content-sample-a.pdf";
-      const pdfContent = `%PDF-1.4
-% run-${crypto.randomUUID()}
-1 0 obj
-<< /Author (Finance Lead) >>
-endobj
-2 0 obj
-<< /Length 120 >>
-stream
-BT
-/F1 12 Tf
-(Dokumen ini berisi Reporting tahunan organisasi dan data rekapitulasi Reporting.) Tj
-ET
-endstream
-endobj
-%%EOF`;
+      const pdfContent = buildConformingPdf({
+        author: "Finance Lead",
+        bodyText:
+          "Dokumen ini berisi Reporting tahunan organisasi dan data rekapitulasi Reporting.",
+      });
 
       // 1. Upload through authenticated API
       const { docId, storageKey } = await uploadPdfDocument(neutralFilename, pdfContent);
@@ -511,37 +502,17 @@ endobj
       const neutralReportingFilename = "doc-content-sample-b.pdf";
       const neutralContractFilename = "doc-content-sample-c.pdf";
 
-      const reportingPdf = `%PDF-1.4
-% run-${crypto.randomUUID()}
-1 0 obj
-<< /Author (Finance Lead) >>
-endobj
-2 0 obj
-<< /Length 120 >>
-stream
-BT
-/F1 12 Tf
-(Dokumen ini menyajikan data Reporting operasional dan Reporting kinerja kuartal.) Tj
-ET
-endstream
-endobj
-%%EOF`;
+      const reportingPdf = buildConformingPdf({
+        author: "Finance Lead",
+        bodyText:
+          "Dokumen ini menyajikan data Reporting operasional dan Reporting kinerja kuartal.",
+      });
 
-      const contractPdf = `%PDF-1.4
-% run-${crypto.randomUUID()}
-1 0 obj
-<< /Author (Legal Lead) >>
-endobj
-2 0 obj
-<< /Length 120 >>
-stream
-BT
-/F1 12 Tf
-(Dokumen resmi Contract pengadaan dan kesepakatan Contract kerja sama antar pihak.) Tj
-ET
-endstream
-endobj
-%%EOF`;
+      const contractPdf = buildConformingPdf({
+        author: "Legal Lead",
+        bodyText:
+          "Dokumen resmi Contract pengadaan dan kesepakatan Contract kerja sama antar pihak.",
+      });
 
       // 1. Upload both documents via authenticated API
       const { docId: reportingDocId } = await uploadPdfDocument(
@@ -654,21 +625,10 @@ endobj
       const bodyKeyword = useTreasury
         ? "laporan treasury dan perbendaharaan operasional triwulan"
         : "laporan finance dan keuangan operasional triwulan";
-      const pdfContent = `%PDF-1.4
-% run-${crypto.randomUUID()}
-1 0 obj
-<< /Author (Corporate Treasurer) >>
-endobj
-2 0 obj
-<< /Length 120 >>
-stream
-BT
-/F1 12 Tf
-(Dokumen ini memuat ${bodyKeyword}.) Tj
-ET
-endstream
-endobj
-%%EOF`;
+      const pdfContent = buildConformingPdf({
+        author: "Corporate Treasurer",
+        bodyText: `Dokumen ini memuat ${bodyKeyword}.`,
+      });
 
       try {
         // 2. Upload through real API and consume through BullMQ worker
@@ -895,31 +855,10 @@ endobj
         expect(initialPerm?.downloadEnabled).toBe(originalPermission.downloadEnabled);
       }
 
-      const pdfFinance = `%PDF-1.4
-% run-${crypto.randomUUID()}
-1 0 obj
-<< /Author (Corporate Treasurer) >>
-endobj
-2 0 obj
-<< /Length 120 >>
-stream
-BT
-/F1 12 Tf
-72 712 Td
-(Laporan keuangan kas perseroan financial summary and budget ledger) Tj
-ET
-endstream
-endobj
-xref
-0 3
-0000000000 65535 f
-0000000010 00000 n
-0000000067 00000 n
-trailer
-<< /Size 3 /Root 1 0 R >>
-startxref
-240
-%%EOF`;
+      const pdfFinance = buildConformingPdf({
+        author: "Corporate Treasurer",
+        bodyText: "Laporan keuangan kas perseroan financial summary and budget ledger",
+      });
 
       try {
         const doc = await uploadPdfDocument("doc-finance-preservation.pdf", pdfFinance);
@@ -1035,57 +974,15 @@ startxref
       try {
         const matchKeyword = absentCategoryDef.keywords[0];
 
-        const pdfConcurrentA = `%PDF-1.4
-% run-${crypto.randomUUID()}
-1 0 obj
-<< /Author (${absentCategoryDef.name} Lead) >>
-endobj
-2 0 obj
-<< /Length 120 >>
-stream
-BT
-/F1 12 Tf
-72 712 Td
-(Dokumen berkas ${matchKeyword} penting ${matchKeyword} utama ${matchKeyword} tahunan) Tj
-ET
-endstream
-endobj
-xref
-0 3
-0000000000 65535 f
-0000000010 00000 n
-0000000067 00000 n
-trailer
-<< /Size 3 /Root 1 0 R >>
-startxref
-240
-%%EOF`;
+        const pdfConcurrentA = buildConformingPdf({
+          author: `${absentCategoryDef.name} Lead`,
+          bodyText: `Dokumen berkas ${matchKeyword} penting ${matchKeyword} utama ${matchKeyword} tahunan`,
+        });
 
-        const pdfConcurrentB = `%PDF-1.4
-% run-${crypto.randomUUID()}
-1 0 obj
-<< /Author (${absentCategoryDef.name} Auditor) >>
-endobj
-2 0 obj
-<< /Length 120 >>
-stream
-BT
-/F1 12 Tf
-72 712 Td
-(Ringkasan arsip ${matchKeyword} operasional ${matchKeyword} verifikasi ${matchKeyword} sistem) Tj
-ET
-endstream
-endobj
-xref
-0 3
-0000000000 65535 f
-0000000010 00000 n
-0000000067 00000 n
-trailer
-<< /Size 3 /Root 1 0 R >>
-startxref
-240
-%%EOF`;
+        const pdfConcurrentB = buildConformingPdf({
+          author: `${absentCategoryDef.name} Auditor`,
+          bodyText: `Ringkasan arsip ${matchKeyword} operasional ${matchKeyword} verifikasi ${matchKeyword} sistem`,
+        });
 
         // Upload both documents concurrently
         const [doc1, doc2] = await Promise.all([
@@ -1165,31 +1062,10 @@ startxref
       }
       const { documents, categories } = await import("@axentra/db");
 
-      const pdfLegal = `%PDF-1.4
-% run-${crypto.randomUUID()}
-1 0 obj
-<< /Author (Legal Counsel) >>
-endobj
-2 0 obj
-<< /Length 120 >>
-stream
-BT
-/F1 12 Tf
-72 712 Td
-(Dokumen regulasi legal hukum dan kepatuhan perusahaan) Tj
-ET
-endstream
-endobj
-xref
-0 3
-0000000000 65535 f
-0000000010 00000 n
-0000000067 00000 n
-trailer
-<< /Size 3 /Root 1 0 R >>
-startxref
-240
-%%EOF`;
+      const pdfLegal = buildConformingPdf({
+        author: "Legal Counsel",
+        bodyText: "Dokumen regulasi legal hukum dan kepatuhan perusahaan",
+      });
 
       let attemptCount = 0;
 
@@ -1255,31 +1131,10 @@ startxref
       }
       const { documents } = await import("@axentra/db");
 
-      const pdfFail = `%PDF-1.4
-% run-${crypto.randomUUID()}
-1 0 obj
-<< /Author (Test Author) >>
-endobj
-2 0 obj
-<< /Length 80 >>
-stream
-BT
-/F1 12 Tf
-72 712 Td
-(Dokumen uji kegagalan permanen) Tj
-ET
-endstream
-endobj
-xref
-0 3
-0000000000 65535 f
-0000000010 00000 n
-0000000067 00000 n
-trailer
-<< /Size 3 /Root 1 0 R >>
-startxref
-200
-%%EOF`;
+      const pdfFail = buildConformingPdf({
+        author: "Test Author",
+        bodyText: "Dokumen uji kegagalan permanen",
+      });
 
       beforeProcessingHook = async (payload) => {
         if (workerRepo) {
