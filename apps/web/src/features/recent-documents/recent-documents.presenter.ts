@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
 
 import { listRecentDocuments, getDocumentSmartTags } from "./recent-documents.api";
 import type { RecentDocument } from "./recent-documents.api";
@@ -8,12 +8,26 @@ import { TOP_TAGS_QUERY_KEY } from "../top-tags/top-tags.presenter";
 export const RECENT_DOCUMENTS_QUERY_KEY = ["recent-documents"] as const;
 const recentDocumentsPollIntervalMs = 2000;
 
+export type DocumentSmartTagItem = {
+  id: string;
+  name: string;
+};
+
+export type DocumentSmartTagsState = {
+  isLoading: boolean;
+  isError: boolean;
+  isEmpty: boolean;
+  tags: DocumentSmartTagItem[];
+  retry: () => void;
+};
+
 export type RecentDocumentItem = {
   id: string;
   filename: string;
   dateLabel: string;
   statusLabel: string;
   processingStatus: RecentDocument["processingStatus"];
+  smartTags: DocumentSmartTagsState;
 };
 
 export type RecentDocumentsPresenter = {
@@ -46,16 +60,6 @@ function formatStatus(status: RecentDocument["processingStatus"]): string {
     case "failed":
       return "Gagal";
   }
-}
-
-function toRecentDocumentItem(doc: RecentDocument): RecentDocumentItem {
-  return {
-    id: doc.id,
-    filename: doc.filename,
-    dateLabel: formatDate(doc.createdAt),
-    statusLabel: formatStatus(doc.processingStatus),
-    processingStatus: doc.processingStatus,
-  };
 }
 
 function hasPendingDocument(documents: readonly RecentDocument[]): boolean {
@@ -114,6 +118,36 @@ export function useRecentDocumentsPresenter(
     }
   }, [isPending, isFilterActive, queryClient]);
 
+  // Resolusi F9: Orkestrasi fetching tag dilakukan terpusat di Presenter utama menggunakan useQueries
+  const smartTagsQueries = useQueries({
+    queries: documents.map((doc) => ({
+      queryKey: [...DOCUMENT_SMART_TAGS_QUERY_KEY, doc.id],
+      queryFn: () => getDocumentSmartTags(doc.id),
+      staleTime: 5 * 60 * 1000,
+      enabled: doc.processingStatus === "completed",
+    })),
+  });
+
+  const items: RecentDocumentItem[] = documents.map((doc, index) => {
+    const tagQuery = smartTagsQueries[index];
+    return {
+      id: doc.id,
+      filename: doc.filename,
+      dateLabel: formatDate(doc.createdAt),
+      statusLabel: formatStatus(doc.processingStatus),
+      processingStatus: doc.processingStatus,
+      smartTags: {
+        isLoading: tagQuery?.isFetching ?? false,
+        isError: tagQuery?.isError ?? false,
+        isEmpty: !tagQuery?.isFetching && !tagQuery?.isError && (tagQuery?.data?.length ?? 0) === 0,
+        tags: tagQuery?.data ?? [],
+        retry: () => {
+          void tagQuery?.refetch();
+        },
+      },
+    };
+  });
+
   const refresh = useCallback(async (): Promise<void> => {
     await queryClient.invalidateQueries({ queryKey: [...RECENT_DOCUMENTS_QUERY_KEY] });
   }, [queryClient]);
@@ -126,45 +160,8 @@ export function useRecentDocumentsPresenter(
     isLoading: query.isPending,
     isError: query.isError,
     isEmpty: !query.isPending && !query.isError && documents.length === 0,
-    items: documents.map(toRecentDocumentItem),
+    items,
     refresh,
-    retry,
-  };
-}
-
-export type DocumentSmartTagItem = {
-  id: string;
-  name: string;
-};
-
-export type DocumentSmartTagsPresenter = {
-  isLoading: boolean;
-  isError: boolean;
-  isEmpty: boolean;
-  tags: DocumentSmartTagItem[];
-  retry: () => Promise<void>;
-};
-
-export function useDocumentSmartTagsPresenter(
-  documentId: string,
-  status: string,
-): DocumentSmartTagsPresenter {
-  const query = useQuery({
-    queryKey: [...DOCUMENT_SMART_TAGS_QUERY_KEY, documentId],
-    queryFn: () => getDocumentSmartTags(documentId),
-    staleTime: 5 * 60 * 1000,
-    enabled: status === "completed",
-  });
-
-  const retry = useCallback(async (): Promise<void> => {
-    await query.refetch();
-  }, [query]);
-
-  return {
-    isLoading: query.isFetching,
-    isError: query.isError,
-    isEmpty: !query.isFetching && !query.isError && (query.data?.length ?? 0) === 0,
-    tags: query.data ?? [],
     retry,
   };
 }

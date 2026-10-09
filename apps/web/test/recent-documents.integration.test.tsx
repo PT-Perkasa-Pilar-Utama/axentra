@@ -5,8 +5,9 @@ try {
 } catch {
   /* already registered */
 }
-const _win = globalThis as unknown as { window?: { document?: Document } };
-globalThis.document = _win.window?.document ?? globalThis.document;
+if (typeof window !== "undefined" && window.document) {
+  globalThis.document = window.document;
+}
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
@@ -160,12 +161,14 @@ function createFetchMock(
               requestedTags.every((reqTag) => doc.tags?.some((t) => t.name === reqTag)),
             );
 
-      const responseData = filtered.map((doc) => {
-        const { tags: _tags, ...rest } = doc;
-        return rest;
-      });
+      const responseData: RecentDocument[] = filtered.map((doc) => ({
+        id: doc.id,
+        filename: doc.filename,
+        processingStatus: doc.processingStatus,
+        createdAt: doc.createdAt,
+      }));
 
-      return new Response(buildListResponse(responseData as RecentDocument[]), { status: 200 });
+      return new Response(buildListResponse(responseData), { status: 200 });
     }
 
     return new Response(
