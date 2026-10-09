@@ -15,6 +15,36 @@ export const categorySummarySchema = z.object({
 });
 export type CategorySummary = z.infer<typeof categorySummarySchema>;
 
+export const documentCategoryResponseSchema = z.object({
+  success: z.literal(true),
+  data: categorySummarySchema.nullable(),
+});
+export type DocumentCategoryResponse = z.infer<typeof documentCategoryResponseSchema>;
+
+const blankQueryValue = (value: unknown, fallback: number): unknown =>
+  value === undefined || value === "" ? fallback : value;
+
+export const CATEGORIES_DEFAULT_LIMIT = 50;
+export const CATEGORIES_MAX_LIMIT = 100;
+
+export const categoriesQuerySchema = z.object({
+  limit: z.preprocess(
+    (value) => blankQueryValue(value, CATEGORIES_DEFAULT_LIMIT),
+    z.coerce
+      .number()
+      .int()
+      .min(1, { message: "Limit minimal 1" })
+      .max(CATEGORIES_MAX_LIMIT, { message: `Limit maksimal ${CATEGORIES_MAX_LIMIT}` }),
+  ),
+});
+export type CategoriesQuery = z.infer<typeof categoriesQuerySchema>;
+
+export const categoriesResponseSchema = z.object({
+  success: z.literal(true),
+  data: z.array(categorySummarySchema).max(CATEGORIES_MAX_LIMIT),
+});
+export type CategoriesResponse = z.infer<typeof categoriesResponseSchema>;
+
 export const smartTagSchema = z.object({
   id: z.string().uuid(),
   name: z.string().min(1),
@@ -81,9 +111,6 @@ export const relatedDocumentsResponseSchema = z.object({
   data: z.array(relatedDocumentSchema).max(RELATED_DOCUMENTS_MAX_LIMIT),
 });
 export type RelatedDocumentsResponse = z.infer<typeof relatedDocumentsResponseSchema>;
-
-const blankQueryValue = (value: unknown, fallback: number): unknown =>
-  value === undefined || value === "" ? fallback : value;
 
 export const recentDocumentListQuerySchema = z.object({
   page: z.preprocess(

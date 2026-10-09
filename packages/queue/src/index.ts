@@ -8,6 +8,7 @@ export type {
   DocumentProcessJobHandler,
   DocumentProcessingJobHandler,
   QueueJobHandlers,
+  QueueJobState,
   QueueProducer,
   QueueWorkerHandlers,
   SystemHealthJobHandler,

@@ -11,6 +11,9 @@ import { createDocumentService } from "./modules/documents/documents.service";
 import { DrizzleDocumentContentHashRepository } from "./modules/documents/duplicate.repository";
 import { DrizzleDocumentMetadataRepository } from "./modules/documents/metadata.repository";
 import { DrizzleDocumentSmartTagsRepository } from "./modules/documents/smart-tags.repository";
+import { DrizzleDocumentCategoryRepository } from "./modules/documents/category.repository";
+import { DrizzleCategoriesRepository } from "./modules/categories/categories.repository";
+import { createCategoriesService } from "./modules/categories/categories.service";
 import { DrizzleTopTagsRepository } from "./modules/tags/tags.repository";
 import { createTopTagsService } from "./modules/tags/tags.service";
 import { DrizzleSearchRepository } from "./modules/search/search.repository";
@@ -84,9 +87,11 @@ async function start(): Promise<void> {
     metadataRepository: new DrizzleDocumentMetadataRepository(database.db),
     contentHashRepository: new DrizzleDocumentContentHashRepository(database.db),
     smartTagsRepository: new DrizzleDocumentSmartTagsRepository(database.db),
+    categoryRepository: new DrizzleDocumentCategoryRepository(database.db),
   });
   const topTagsService = createTopTagsService(new DrizzleTopTagsRepository(database.db));
   const searchService = createSearchService(new DrizzleSearchRepository(database.db));
+  const categoriesService = createCategoriesService(new DrizzleCategoriesRepository(database.db));
 
   const app = createApp({
     logger,
@@ -100,6 +105,7 @@ async function start(): Promise<void> {
     documentService,
     topTagsService,
     searchService,
+    categoriesService,
     enableUploadRoute: true,
   });
 
