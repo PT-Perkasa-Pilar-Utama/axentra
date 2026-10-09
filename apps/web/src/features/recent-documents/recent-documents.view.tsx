@@ -1,8 +1,10 @@
 import type React from "react";
+import type {
+  RecentDocumentsPresenter,
+  DocumentSmartTagsState,
+  RecentDocumentItem,
+} from "./recent-documents.presenter";
 
-import type { RecentDocumentsPresenter } from "./recent-documents.presenter";
-
-// Required empty-state copy (CODING_STANDARD section 11).
 const emptyMessage = "Tidak ada hasil yang ditemukan";
 
 function ChevronLeftIcon(): React.JSX.Element {
@@ -39,6 +41,60 @@ function ChevronRightIcon(): React.JSX.Element {
   );
 }
 
+// Resolusi F17: Deklarasi tipe bernama secara eksplisit
+export type DocumentSmartTagsProps = {
+  state: DocumentSmartTagsState;
+  status: RecentDocumentItem["processingStatus"];
+};
+
+function DocumentSmartTags({ state, status }: DocumentSmartTagsProps): React.JSX.Element | null {
+  if (status !== "completed") return null;
+
+  if (state.isLoading) {
+    return (
+      <div className="flex flex-wrap items-center gap-1.5">
+        <div className="h-5 w-16 animate-pulse rounded-full bg-blue-100" />
+      </div>
+    );
+  }
+
+  if (state.isError) {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-rose-500">Gagal memuat tag</span>
+        <button
+          type="button"
+          onClick={() => state.retry()}
+          className="rounded text-xs text-rose-700 underline hover:text-rose-800 focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500"
+        >
+          Coba lagi
+        </button>
+      </div>
+    );
+  }
+
+  if (state.isEmpty) {
+    return (
+      <div className="flex items-center">
+        <span className="text-xs text-gray-400">Tidak ada tag</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {state.tags.slice(0, 3).map((tag) => (
+        <span
+          key={tag.id}
+          className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-600"
+        >
+          {tag.name}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export type RecentDocumentsViewProps = {
   presenter: RecentDocumentsPresenter;
 };
@@ -54,8 +110,8 @@ export function RecentDocumentsView({ presenter }: RecentDocumentsViewProps): Re
           <button
             type="button"
             disabled
+            title="Fitur navigasi halaman belum tersedia"
             aria-label="Halaman sebelumnya"
-            title="Halaman sebelumnya belum tersedia"
             className="rounded p-1 text-gray-400 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <ChevronLeftIcon />
@@ -69,8 +125,8 @@ export function RecentDocumentsView({ presenter }: RecentDocumentsViewProps): Re
           <button
             type="button"
             disabled
+            title="Fitur navigasi halaman belum tersedia"
             aria-label="Halaman berikutnya"
-            title="Halaman berikutnya belum tersedia"
             className="rounded p-1 text-[#65a448] hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <ChevronRightIcon />
@@ -78,7 +134,6 @@ export function RecentDocumentsView({ presenter }: RecentDocumentsViewProps): Re
         </nav>
       </div>
 
-      {/* Loading state */}
       {presenter.isLoading && (
         <div
           className="flex min-h-48 items-center justify-center gap-2 rounded-2xl border border-[#e1e5e9] bg-white py-12 text-sm text-gray-500"
@@ -93,7 +148,6 @@ export function RecentDocumentsView({ presenter }: RecentDocumentsViewProps): Re
         </div>
       )}
 
-      {/* Error state */}
       {presenter.isError && !presenter.isLoading && (
         <div className="flex min-h-48 flex-col items-center justify-center gap-3 rounded-2xl border border-[#e1e5e9] bg-white py-12">
           <p className="text-sm text-rose-600">Gagal memuat dokumen.</p>
@@ -107,20 +161,18 @@ export function RecentDocumentsView({ presenter }: RecentDocumentsViewProps): Re
         </div>
       )}
 
-      {/* Empty state */}
       {presenter.isEmpty && (
         <p className="flex min-h-48 items-center justify-center rounded-2xl border border-[#e1e5e9] bg-white px-4 py-12 text-center text-sm text-gray-500">
           {emptyMessage}
         </p>
       )}
 
-      {/* Document list */}
       {hasItems && (
         <ul aria-label="Daftar dokumen" className="space-y-1.5">
           {presenter.items.map((item) => (
             <li
               key={item.id}
-              className="grid min-h-[4.5rem] grid-cols-[1.25rem_minmax(0,1fr)] items-center gap-x-5 rounded-2xl border border-[#e1e5e9] bg-white px-5 py-3 md:grid-cols-[1.25rem_minmax(0,1fr)_minmax(10rem,auto)_minmax(6rem,auto)] md:px-8"
+              className="grid min-h-[4.5rem] grid-cols-[1.25rem_minmax(0,1fr)] items-center gap-x-5 rounded-2xl border border-[#e1e5e9] bg-white px-5 py-3 md:grid-cols-[1.25rem_minmax(0,1.2fr)_minmax(0,1.5fr)_minmax(8rem,auto)_minmax(6rem,auto)] md:px-8"
             >
               <input
                 type="checkbox"
@@ -134,6 +186,10 @@ export function RecentDocumentsView({ presenter }: RecentDocumentsViewProps): Re
                 <p className="mt-1 text-xs text-gray-500 md:hidden">
                   {item.statusLabel} · {item.dateLabel}
                 </p>
+              </div>
+
+              <div className="col-start-2 mt-1 flex flex-wrap items-center gap-1.5 md:col-start-auto md:mt-0">
+                <DocumentSmartTags state={item.smartTags} status={item.processingStatus} />
               </div>
 
               <p className="hidden text-sm font-medium text-[#535a63] md:block">
