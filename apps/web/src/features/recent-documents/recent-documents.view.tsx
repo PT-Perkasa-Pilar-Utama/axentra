@@ -2,6 +2,7 @@ import type React from "react";
 import type {
   RecentDocumentsPresenter,
   DocumentSmartTagsState,
+  RecentDocumentItem,
 } from "./recent-documents.presenter";
 
 const emptyMessage = "Tidak ada hasil yang ditemukan";
@@ -40,18 +41,18 @@ function ChevronRightIcon(): React.JSX.Element {
   );
 }
 
-function DocumentSmartTags({
-  state,
-  status,
-}: {
+// Resolusi F17: Deklarasi tipe bernama secara eksplisit
+export type DocumentSmartTagsProps = {
   state: DocumentSmartTagsState;
-  status: string;
-}): React.JSX.Element | null {
+  status: RecentDocumentItem["processingStatus"];
+};
+
+function DocumentSmartTags({ state, status }: DocumentSmartTagsProps): React.JSX.Element | null {
   if (status !== "completed") return null;
 
   if (state.isLoading) {
     return (
-      <div className="hidden flex-wrap items-center gap-1.5 md:flex">
+      <div className="flex flex-wrap items-center gap-1.5">
         <div className="h-5 w-16 animate-pulse rounded-full bg-blue-100" />
       </div>
     );
@@ -59,12 +60,12 @@ function DocumentSmartTags({
 
   if (state.isError) {
     return (
-      <div className="hidden items-center gap-2 md:flex">
+      <div className="flex items-center gap-2">
         <span className="text-xs text-rose-500">Gagal memuat tag</span>
         <button
           type="button"
           onClick={() => state.retry()}
-          className="text-xs text-rose-700 underline hover:text-rose-800 focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500 rounded"
+          className="rounded text-xs text-rose-700 underline hover:text-rose-800 focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500"
         >
           Coba lagi
         </button>
@@ -74,14 +75,14 @@ function DocumentSmartTags({
 
   if (state.isEmpty) {
     return (
-      <div className="hidden items-center md:flex">
+      <div className="flex items-center">
         <span className="text-xs text-gray-400">Tidak ada tag</span>
       </div>
     );
   }
 
   return (
-    <div className="hidden flex-wrap items-center gap-1.5 md:flex">
+    <div className="flex flex-wrap items-center gap-1.5">
       {state.tags.slice(0, 3).map((tag) => (
         <span
           key={tag.id}
@@ -109,7 +110,7 @@ export function RecentDocumentsView({ presenter }: RecentDocumentsViewProps): Re
           <button
             type="button"
             disabled
-            title="Fitur navigasi halaman belum tersedia" // Resolusi F14
+            title="Fitur navigasi halaman belum tersedia"
             aria-label="Halaman sebelumnya"
             className="rounded p-1 text-gray-400 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
           >
@@ -124,7 +125,7 @@ export function RecentDocumentsView({ presenter }: RecentDocumentsViewProps): Re
           <button
             type="button"
             disabled
-            title="Fitur navigasi halaman belum tersedia" // Resolusi F14
+            title="Fitur navigasi halaman belum tersedia"
             aria-label="Halaman berikutnya"
             className="rounded p-1 text-[#65a448] hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
           >
@@ -187,7 +188,9 @@ export function RecentDocumentsView({ presenter }: RecentDocumentsViewProps): Re
                 </p>
               </div>
 
-              <DocumentSmartTags state={item.smartTags} status={item.processingStatus} />
+              <div className="col-start-2 mt-1 flex flex-wrap items-center gap-1.5 md:col-start-auto md:mt-0">
+                <DocumentSmartTags state={item.smartTags} status={item.processingStatus} />
+              </div>
 
               <p className="hidden text-sm font-medium text-[#535a63] md:block">
                 {item.statusLabel}
