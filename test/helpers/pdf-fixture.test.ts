@@ -131,4 +131,32 @@ describe("Conforming PDF Fixture Helper (Finding F16)", () => {
       "Malformed metadata Info object 5",
     );
   });
+
+  it("correctly parses byte offsets and validates fixtures containing multibyte UTF-8 characters (Finding F20)", () => {
+    const multibyteAuthor = "Müller & François — Lead Auditor";
+    const multibyteTitle = "Rekapitulasi © 2026 — Laporan Keuangan";
+    const multibyteBody =
+      "Dokumen uji dengan karakter multibyte UTF-8: — © 日本語 🎉 dan aksen Bahasa Indonesia.";
+
+    const pdfString = buildConformingPdf({
+      author: multibyteAuthor,
+      title: multibyteTitle,
+      bodyText: multibyteBody,
+    });
+
+    // 1. Validate when passed as a string
+    const resultFromString = validateConformingPdf(pdfString);
+    expect(resultFromString.objectCount).toBe(6);
+    expect(resultFromString.startXrefOffset).toBeGreaterThan(0);
+    expect(resultFromString.info?.author).toBe(multibyteAuthor);
+    expect(resultFromString.info?.title).toBe(multibyteTitle);
+
+    // 2. Validate when passed as Uint8Array bytes
+    const pdfBytes = Buffer.from(pdfString, "utf-8");
+    const resultFromBytes = validateConformingPdf(pdfBytes);
+    expect(resultFromBytes.objectCount).toBe(6);
+    expect(resultFromBytes.startXrefOffset).toBe(resultFromString.startXrefOffset);
+    expect(resultFromBytes.info?.author).toBe(multibyteAuthor);
+    expect(resultFromBytes.info?.title).toBe(multibyteTitle);
+  });
 });

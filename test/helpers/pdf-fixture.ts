@@ -123,25 +123,32 @@ export function validateConformingPdf(pdfContent: string | Uint8Array): Validate
   const buf =
     typeof pdfContent === "string" ? Buffer.from(pdfContent, "utf-8") : Buffer.from(pdfContent);
 
-  const rawString = buf.toString("utf-8");
-
-  // 1. Strict header check: must begin with %PDF-1.4 (Finding F17)
-  if (!rawString.startsWith("%PDF-1.4\n") && !rawString.startsWith("%PDF-1.4\r\n")) {
+  // 1. Strict header check: must begin with %PDF-1.4 (Finding F17 & F20)
+  const headerStr = buf.subarray(0, 10).toString("utf-8");
+  if (!headerStr.startsWith("%PDF-1.4\n") && !headerStr.startsWith("%PDF-1.4\r\n")) {
     throw new Error(
-      `Invalid PDF header: expected '%PDF-1.4', got '${rawString.slice(0, 10).trim()}'`,
+      `Invalid PDF header: expected '%PDF-1.4', got '${headerStr.slice(0, 10).trim()}'`,
     );
   }
 
-  // 2. Strict EOF check: startxref and %%EOF must be anchored to the end of the file (Finding F17)
-  const eofMatch = rawString.match(/startxref\r?\n(\d+)\r?\n%%EOF\r?\n?$/);
+  // 2. Strict EOF check: startxref and %%EOF must be anchored to the end of the file (Finding F17 & F20)
+  const eofMarker = Buffer.from("%%EOF");
+  const lastEofIndex = buf.lastIndexOf(eofMarker);
+  if (lastEofIndex === -1) {
+    throw new Error("Missing or malformed startxref / %%EOF (must terminate at end of file)");
+  }
+
+  const trailingBytes = buf.subarray(lastEofIndex + eofMarker.length);
+  const trailingStr = trailingBytes.toString("utf-8");
+  if (trailingStr !== "" && trailingStr !== "\n" && trailingStr !== "\r\n") {
+    throw new Error("File contains unexpected trailing bytes after %%EOF marker");
+  }
+
+  // Parse startxref offset preceding %%EOF using byte-level tail slicing
+  const tailStart = Math.max(0, lastEofIndex - 256);
+  const tailRegion = buf.subarray(tailStart, lastEofIndex + eofMarker.length).toString("utf-8");
+  const eofMatch = tailRegion.match(/startxref\r?\n(\d+)\r?\n%%EOF$/);
   if (!eofMatch || eofMatch[1] === undefined) {
-    if (rawString.includes("%%EOF")) {
-      const eofIndex = rawString.lastIndexOf("%%EOF");
-      const trailingBytes = rawString.slice(eofIndex + 5);
-      if (trailingBytes.replace(/^\r?\n/, "").length > 0) {
-        throw new Error("File contains unexpected trailing bytes after %%EOF marker");
-      }
-    }
     throw new Error("Missing or malformed startxref / %%EOF (must terminate at end of file)");
   }
 
@@ -155,14 +162,15 @@ export function validateConformingPdf(pdfContent: string | Uint8Array): Validate
     throw new Error(`Expected 'xref\\n' at offset ${startXref}, got '${xrefHeader}'`);
   }
 
-  const xrefSection = rawString.slice(startXref);
+  const xrefSection = buf.subarray(startXref).toString("utf-8");
   const countMatch = xrefSection.match(/^xref\r?\n0 (\d+)\r?\n/);
   if (!countMatch || countMatch[1] === undefined) {
     throw new Error("Missing or malformed xref subsection '0 <count>'");
   }
 
   const count = parseInt(countMatch[1], 10);
-  const headerLen = Buffer.byteLength(`xref\n0 ${count}\n`, "utf-8");
+  const headerMatch = xrefSection.match(/^xref\r?\n0 \d+\r?\n/);
+  const headerLen = headerMatch ? Buffer.byteLength(headerMatch[0], "utf-8") : 0;
   const entriesStart = startXref + headerLen;
 
   const objectOffsets = new Map<number, number>();
@@ -199,8 +207,8 @@ export function validateConformingPdf(pdfContent: string | Uint8Array): Validate
     }
   }
 
-  // 3. Trailer dictionary inspection & metadata verification (Finding F17)
-  const trailerRegion = rawString.slice(entriesStart + count * 20);
+  // 3. Trailer dictionary inspection & metadata verification (Finding F17 & F20)
+  const trailerRegion = buf.subarray(entriesStart + count * 20).toString("utf-8");
   const trailerMatch = trailerRegion.match(/trailer\r?\n<<([\s\S]*?)>>\r?\nstartxref/);
   if (!trailerMatch || trailerMatch[1] === undefined) {
     throw new Error("Missing or malformed trailer dictionary between xref table and startxref");
@@ -228,7 +236,7 @@ export function validateConformingPdf(pdfContent: string | Uint8Array): Validate
     throw new Error(`Trailer /Root points to non-existent object ${rootObjNum}`);
   }
 
-  // Inspect optional /Info metadata object in trailer (Finding F17)
+  // Inspect optional /Info metadata object in trailer (Finding F17 & F20)
   let infoMetadata: ValidatedPdfMetadata | undefined;
   const infoMatch = trailerContent.match(/\/Info\s+(\d+)\s+0\s+R/);
   if (infoMatch && infoMatch[1] !== undefined) {
@@ -238,7 +246,9 @@ export function validateConformingPdf(pdfContent: string | Uint8Array): Validate
       throw new Error(`Trailer /Info references object ${infoObjNum} which is not in xref table`);
     }
 
-    const objSlice = rawString.slice(infoOffset, infoOffset + 500);
+    const objSlice = buf
+      .subarray(infoOffset, Math.min(buf.length, infoOffset + 1024))
+      .toString("utf-8");
     const infoObjMatch = objSlice.match(
       new RegExp(`^${infoObjNum} 0 obj\\r?\\n<<([\\s\\S]*?)>>\\r?\\nendobj`),
     );
