@@ -4,6 +4,10 @@ import { useQuery } from "@tanstack/react-query";
 import { getTopTags } from "./top-tags.api";
 import type { TopTagsContext } from "./top-tags.api";
 
+// TODO(FE-S2-04): Wire useTopTagsPresenter with context="search" and the current
+// search-result documentIds inside the search results page. The presenter and API
+// already accept documentIds for this purpose; the caller site belongs in the
+// search feature introduced by FE-S2-04 (AC-04.01 search-results context).
 export const TOP_TAGS_QUERY_KEY = ["top-tags"] as const;
 
 export type TopTagItem = {

@@ -89,7 +89,6 @@ export function useDocumentUploadPresenter(
         const result = await uploadFn(files);
         dispatch({ type: "UPLOAD_SUCCEEDED", result });
         onSuccess?.(result);
-
         await queryClient.invalidateQueries({ queryKey: [...RECENT_DOCUMENTS_QUERY_KEY] });
       } catch (error) {
         dispatch({ type: "UPLOAD_FAILED", error });
@@ -97,7 +96,6 @@ export function useDocumentUploadPresenter(
     },
     [uploadFn, onSuccess, dispatch, queryClient],
   );
-
   const retry = useCallback(async (): Promise<void> => {
     if (!isRecoverableStatus(state.status as UploadStatus) || state.pendingFiles.length === 0)
       return;

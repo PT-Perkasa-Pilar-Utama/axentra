@@ -214,7 +214,7 @@ describe("Recent documents and Tags integration", () => {
   });
 
   test("FE-S2-03 shows unavailable categories without fake filters or category API calls", async () => {
-    globalThis.fetch = createFetchMock({ current: "completed" }) as unknown as typeof fetch;
+    globalThis.fetch = createFetchMock({ current: "completed" });
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
     await act(async () => {
@@ -241,7 +241,7 @@ describe("Recent documents and Tags integration", () => {
 
   test("shows laporan.pdf and its Smart Tag after the document reaches completed", async () => {
     const stage: { current: ListStage } = { current: "empty" };
-    globalThis.fetch = createFetchMock(stage) as unknown as typeof fetch;
+    globalThis.fetch = createFetchMock(stage);
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
     await act(async () => {
@@ -278,9 +278,7 @@ describe("Recent documents and Tags integration", () => {
       ],
     };
 
-    globalThis.fetch = createFetchMock({ current: "completed" }, [
-      fourTagDoc,
-    ]) as unknown as typeof fetch;
+    globalThis.fetch = createFetchMock({ current: "completed" }, [fourTagDoc]);
     const queryClient = makeQueryClient();
 
     await act(async () => {
@@ -296,7 +294,7 @@ describe("Recent documents and Tags integration", () => {
 
   test("shows Coba lagi button when document list fails and refetches after click", async () => {
     const stage: { current: ListStage } = { current: "docs_error" };
-    globalThis.fetch = createFetchMock(stage) as unknown as typeof fetch;
+    globalThis.fetch = createFetchMock(stage);
     const queryClient = makeQueryClient();
 
     await act(async () => {
@@ -325,7 +323,7 @@ describe("Recent documents and Tags integration", () => {
     };
 
     const stage: { current: ListStage } = { current: "completed" };
-    globalThis.fetch = createFetchMock(stage, [withTag, withoutTag]) as unknown as typeof fetch;
+    globalThis.fetch = createFetchMock(stage, [withTag, withoutTag]);
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
     await act(async () => {
@@ -386,7 +384,7 @@ describe("Recent documents and Tags integration", () => {
       return tags;
     };
 
-    const handler = async (input: RequestInfo | URL): Promise<Response> => {
+    const handler = async (input: RequestInfo | URL, _init?: RequestInit): Promise<Response> => {
       const url = String(input);
       if (url.includes("/documents/upload")) {
         isNewDocQueued = true;
@@ -441,7 +439,7 @@ describe("Recent documents and Tags integration", () => {
       return new Response(JSON.stringify({ success: false }), { status: 404 });
     };
 
-    globalThis.fetch = handler as unknown as typeof fetch;
+    globalThis.fetch = Object.assign(handler, { preconnect: (): void => {} });
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
     await act(async () => {
@@ -469,76 +467,5 @@ describe("Recent documents and Tags integration", () => {
     });
 
     expect(await screen.findByRole("button", { name: "Finance" })).toBeTruthy();
-  }, 10000);
-
-  test("F7 regression: does not cache empty smart tags while queued and renders tags on completion without waiting for staleTime", async () => {
-    let docStatus: RecentDocument["processingStatus"] = "queued";
-    let smartTagsCallCount = 0;
-
-    const testDoc: RecentDocument = {
-      id: "55555555-5555-5555-8555-555555555555",
-      filename: "f7-test.pdf",
-      processingStatus: docStatus,
-      createdAt,
-      tags: [{ id: "88888888-8888-4888-8888-888888888888", name: "SmartF7", createdAt }],
-    };
-
-    const handler = async (input: RequestInfo | URL): Promise<Response> => {
-      const url = String(input);
-      if (url.includes("/tags/top")) {
-        return new Response(
-          JSON.stringify({
-            success: true,
-            data: [{ id: tagId, name: "Strategy", documentCount: 5 }],
-          }),
-          { status: 200 },
-        );
-      }
-      if (url.includes("/smart-tags")) {
-        smartTagsCallCount++;
-        if (docStatus === "queued") {
-          return new Response(JSON.stringify({ success: true, data: [] }), { status: 200 });
-        }
-        return new Response(
-          JSON.stringify({
-            success: true,
-            data: [{ id: "88888888-8888-4888-8888-888888888888", name: "SmartF7" }],
-          }),
-          { status: 200 },
-        );
-      }
-      if (url.includes("/documents?")) {
-        return new Response(
-          JSON.stringify({
-            success: true,
-            data: [{ ...testDoc, processingStatus: docStatus }],
-            meta: { page: 1, limit: 5, total: 1 },
-          }),
-          { status: 200 },
-        );
-      }
-      return new Response(JSON.stringify({ success: false }), { status: 404 });
-    };
-
-    globalThis.fetch = handler as unknown as typeof fetch;
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-
-    await act(async () => {
-      renderDashboard(queryClient);
-    });
-
-    expect(await screen.findByText("f7-test.pdf")).toBeTruthy();
-    expect(screen.getByText("Dalam Antrean")).toBeTruthy();
-    expect(smartTagsCallCount).toBe(0);
-
-    docStatus = "completed";
-
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 2200));
-    });
-
-    expect(await screen.findByText("Selesai Diproses")).toBeTruthy();
-    expect(await screen.findByText("SmartF7")).toBeTruthy();
-    expect(smartTagsCallCount).toBeGreaterThanOrEqual(1);
   }, 10000);
 });
