@@ -1,9 +1,10 @@
-export type { DatabaseClient } from "./client";
+export type { DatabaseClient, VerifiedDatabaseConnection } from "./client";
 export {
   checkDatabase,
   closeDatabase,
   createDatabaseClient,
   getVerifiedDatabaseConnection,
+  registerVerifiedDatabaseConnection,
 } from "./client";
 export { runMigrations } from "./migrations";
 export * from "./schema";

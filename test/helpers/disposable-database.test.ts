@@ -8,11 +8,104 @@ import {
   sanitizeCredentials,
   sanitizeDatabaseUrl,
 } from "./disposable-database";
+import type { CleanupDatabaseClient, CleanupTransaction } from "./disposable-database";
 import { formatSanitizedError } from "../../infra/local/prepare-test-db";
-import type { DatabaseClient } from "@axentra/db";
-import { closeDatabase, createDatabaseClient } from "@axentra/db";
+import {
+  closeDatabase,
+  createDatabaseClient,
+  registerVerifiedDatabaseConnection,
+} from "@axentra/db";
 import { categories, categoryDownloadPermissions } from "@axentra/db";
 import { eq } from "drizzle-orm";
+
+const runIntegrationTests = Bun.env.RUN_INTEGRATION_TESTS === "1";
+const integrationTest = runIntegrationTests ? it : it.skip;
+
+type MockCleanupClientOptions = {
+  database?: string;
+  host?: string | readonly string[];
+  port?: number | readonly number[];
+  selectDocs?: readonly { id: string }[];
+  skipVerifiedBinding?: boolean;
+  onSelect?: () => Promise<readonly { id: string }[]>;
+  onDelete?: (table: unknown) => Promise<unknown>;
+  onTransaction?: (tx: CleanupTransaction) => Promise<unknown>;
+};
+
+/**
+ * Creates a strongly typed mock client satisfying CleanupDatabaseClient without unsafe casts (Finding F25).
+ */
+function createMockCleanupClient(options: MockCleanupClientOptions = {}): CleanupDatabaseClient {
+  const dbName = options.database ?? "axentra_test";
+  const hostVal = options.host ?? ["localhost"];
+  const portVal = options.port ?? [5432];
+
+  const hostsList = Object.freeze(
+    (Array.isArray(hostVal) ? hostVal : [hostVal]).map((h) => h.toLowerCase()),
+  );
+  const portsList = Object.freeze((Array.isArray(portVal) ? portVal : [portVal]).map(Number));
+
+  const mockSql = {
+    options: {
+      database: dbName,
+      host: hostsList,
+      port: portsList,
+    },
+  };
+
+  const mockDb = {
+    select: (_fields: unknown) => ({
+      from: (_table: unknown) => ({
+        where: (_cond: unknown) => ({
+          limit: async (_limit: number): Promise<readonly { id: string }[]> => {
+            if (options.onSelect) {
+              return await options.onSelect();
+            }
+            return options.selectDocs ?? [];
+          },
+        }),
+      }),
+    }),
+    transaction: async <T>(cb: (tx: CleanupTransaction) => Promise<T>): Promise<T> => {
+      if (options.onTransaction) {
+        return (await options.onTransaction({
+          delete: (_table: unknown) => ({
+            where: async (_cond: unknown) => {
+              if (options.onDelete) {
+                return await options.onDelete(_table);
+              }
+              return [];
+            },
+          }),
+        })) as T;
+      }
+      return await cb({
+        delete: (_table: unknown) => ({
+          where: async (_cond: unknown) => {
+            if (options.onDelete) {
+              return await options.onDelete(_table);
+            }
+            return [];
+          },
+        }),
+      });
+    },
+  };
+
+  if (!options.skipVerifiedBinding) {
+    registerVerifiedDatabaseConnection(mockDb, {
+      sql: mockSql,
+      hosts: hostsList,
+      database: dbName,
+      ports: portsList,
+    });
+  }
+
+  return {
+    db: mockDb,
+    sql: mockSql,
+  };
+}
 
 describe("Disposable Database Safety Guard (Finding F1)", () => {
   it("rejects shared or local development database without explicit disposable authorization", () => {
@@ -134,22 +227,52 @@ describe("Credential Redaction and Error Sanitization (Finding F22)", () => {
     try {
       assertDisposableTestDatabase(sensitiveUrl);
     } catch (err) {
-      thrownError = err as Error;
+      if (err instanceof Error) {
+        thrownError = err;
+      }
     }
 
-    expect(thrownError).toBeInstanceOf(Error);
-    const message = (thrownError as Error).message;
+    expect(thrownError).toBeDefined();
+    if (!thrownError) {
+      throw new Error("Expected assertDisposableTestDatabase to throw an Error");
+    }
 
     // Credentials must NOT appear anywhere in the error message
-    expect(message).not.toContain("super_secret_user");
-    expect(message).not.toContain("super_secret_password_987");
+    expect(thrownError.message).not.toContain("super_secret_user");
+    expect(thrownError.message).not.toContain("super_secret_password_987");
 
     // Sanitized host and database name must be clearly displayed with safe rejection reason
-    expect(message).toContain("postgres://localhost:5432/axentra");
-    expect(message).toContain("persistent development database");
+    expect(thrownError.message).toContain("postgres://localhost:5432/axentra");
+    expect(thrownError.message).toContain("persistent development database");
   });
 
-  it("sanitizeDatabaseUrl redacts credentials from standard and encoded URLs", () => {
+  it("assertDisposableTestDatabase redacts secret query parameters (Finding F22)", () => {
+    const sensitiveQueryUrl =
+      "postgres://super_user:pass123@localhost:5432/axentra?password=query_secret_token&token=abc123xyz";
+
+    let thrownError: Error | undefined;
+    try {
+      assertDisposableTestDatabase(sensitiveQueryUrl);
+    } catch (err) {
+      if (err instanceof Error) {
+        thrownError = err;
+      }
+    }
+
+    expect(thrownError).toBeDefined();
+    if (!thrownError) {
+      throw new Error("Expected assertDisposableTestDatabase to throw an Error");
+    }
+
+    expect(thrownError.message).not.toContain("super_user");
+    expect(thrownError.message).not.toContain("pass123");
+    expect(thrownError.message).not.toContain("query_secret_token");
+    expect(thrownError.message).not.toContain("abc123xyz");
+    // Strict allowlist outputs only protocol://host:port/database without query parameters
+    expect(thrownError.message).toContain("postgres://localhost:5432/axentra");
+  });
+
+  it("sanitizeDatabaseUrl redacts credentials from standard, encoded, and query parameter URLs (Finding F22)", () => {
     expect(sanitizeDatabaseUrl("postgres://admin:secret123@localhost:5432/axentra_test")).toBe(
       "postgres://localhost:5432/axentra_test",
     );
@@ -158,31 +281,40 @@ describe("Credential Redaction and Error Sanitization (Finding F22)", () => {
       sanitizeDatabaseUrl("postgresql://user%40domain.com:p%40ssword@127.0.0.1:5432/test"),
     ).toBe("postgresql://127.0.0.1:5432/test");
 
+    // Query parameters containing passwords or secrets are stripped via allowlist
+    expect(
+      sanitizeDatabaseUrl(
+        "postgres://admin:secret123@localhost:5432/axentra_test?password=secret_query_val&sslmode=require",
+      ),
+    ).toBe("postgres://localhost:5432/axentra_test");
+
     expect(sanitizeDatabaseUrl("postgres://localhost:5432/axentra_test")).toBe(
       "postgres://localhost:5432/axentra_test",
     );
   });
 
-  it("sanitizeCredentials redacts connection credentials in log strings and stack traces", () => {
+  it("sanitizeCredentials redacts connection credentials in log strings and stack traces (Finding F22)", () => {
     const rawLog =
-      "[test-db] Failed to prepare test database: connect ECONNREFUSED postgres://admin_user:secret_pass_123@localhost:5432/axentra_test";
+      "[test-db] Failed to prepare test database: connect ECONNREFUSED postgres://admin_user:secret_pass_123@localhost:5432/axentra_test?password=query_secret_val&token=tok123";
     const sanitizedLog = sanitizeCredentials(rawLog);
 
     expect(sanitizedLog).not.toContain("admin_user");
     expect(sanitizedLog).not.toContain("secret_pass_123");
-    expect(sanitizedLog).toBe(
-      "[test-db] Failed to prepare test database: connect ECONNREFUSED postgres://localhost:5432/axentra_test",
-    );
+    expect(sanitizedLog).not.toContain("query_secret_val");
+    expect(sanitizedLog).not.toContain("tok123");
+    expect(sanitizedLog).toContain("password=***");
+    expect(sanitizedLog).toContain("token=***");
   });
 
-  it("formatSanitizedError in prepare-test-db redacts credentials from Error objects", () => {
+  it("formatSanitizedError in prepare-test-db redacts credentials from Error objects (Finding F22)", () => {
     const errorWithCredentials = new Error(
-      "Failed to connect to postgresql://db_user:db_password_xyz@localhost:5432/axentra",
+      "Failed to connect to postgresql://db_user:db_password_xyz@localhost:5432/axentra?password=leak_query_pw",
     );
     const formatted = formatSanitizedError(errorWithCredentials);
 
     expect(formatted).not.toContain("db_user");
     expect(formatted).not.toContain("db_password_xyz");
+    expect(formatted).not.toContain("leak_query_pw");
     expect(formatted).toContain("postgresql://localhost:5432/axentra");
   });
 
@@ -202,47 +334,43 @@ describe("Credential Redaction and Error Sanitization (Finding F22)", () => {
 });
 
 describe("Client Connection Binding Guard (Finding F21)", () => {
-  it("assertClientConnectedToDisposableDatabase rejects mismatched database client directly", () => {
+  it("fails closed when client has no verified connection binding (Finding F21)", async () => {
     const validTestUrl = "postgres://axentra:local-postgres-password@localhost:5432/axentra_test";
-    const mismatchedClient = {
-      sql: {
-        options: {
-          database: "axentra",
-          host: ["localhost"],
-        },
-      },
-      db: {},
-    } as unknown as DatabaseClient;
+
+    const unverifiedClient = createMockCleanupClient({ skipVerifiedBinding: true });
+
+    await expect(
+      safeCleanupTestCategories(unverifiedClient, ["cat-test-1"], {
+        databaseUrl: validTestUrl,
+      }),
+    ).rejects.toThrow("Safety guard violation: Database client has no verified connection binding");
+  });
+
+  it("assertClientConnectedToDisposableDatabase rejects mismatched database client directly (Finding F21)", () => {
+    const validTestUrl = "postgres://axentra:local-postgres-password@localhost:5432/axentra_test";
+    const mismatchedClient = createMockCleanupClient({ database: "axentra" });
 
     expect(() => assertClientConnectedToDisposableDatabase(mismatchedClient, validTestUrl)).toThrow(
       "Safety guard violation: Database client target mismatch",
     );
   });
 
-  it("rejects client when target database does not match the validated disposable database before query or write", async () => {
+  it("rejects client when target database does not match the validated disposable database before query or write (Finding F21)", async () => {
     const validTestUrl = "postgres://axentra:local-postgres-password@localhost:5432/axentra_test";
 
     const selectSpy = mock(async () => []);
     const deleteSpy = mock(async () => []);
-    const transactionSpy = mock(async (cb: (tx: unknown) => Promise<unknown>) =>
+    const transactionSpy = mock(async (cb: (tx: CleanupTransaction) => Promise<unknown>) =>
       cb({ delete: deleteSpy }),
     );
 
     // Client targeting persistent local database 'axentra' while URL targets 'axentra_test'
-    const mismatchedClient = {
-      sql: {
-        options: {
-          database: "axentra",
-          host: ["localhost"],
-          port: [5432],
-        },
-      },
-      db: {
-        select: selectSpy,
-        delete: deleteSpy,
-        transaction: transactionSpy,
-      },
-    } as unknown as DatabaseClient;
+    const mismatchedClient = createMockCleanupClient({
+      database: "axentra",
+      onSelect: selectSpy,
+      onDelete: deleteSpy,
+      onTransaction: transactionSpy,
+    });
 
     await expect(
       safeCleanupTestCategories(mismatchedClient, ["cat-test-1"], {
@@ -256,26 +384,17 @@ describe("Client Connection Binding Guard (Finding F21)", () => {
     expect(transactionSpy).not.toHaveBeenCalled();
   });
 
-  it("rejects client targeting another test database before query or write", async () => {
+  it("rejects client targeting another test database before query or write (Finding F21)", async () => {
     const validTestUrl = "postgres://axentra:local-postgres-password@localhost:5432/axentra_test";
 
     const selectSpy = mock(async () => []);
     const deleteSpy = mock(async () => []);
 
-    const mismatchedClient = {
-      sql: {
-        options: {
-          database: "different_test",
-          host: ["localhost"],
-          port: [5432],
-        },
-      },
-      db: {
-        select: selectSpy,
-        delete: deleteSpy,
-        transaction: async () => {},
-      },
-    } as unknown as DatabaseClient;
+    const mismatchedClient = createMockCleanupClient({
+      database: "different_test",
+      onSelect: selectSpy,
+      onDelete: deleteSpy,
+    });
 
     await expect(
       safeCleanupTestCategories(mismatchedClient, ["cat-test-1"], {
@@ -287,40 +406,50 @@ describe("Client Connection Binding Guard (Finding F21)", () => {
     expect(deleteSpy).not.toHaveBeenCalled();
   });
 
-  it("rejects client with unverified or missing connection options before query or write", async () => {
+  it("rejects client with different port before query or write (Finding F21)", async () => {
     const validTestUrl = "postgres://axentra:local-postgres-password@localhost:5432/axentra_test";
 
     const selectSpy = mock(async () => []);
-    const unverifiedClient = {
-      sql: {},
-      db: { select: selectSpy },
-    } as unknown as DatabaseClient;
+    const wrongPortClient = createMockCleanupClient({
+      port: 5433,
+      onSelect: selectSpy,
+    });
 
     await expect(
-      safeCleanupTestCategories(unverifiedClient, ["cat-test-1"], {
+      safeCleanupTestCategories(wrongPortClient, ["cat-test-1"], {
         databaseUrl: validTestUrl,
       }),
-    ).rejects.toThrow(
-      "Safety guard violation: Database client connection options could not be verified",
-    );
+    ).rejects.toThrow("Safety guard violation: Database client port mismatch");
 
     expect(selectSpy).not.toHaveBeenCalled();
   });
 
-  it("rejects client targeting non-local host before query or write", async () => {
+  it("rejects client with multi-host configuration before query or write (Finding F21)", async () => {
     const validTestUrl = "postgres://axentra:local-postgres-password@localhost:5432/axentra_test";
 
     const selectSpy = mock(async () => []);
-    const remoteClient = {
-      sql: {
-        options: {
-          database: "axentra_test",
-          host: ["remote-staging.company.internal"],
-          port: [5432],
-        },
-      },
-      db: { select: selectSpy },
-    } as unknown as DatabaseClient;
+    const multiHostClient = createMockCleanupClient({
+      host: ["localhost", "127.0.0.1"],
+      onSelect: selectSpy,
+    });
+
+    await expect(
+      safeCleanupTestCategories(multiHostClient, ["cat-test-1"], {
+        databaseUrl: validTestUrl,
+      }),
+    ).rejects.toThrow("Safety guard violation: Database client host mismatch");
+
+    expect(selectSpy).not.toHaveBeenCalled();
+  });
+
+  it("rejects client targeting non-local host before query or write (Finding F21)", async () => {
+    const validTestUrl = "postgres://axentra:local-postgres-password@localhost:5432/axentra_test";
+
+    const selectSpy = mock(async () => []);
+    const remoteClient = createMockCleanupClient({
+      host: ["remote-staging.company.internal"],
+      onSelect: selectSpy,
+    });
 
     await expect(
       safeCleanupTestCategories(remoteClient, ["cat-test-1"], {
@@ -340,39 +469,14 @@ describe("safeCleanupTestCategories Multi-Layer Guard & Atomic Cleanup (Findings
 
     let currentQueriedCat: string | null = null;
 
-    const mockDbClient = {
-      sql: {
-        options: {
-          database: "axentra_test",
-          host: ["localhost"],
-          port: [5432],
-        },
+    const mockClient = createMockCleanupClient({
+      onSelect: async () => {
+        if (currentQueriedCat === referencedCatId) {
+          return [{ id: "doc-foreign-1" }];
+        }
+        return [];
       },
-      db: {
-        select: (_fields: unknown) => ({
-          from: () => ({
-            where: (_cond: unknown) => ({
-              limit: async () => {
-                if (currentQueriedCat === referencedCatId) {
-                  return [{ id: "doc-foreign-1" }];
-                }
-                return [];
-              },
-            }),
-          }),
-        }),
-        transaction: async (cb: (tx: unknown) => Promise<unknown>) => {
-          return cb({
-            delete: (_table: unknown) => ({
-              where: async (_cond: unknown) => [],
-            }),
-          });
-        },
-        delete: (_table: unknown) => ({
-          where: async (_cond: unknown) => [],
-        }),
-      },
-    } as unknown as DatabaseClient;
+    });
 
     const preExistingSet = new Set([preExistingCatId]);
     const validDisposableUrl =
@@ -380,7 +484,7 @@ describe("safeCleanupTestCategories Multi-Layer Guard & Atomic Cleanup (Findings
 
     // 1. Referenced category is skipped
     currentQueriedCat = referencedCatId;
-    const resultReferenced = await safeCleanupTestCategories(mockDbClient, [referencedCatId], {
+    const resultReferenced = await safeCleanupTestCategories(mockClient, [referencedCatId], {
       databaseUrl: validDisposableUrl,
       preExistingCategoryIds: preExistingSet,
     });
@@ -388,7 +492,7 @@ describe("safeCleanupTestCategories Multi-Layer Guard & Atomic Cleanup (Findings
     expect(resultReferenced.deletedCategoryIds).not.toContain(referencedCatId);
 
     // 2. Pre-existing category is skipped immediately
-    const resultPreExisting = await safeCleanupTestCategories(mockDbClient, [preExistingCatId], {
+    const resultPreExisting = await safeCleanupTestCategories(mockClient, [preExistingCatId], {
       databaseUrl: validDisposableUrl,
       preExistingCategoryIds: preExistingSet,
     });
@@ -397,7 +501,7 @@ describe("safeCleanupTestCategories Multi-Layer Guard & Atomic Cleanup (Findings
 
     // 3. Truly safe test-only category with no referencing documents is deleted
     currentQueriedCat = safeCatId;
-    const resultSafe = await safeCleanupTestCategories(mockDbClient, [safeCatId], {
+    const resultSafe = await safeCleanupTestCategories(mockClient, [safeCatId], {
       databaseUrl: validDisposableUrl,
       preExistingCategoryIds: preExistingSet,
     });
@@ -406,26 +510,17 @@ describe("safeCleanupTestCategories Multi-Layer Guard & Atomic Cleanup (Findings
   });
 
   it("fails closed if databaseUrl is omitted or not validated as disposable (Round 3 F1)", async () => {
-    const mockDbClient = {
-      sql: {
-        options: {
-          database: "axentra_test",
-          host: ["localhost"],
-          port: [5432],
-        },
-      },
-      db: {},
-    } as unknown as DatabaseClient;
+    const mockClient = createMockCleanupClient();
 
     // 1. Omitted databaseUrl
     // @ts-expect-error runtime validation
-    await expect(safeCleanupTestCategories(mockDbClient, ["cat-1"], {})).rejects.toThrow(
+    await expect(safeCleanupTestCategories(mockClient, ["cat-1"], {})).rejects.toThrow(
       "Safety guard violation: safeCleanupTestCategories requires an explicit databaseUrl",
     );
 
     // 2. Persistent / non-disposable databaseUrl
     await expect(
-      safeCleanupTestCategories(mockDbClient, ["cat-1"], {
+      safeCleanupTestCategories(mockClient, ["cat-1"], {
         databaseUrl: "postgres://axentra:local-postgres-password@localhost:5432/axentra",
         env: {},
       }),
@@ -436,45 +531,24 @@ describe("safeCleanupTestCategories Multi-Layer Guard & Atomic Cleanup (Findings
     const deletedTables: string[] = [];
     let transactionInvoked = false;
 
-    const mockTx = {
-      delete: (table: unknown) => {
-        return {
-          where: async (_cond: unknown) => {
-            if (table === categoryDownloadPermissions) {
-              deletedTables.push("category_download_permissions");
-            } else if (table === categories) {
-              deletedTables.push("categories");
-            }
-            return [];
-          },
-        };
+    const mockClient = createMockCleanupClient({
+      onTransaction: async (tx: CleanupTransaction) => {
+        transactionInvoked = true;
+        await tx.delete(categoryDownloadPermissions).where({});
+        await tx.delete(categories).where({});
+        return [];
       },
-    };
+      onDelete: async (table: unknown) => {
+        if (table === categoryDownloadPermissions) {
+          deletedTables.push("category_download_permissions");
+        } else if (table === categories) {
+          deletedTables.push("categories");
+        }
+        return [];
+      },
+    });
 
-    const mockDbClient = {
-      sql: {
-        options: {
-          database: "axentra_test",
-          host: ["localhost"],
-          port: [5432],
-        },
-      },
-      db: {
-        select: (_fields: unknown) => ({
-          from: () => ({
-            where: () => ({
-              limit: async () => [], // No referencing documents
-            }),
-          }),
-        }),
-        transaction: async (cb: (tx: unknown) => Promise<unknown>) => {
-          transactionInvoked = true;
-          return cb(mockTx);
-        },
-      },
-    } as unknown as DatabaseClient;
-
-    const result = await safeCleanupTestCategories(mockDbClient, ["cat-atomic-1"], {
+    const result = await safeCleanupTestCategories(mockClient, ["cat-atomic-1"], {
       databaseUrl: "postgres://axentra:local-postgres-password@localhost:5432/axentra_test",
     });
 
@@ -487,53 +561,32 @@ describe("safeCleanupTestCategories Multi-Layer Guard & Atomic Cleanup (Findings
     let permissionsDeletedInTx = false;
     let transactionRolledBack = false;
 
-    const mockTx = {
-      delete: (table: unknown) => ({
-        where: async (_cond: unknown) => {
-          if (table === categoryDownloadPermissions) {
-            permissionsDeletedInTx = true;
-            return [];
-          }
-          if (table === categories) {
-            // Simulate failure during category deletion (e.g. FK constraint or DB error)
-            throw new Error("Simulated database failure during category deletion");
-          }
+    const mockClient = createMockCleanupClient({
+      onTransaction: async (tx: CleanupTransaction) => {
+        try {
+          await tx.delete(categoryDownloadPermissions).where({});
+          await tx.delete(categories).where({});
           return [];
-        },
-      }),
-    };
-
-    const mockDbClient = {
-      sql: {
-        options: {
-          database: "axentra_test",
-          host: ["localhost"],
-          port: [5432],
-        },
+        } catch (error) {
+          transactionRolledBack = true;
+          permissionsDeletedInTx = false;
+          throw error;
+        }
       },
-      db: {
-        select: (_fields: unknown) => ({
-          from: () => ({
-            where: () => ({
-              limit: async () => [],
-            }),
-          }),
-        }),
-        transaction: async (cb: (tx: unknown) => Promise<unknown>) => {
-          try {
-            return await cb(mockTx);
-          } catch (error) {
-            // In a real database transaction, any thrown error causes ROLLBACK
-            transactionRolledBack = true;
-            permissionsDeletedInTx = false;
-            throw error;
-          }
-        },
+      onDelete: async (table: unknown) => {
+        if (table === categoryDownloadPermissions) {
+          permissionsDeletedInTx = true;
+          return [];
+        }
+        if (table === categories) {
+          throw new Error("Simulated database failure during category deletion");
+        }
+        return [];
       },
-    } as unknown as DatabaseClient;
+    });
 
     await expect(
-      safeCleanupTestCategories(mockDbClient, ["cat-rollback-1"], {
+      safeCleanupTestCategories(mockClient, ["cat-rollback-1"], {
         databaseUrl: "postgres://axentra:local-postgres-password@localhost:5432/axentra_test",
       }),
     ).rejects.toThrow("Simulated database failure during category deletion");
@@ -543,110 +596,101 @@ describe("safeCleanupTestCategories Multi-Layer Guard & Atomic Cleanup (Findings
     expect(permissionsDeletedInTx).toBe(false);
   });
 
-  it("proves real PostgreSQL atomic transaction rollback when category deletion fails (Finding F23)", async () => {
-    // Run against real local test DB if available
-    const dbUrl = "postgres://axentra:local-postgres-password@localhost:5432/axentra_test";
-    let realClient: DatabaseClient | undefined;
-
-    try {
-      realClient = createDatabaseClient(dbUrl);
+  integrationTest(
+    "proves real PostgreSQL atomic transaction rollback when category deletion fails (Findings F23, F24)",
+    async () => {
+      const dbUrl = "postgres://axentra:local-postgres-password@localhost:5432/axentra_test";
+      const realClient = createDatabaseClient(dbUrl);
       (realClient.sql.options as { onnotice?: () => void }).onnotice = () => undefined;
-      await realClient.sql`SELECT 1`;
-    } catch {
-      // If PostgreSQL is not reachable in this environment, pass gracefully
-      return;
-    }
 
-    try {
-      const testCatId = "a0000000-0000-0000-0000-000000000001";
-      const testPermId = "b0000000-0000-0000-0000-000000000001";
+      // Unique resource names generated per test run (Finding F24)
+      const testCatId = crypto.randomUUID();
+      const testPermId = crypto.randomUUID();
+      const suffix = crypto.randomUUID().replace(/-/g, "").slice(0, 10);
+      const triggerFnName = `test_abort_cat_del_${suffix}`;
+      const triggerName = `trg_abort_cat_del_${suffix}`;
 
-      // 1. Clean up any existing records
-      await realClient.db
-        .delete(categoryDownloadPermissions)
-        .where(eq(categoryDownloadPermissions.categoryId, testCatId));
-      await realClient.db.delete(categories).where(eq(categories.id, testCatId));
-
-      // 2. Insert test category and permission record
-      await realClient.db.insert(categories).values({
-        id: testCatId,
-        name: "Atomic Test Category",
-        slug: "atomic-test-category",
-      });
-      await realClient.db.insert(categoryDownloadPermissions).values({
-        id: testPermId,
-        categoryId: testCatId,
-        downloadEnabled: true,
-      });
-
-      // Verify permission exists before cleanup
-      const [permBefore] = await realClient.db
-        .select()
-        .from(categoryDownloadPermissions)
-        .where(eq(categoryDownloadPermissions.categoryId, testCatId));
-      expect(permBefore).toBeDefined();
-
-      // 3. Create a BEFORE DELETE trigger on categories that aborts deletion
-      await realClient.sql.unsafe(
-        `CREATE OR REPLACE FUNCTION test_abort_cat_delete() RETURNS trigger AS $$
-         BEGIN
-           RAISE EXCEPTION 'Simulated trigger rejection on category delete';
-         END;
-         $$ LANGUAGE plpgsql;`,
-      );
-      await realClient.sql.unsafe(
-        `DROP TRIGGER IF EXISTS test_abort_cat_delete_trg ON categories;
-         CREATE TRIGGER test_abort_cat_delete_trg
-         BEFORE DELETE ON categories
-         FOR EACH ROW EXECUTE FUNCTION test_abort_cat_delete();`,
-      );
-
-      // 4. Attempt cleanup: tx deletes permission, then attempts to delete category, trigger fails!
-      let cleanupError: unknown;
       try {
+        // 1. Insert test category and permission record
+        await realClient.db.insert(categories).values({
+          id: testCatId,
+          name: `Atomic Test Category ${suffix}`,
+          slug: `atomic-test-category-${suffix}`,
+        });
+        await realClient.db.insert(categoryDownloadPermissions).values({
+          id: testPermId,
+          categoryId: testCatId,
+          downloadEnabled: true,
+        });
+
+        // Verify permission exists before cleanup
+        const [permBefore] = await realClient.db
+          .select()
+          .from(categoryDownloadPermissions)
+          .where(eq(categoryDownloadPermissions.categoryId, testCatId));
+        expect(permBefore).toBeDefined();
+
+        // 2. Create a BEFORE DELETE trigger on categories that aborts deletion
+        await realClient.sql.unsafe(
+          `CREATE OR REPLACE FUNCTION ${triggerFnName}() RETURNS trigger AS $$
+           BEGIN
+             RAISE EXCEPTION 'Simulated trigger rejection on category delete';
+           END;
+           $$ LANGUAGE plpgsql;`,
+        );
+        await realClient.sql.unsafe(
+          `DROP TRIGGER IF EXISTS ${triggerName} ON categories;
+           CREATE TRIGGER ${triggerName}
+           BEFORE DELETE ON categories
+           FOR EACH ROW EXECUTE FUNCTION ${triggerFnName}();`,
+        );
+
+        // 3. Attempt cleanup: tx deletes permission, then attempts to delete category, trigger fails!
+        let cleanupError: unknown;
+        try {
+          await safeCleanupTestCategories(realClient, [testCatId], {
+            databaseUrl: dbUrl,
+          });
+        } catch (err) {
+          cleanupError = err;
+        }
+
+        expect(cleanupError).toBeDefined();
+        expect(String(cleanupError)).toContain("categories");
+
+        // 4. PROOF OF ROLLBACK IN REAL DATABASE:
+        // The permission record was deleted first in the transaction, but rolled back when category deletion failed!
+        const [permAfter] = await realClient.db
+          .select()
+          .from(categoryDownloadPermissions)
+          .where(eq(categoryDownloadPermissions.categoryId, testCatId));
+        expect(permAfter).toBeDefined();
+        expect(permAfter?.id).toBe(testPermId);
+
+        // 5. Tear down trigger
+        await realClient.sql.unsafe(`DROP TRIGGER IF EXISTS ${triggerName} ON categories;`);
+        await realClient.sql.unsafe(`DROP FUNCTION IF EXISTS ${triggerFnName}();`);
+
+        // 6. Cleanup after trigger dropped
         await safeCleanupTestCategories(realClient, [testCatId], {
           databaseUrl: dbUrl,
         });
-      } catch (err) {
-        cleanupError = err;
-      }
 
-      expect(cleanupError).toBeDefined();
-      expect(String(cleanupError)).toContain("categories");
-
-      // 5. PROOF OF ROLLBACK IN REAL DATABASE:
-      // The permission record was deleted first in the transaction, but rolled back when category deletion failed!
-      const [permAfter] = await realClient.db
-        .select()
-        .from(categoryDownloadPermissions)
-        .where(eq(categoryDownloadPermissions.categoryId, testCatId));
-      expect(permAfter).toBeDefined();
-      expect(permAfter?.id).toBe(testPermId);
-
-      // 6. Tear down trigger
-      await realClient.sql.unsafe(
-        `DROP TRIGGER IF EXISTS test_abort_cat_delete_trg ON categories;`,
-      );
-      await realClient.sql.unsafe(`DROP FUNCTION IF EXISTS test_abort_cat_delete();`);
-
-      // 7. Cleanup after trigger dropped
-      await safeCleanupTestCategories(realClient, [testCatId], {
-        databaseUrl: dbUrl,
-      });
-
-      const [permFinal] = await realClient.db
-        .select()
-        .from(categoryDownloadPermissions)
-        .where(eq(categoryDownloadPermissions.categoryId, testCatId));
-      expect(permFinal).toBeUndefined();
-    } finally {
-      if (realClient) {
-        await realClient.sql.unsafe(
-          `DROP TRIGGER IF EXISTS test_abort_cat_delete_trg ON categories;`,
-        );
-        await realClient.sql.unsafe(`DROP FUNCTION IF EXISTS test_abort_cat_delete();`);
+        const [permFinal] = await realClient.db
+          .select()
+          .from(categoryDownloadPermissions)
+          .where(eq(categoryDownloadPermissions.categoryId, testCatId));
+        expect(permFinal).toBeUndefined();
+      } finally {
+        // Clean up only the resources created by this test (Finding F24)
+        await realClient.sql.unsafe(`DROP TRIGGER IF EXISTS ${triggerName} ON categories;`);
+        await realClient.sql.unsafe(`DROP FUNCTION IF EXISTS ${triggerFnName}();`);
+        await realClient.db
+          .delete(categoryDownloadPermissions)
+          .where(eq(categoryDownloadPermissions.categoryId, testCatId));
+        await realClient.db.delete(categories).where(eq(categories.id, testCatId));
         await closeDatabase(realClient);
       }
-    }
-  });
+    },
+  );
 });

@@ -1,101 +1,16 @@
-import type { DatabaseClient } from "@axentra/db";
 import { getVerifiedDatabaseConnection } from "@axentra/db";
+import {
+  ALLOWED_LOCAL_TEST_HOSTS,
+  getDisposableDatabaseRejectionReason,
+  sanitizeDatabaseUrl,
+} from "./database-sanitizer";
 
-export const ALLOWED_LOCAL_TEST_HOSTS = new Set([
-  "localhost",
-  "127.0.0.1",
-  "::1",
-  "host.docker.internal",
-  "postgres",
-]);
-
-/**
- * Strips username and password credentials from a database URL for safe error messages and logging (Finding F22).
- *
- * Example:
- * 'postgres://axentra:local-postgres-password@localhost:5432/axentra_test'
- * -> 'postgres://localhost:5432/axentra_test'
- */
-export function sanitizeDatabaseUrl(databaseUrl: string): string {
-  if (typeof databaseUrl !== "string" || databaseUrl.trim().length === 0) {
-    return "<empty-url>";
-  }
-  try {
-    const parsed = new URL(databaseUrl);
-    parsed.username = "";
-    parsed.password = "";
-    return parsed.toString();
-  } catch {
-    return sanitizeCredentials(databaseUrl);
-  }
-}
-
-/**
- * Redacts database credentials (username and password) embedded in any connection URL or log string (Finding F22).
- */
-export function sanitizeCredentials(text: string): string {
-  if (typeof text !== "string") {
-    return "";
-  }
-  return text.replace(
-    /((?:postgres|postgresql):\/\/)[^/@\s:]+(:[^/@\s]*)?@/gi,
-    (_match, proto) => proto,
-  );
-}
-
-/**
- * Returns a safe, human-readable reason why a database URL was rejected by the disposable database guard,
- * without exposing sensitive credentials (Finding F22).
- */
-export function getDisposableDatabaseRejectionReason(databaseUrl: string): string {
-  try {
-    const parsed = new URL(databaseUrl);
-
-    if (parsed.protocol !== "postgres:" && parsed.protocol !== "postgresql:") {
-      return `unsupported protocol '${parsed.protocol}' (must be postgres: or postgresql:)`;
-    }
-
-    if (parsed.searchParams.has("host")) {
-      return "host query parameter is forbidden";
-    }
-
-    const rawHost = parsed.hostname.toLowerCase();
-    const normalizedHost = rawHost.replace(/^\[|\]$/g, "");
-    if (!ALLOWED_LOCAL_TEST_HOSTS.has(normalizedHost)) {
-      return `host '${normalizedHost}' is not in allowed local test hosts (${Array.from(ALLOWED_LOCAL_TEST_HOSTS).join(", ")})`;
-    }
-
-    const dbName = parsed.pathname.replace(/^\//, "");
-    const lowerDbName = dbName.toLowerCase();
-
-    if (lowerDbName.includes("prod") || lowerDbName === "production") {
-      return `database name '${dbName}' indicates a production database`;
-    }
-
-    if (
-      lowerDbName === "axentra" ||
-      lowerDbName === "axentra_dev" ||
-      lowerDbName === "development" ||
-      lowerDbName === "dev"
-    ) {
-      return `database name '${dbName}' is a persistent development database`;
-    }
-
-    const isExplicitTestDbName =
-      dbName === "test" ||
-      dbName.endsWith("_test") ||
-      dbName.endsWith("_disposable") ||
-      dbName.startsWith("test_");
-
-    if (!isExplicitTestDbName) {
-      return `database name '${dbName}' does not have an explicit test suffix or prefix (*_test, *_disposable, test_*)`;
-    }
-
-    return "unknown validation failure";
-  } catch {
-    return "malformed database URL";
-  }
-}
+export {
+  ALLOWED_LOCAL_TEST_HOSTS,
+  getDisposableDatabaseRejectionReason,
+  sanitizeCredentials,
+  sanitizeDatabaseUrl,
+} from "./database-sanitizer";
 
 /**
  * Helper to validate that a database URL and environment represent an explicitly
@@ -175,14 +90,49 @@ export function assertDisposableTestDatabase(
 }
 
 /**
- * Validates that the provided DatabaseClient instance is verified and strictly connected to the
- * same disposable test database and host that passed disposable validation (Finding F21).
+ * Narrow dependency type for atomic category cleanup (Finding F25).
+ * Avoids broad type casts in test doubles while guaranteeing necessary database contracts.
+ */
+export type CleanupTransaction = {
+  delete(table: unknown): {
+    where(condition: unknown): Promise<unknown>;
+  };
+};
+
+export type CleanupDatabaseClient = {
+  readonly db: {
+    select(fields: unknown): {
+      from(table: unknown): {
+        where(condition: unknown): {
+          limit(limit: number): Promise<readonly { id: string }[]>;
+        };
+      };
+    };
+    transaction<T>(callback: (tx: CleanupTransaction) => Promise<T>): Promise<T>;
+  };
+  readonly sql: {
+    readonly options: {
+      readonly database?: string;
+      readonly host?: string | readonly string[];
+      readonly port?: number | readonly number[];
+    };
+  };
+};
+
+/**
+ * Validates that the provided DatabaseClient instance is verified and strictly bound to the
+ * exact same disposable test database name, host, and port that passed disposable validation (Finding F21).
  *
- * Rejects any client that targets a different database (e.g. persistent 'axentra') or remote host
- * BEFORE ANY QUERY OR WRITE IS EXECUTED.
+ * Rules:
+ * 1. Fails closed if verified connection binding is absent.
+ * 2. Exactly matches database name (rejects persistent/production databases).
+ * 3. Exactly matches single host (rejects multi-host configurations and non-local hosts).
+ * 4. Exactly matches target port (rejects port mismatches).
+ *
+ * Rejects any client BEFORE ANY QUERY OR WRITE IS EXECUTED.
  */
 export function assertClientConnectedToDisposableDatabase(
-  database: DatabaseClient,
+  database: CleanupDatabaseClient,
   validatedDisposableUrl: string,
 ): void {
   if (
@@ -198,14 +148,21 @@ export function assertClientConnectedToDisposableDatabase(
     );
   }
 
-  const sqlCandidate = database.sql as {
-    options?: {
-      database?: string;
-      host?: string | string[];
-      port?: number | number[];
-    };
-  };
+  // Mandatory verified binding check (Finding F21) - Fail closed if not present
+  const verifiedConn = getVerifiedDatabaseConnection(database.db);
+  if (!verifiedConn) {
+    throw new Error(
+      "Safety guard violation: Database client has no verified connection binding. Cleanup refused before any query or write.",
+    );
+  }
 
+  if (verifiedConn.sql !== database.sql) {
+    throw new Error(
+      "Safety guard violation: Database client connection instance mismatch. Cleanup refused before any query or write.",
+    );
+  }
+
+  const sqlCandidate = database.sql;
   if (!sqlCandidate.options || typeof sqlCandidate.options !== "object") {
     throw new Error(
       "Safety guard violation: Database client connection options could not be verified. Cleanup refused before any query or write.",
@@ -213,75 +170,92 @@ export function assertClientConnectedToDisposableDatabase(
   }
 
   const parsedUrl = new URL(validatedDisposableUrl);
-  const expectedDbName = parsedUrl.pathname.replace(/^\//, "");
+  const expectedDbName = parsedUrl.pathname.replace(/^\//, "").toLowerCase();
   const expectedHost = parsedUrl.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  const expectedPort = parsedUrl.port ? Number(parsedUrl.port) : 5432;
 
-  const clientDb = sqlCandidate.options.database;
-  if (typeof clientDb !== "string" || clientDb.trim().length === 0) {
-    throw new Error(
-      "Safety guard violation: Database client does not specify a target database name. Cleanup refused before any query or write.",
-    );
-  }
-
-  // 1. Verify client target database matches the validated disposable URL database name
-  if (clientDb.toLowerCase() !== expectedDbName.toLowerCase()) {
+  // 1. Verify exact database name match
+  const verifiedDb = verifiedConn.database.trim().toLowerCase();
+  if (verifiedDb !== expectedDbName) {
     throw new Error(
       `Safety guard violation: Database client target mismatch. ` +
-        `The client is connected to database '${clientDb}', but the validated disposable URL targets '${expectedDbName}'. ` +
+        `The client is connected to database '${verifiedConn.database}', but the validated disposable URL targets '${expectedDbName}'. ` +
         `Cleanup refused before any query or write.`,
     );
   }
 
-  // 2. Verify client target database is itself a valid disposable test database name
-  const lowerClientDb = clientDb.toLowerCase();
+  const clientDb = (sqlCandidate.options.database ?? "").trim().toLowerCase();
+  if (clientDb !== expectedDbName) {
+    throw new Error(
+      `Safety guard violation: Database client options mismatch. ` +
+        `The client options specify database '${sqlCandidate.options.database}', but the validated disposable URL targets '${expectedDbName}'. ` +
+        `Cleanup refused before any query or write.`,
+    );
+  }
+
+  // 2. Verify client target database is not a persistent or production database
   if (
-    lowerClientDb.includes("prod") ||
-    lowerClientDb === "production" ||
-    lowerClientDb === "axentra" ||
-    lowerClientDb === "axentra_dev" ||
-    lowerClientDb === "development" ||
-    lowerClientDb === "dev"
+    verifiedDb.includes("prod") ||
+    verifiedDb === "production" ||
+    verifiedDb === "axentra" ||
+    verifiedDb === "axentra_dev" ||
+    verifiedDb === "development" ||
+    verifiedDb === "dev"
   ) {
     throw new Error(
-      `Safety guard violation: Database client is connected to persistent/production database '${clientDb}'. ` +
+      `Safety guard violation: Database client is connected to persistent/production database '${verifiedConn.database}'. ` +
         `Cleanup refused before any query or write.`,
     );
   }
 
-  // 3. Verify client target hosts match
+  // 3. Verify exact single host match (no multi-host configurations)
+  if (verifiedConn.hosts.length !== 1 || verifiedConn.hosts[0] !== expectedHost) {
+    throw new Error(
+      `Safety guard violation: Database client host mismatch. ` +
+        `The client is connected to host(s) [${verifiedConn.hosts.join(", ")}], but the validated disposable URL targets host '${expectedHost}'. ` +
+        `Cleanup refused before any query or write.`,
+    );
+  }
+
   const rawClientHost = sqlCandidate.options.host;
   const clientHosts = (Array.isArray(rawClientHost) ? rawClientHost : [rawClientHost])
     .filter((h): h is string => typeof h === "string")
     .map((h) => h.toLowerCase().replace(/^\[|\]$/g, ""));
 
-  if (clientHosts.length === 0) {
-    throw new Error(
-      "Safety guard violation: Database client does not specify a target host. Cleanup refused before any query or write.",
-    );
-  }
-
-  if (!clientHosts.includes(expectedHost)) {
+  if (clientHosts.length !== 1 || clientHosts[0] !== expectedHost) {
     throw new Error(
       `Safety guard violation: Database client host mismatch. ` +
-        `The client is connected to host(s) [${clientHosts.join(", ")}], but the validated disposable URL targets host '${expectedHost}'. ` +
+        `The client options specify host(s) [${clientHosts.join(", ")}], but the validated disposable URL targets host '${expectedHost}'. ` +
         `Cleanup refused before any query or write.`,
     );
   }
 
-  for (const host of clientHosts) {
-    if (!ALLOWED_LOCAL_TEST_HOSTS.has(host)) {
-      throw new Error(
-        `Safety guard violation: Database client host '${host}' is not in allowed local test hosts. ` +
-          `Cleanup refused before any query or write.`,
-      );
-    }
+  if (!ALLOWED_LOCAL_TEST_HOSTS.has(expectedHost)) {
+    throw new Error(
+      `Safety guard violation: Database client host '${expectedHost}' is not in allowed local test hosts. ` +
+        `Cleanup refused before any query or write.`,
+    );
   }
 
-  // 4. Verify weak-map connection integrity if client was created by createDatabaseClient
-  const verifiedConn = getVerifiedDatabaseConnection(database.db);
-  if (verifiedConn && verifiedConn.sql !== database.sql) {
+  // 4. Verify exact port match
+  if (verifiedConn.ports.length !== 1 || verifiedConn.ports[0] !== expectedPort) {
     throw new Error(
-      "Safety guard violation: Database client connection instance mismatch. Cleanup refused before any query or write.",
+      `Safety guard violation: Database client port mismatch. ` +
+        `The client is connected to port(s) [${verifiedConn.ports.join(", ")}], but the validated disposable URL targets port ${expectedPort}. ` +
+        `Cleanup refused before any query or write.`,
+    );
+  }
+
+  const rawClientPort = sqlCandidate.options.port;
+  const clientPorts = (Array.isArray(rawClientPort) ? rawClientPort : [rawClientPort]).filter(
+    (p): p is number => typeof p === "number",
+  );
+
+  if (clientPorts.length !== 1 || clientPorts[0] !== expectedPort) {
+    throw new Error(
+      `Safety guard violation: Database client port mismatch. ` +
+        `The client options specify port(s) [${clientPorts.join(", ")}], but the validated disposable URL targets port ${expectedPort}. ` +
+        `Cleanup refused before any query or write.`,
     );
   }
 }
@@ -302,8 +276,8 @@ export type SafeCleanupResult = {
  *
  * Guarantees that cleanup NEVER deletes categories that do not belong to the test:
  * 1. Fail-closed disposable database validation: Requires a verified disposable databaseUrl.
- * 2. Client connection binding guard (Finding F21): Verifies the database client is connected to
- *    the validated disposable target BEFORE ANY QUERY OR WRITE.
+ * 2. Client connection binding guard (Finding F21): Verifies the database client has an active
+ *    verified binding matching exact database name, host, and port BEFORE ANY QUERY OR WRITE.
  * 3. Deduplicates candidate category IDs actually inserted by the test worker.
  * 4. Excludes pre-existing category IDs captured at suite setup.
  * 5. Referential integrity guard: Verifies NO remaining documents in the database
@@ -313,7 +287,7 @@ export type SafeCleanupResult = {
  *    database transaction to prevent partial state on failure.
  */
 export async function safeCleanupTestCategories(
-  database: DatabaseClient,
+  database: CleanupDatabaseClient,
   candidateCategoryIds: string[],
   options: SafeCleanupOptions,
 ): Promise<SafeCleanupResult> {
