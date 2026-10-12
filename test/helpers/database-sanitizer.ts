@@ -30,7 +30,10 @@ export function sanitizeDatabaseUrl(databaseUrl: string): string {
     const dbName = parsed.pathname;
     return `${protocol}//${host}${port}${dbName}`;
   } catch {
-    return sanitizeCredentials(databaseUrl);
+    // Fail-closed fallback (Finding F22): completely strip query string and hash,
+    // then redact any remaining userinfo credentials
+    const withoutQueryOrFragment = databaseUrl.split(/[?#]/)[0] ?? "";
+    return sanitizeCredentials(withoutQueryOrFragment);
   }
 }
 
@@ -47,10 +50,10 @@ export function sanitizeCredentials(text: string): string {
     /((?:postgres|postgresql):\/\/)[^/@\s:]+(:[^/@\s]*)?@/gi,
     (_match, proto) => proto,
   );
-  // 2. Redact sensitive credentials in query parameters (e.g. ?password=..., &token=..., &secret=...) (Finding F22)
+  // 2. Redact sensitive credentials in query parameters (Finding F22: covers password, token, access_token, client_secret, etc.)
   sanitized = sanitized.replace(
-    /([?&](?:password|pass|pwd|secret|token|key|apiKey)=)[^&\s]+/gi,
-    "$1***",
+    /([?&](?:[\w.-]*(?:password|pass|pwd|secret|token|key|auth|cred)[\w.-]*)=)[^&\s]+/gi,
+    (_match, prefix) => `${prefix}***`,
   );
   return sanitized;
 }

@@ -25,13 +25,6 @@ export function getVerifiedDatabaseConnection(db: unknown): VerifiedDatabaseConn
   return verifiedDatabaseConnections.get(db);
 }
 
-export function registerVerifiedDatabaseConnection(
-  db: object,
-  connection: VerifiedDatabaseConnection,
-): void {
-  verifiedDatabaseConnections.set(db, connection);
-}
-
 export function createDatabaseClient(databaseUrl: string): DatabaseClient {
   const sql = postgres(databaseUrl, {
     max: 10,

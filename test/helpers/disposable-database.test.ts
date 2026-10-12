@@ -10,11 +10,7 @@ import {
 } from "./disposable-database";
 import type { CleanupDatabaseClient, CleanupTransaction } from "./disposable-database";
 import { formatSanitizedError } from "../../infra/local/prepare-test-db";
-import {
-  closeDatabase,
-  createDatabaseClient,
-  registerVerifiedDatabaseConnection,
-} from "@axentra/db";
+import { closeDatabase, createDatabaseClient } from "@axentra/db";
 import { categories, categoryDownloadPermissions } from "@axentra/db";
 import { eq } from "drizzle-orm";
 
@@ -29,32 +25,82 @@ type MockCleanupClientOptions = {
   skipVerifiedBinding?: boolean;
   onSelect?: () => Promise<readonly { id: string }[]>;
   onDelete?: (table: unknown) => Promise<unknown>;
-  onTransaction?: (tx: CleanupTransaction) => Promise<unknown>;
+  onTransaction?: (tx: CleanupTransaction) => Promise<void> | void;
+  onRollback?: (error: unknown) => void;
 };
 
 /**
  * Creates a strongly typed mock client satisfying CleanupDatabaseClient without unsafe casts (Finding F25).
+ * Uses official createDatabaseClient to register verified database binding internally (Finding F21).
  */
 function createMockCleanupClient(options: MockCleanupClientOptions = {}): CleanupDatabaseClient {
+  if (options.skipVerifiedBinding) {
+    let unverifiedHost = "localhost";
+    if (options.host) {
+      unverifiedHost = Array.isArray(options.host)
+        ? (options.host[0] ?? "localhost")
+        : options.host;
+    }
+    let unverifiedPort = 5432;
+    if (options.port) {
+      unverifiedPort = Array.isArray(options.port) ? (options.port[0] ?? 5432) : options.port;
+    }
+
+    const mockSql = {
+      options: {
+        database: options.database ?? "axentra_test",
+        host: [unverifiedHost],
+        port: [unverifiedPort],
+      },
+    };
+
+    const mockDb = {
+      select: (_fields: unknown) => ({
+        from: (_table: unknown) => ({
+          where: (_cond: unknown) => ({
+            limit: async (_limit: number): Promise<readonly { id: string }[]> => {
+              if (options.onSelect) {
+                return await options.onSelect();
+              }
+              return options.selectDocs ?? [];
+            },
+          }),
+        }),
+      }),
+      transaction: async <T>(cb: (tx: CleanupTransaction) => Promise<T>): Promise<T> => {
+        const tx: CleanupTransaction = {
+          delete: (_table: unknown) => ({
+            where: async (_cond: unknown) => {
+              if (options.onDelete) {
+                return await options.onDelete(_table);
+              }
+              return [];
+            },
+          }),
+        };
+        return await cb(tx);
+      },
+    };
+
+    return {
+      db: mockDb,
+      sql: mockSql,
+    };
+  }
+
   const dbName = options.database ?? "axentra_test";
-  const hostVal = options.host ?? ["localhost"];
-  const portVal = options.port ?? [5432];
+  const rawHosts = options.host ?? ["localhost"];
+  const hosts = Array.isArray(rawHosts) ? rawHosts : [rawHosts];
+  const rawPorts = options.port ?? [5432];
+  const ports = Array.isArray(rawPorts) ? rawPorts : [rawPorts];
 
-  const hostsList = Object.freeze(
-    (Array.isArray(hostVal) ? hostVal : [hostVal]).map((h) => h.toLowerCase()),
-  );
-  const portsList = Object.freeze((Array.isArray(portVal) ? portVal : [portVal]).map(Number));
+  const hostPortPairs = hosts.map((h, i) => `${h}:${ports[i] ?? ports[0] ?? 5432}`).join(",");
+  const clientUrl = `postgres://${hostPortPairs}/${dbName}`;
 
-  const mockSql = {
-    options: {
-      database: dbName,
-      host: hostsList,
-      port: portsList,
-    },
-  };
+  const client = createDatabaseClient(clientUrl);
 
-  const mockDb = {
-    select: (_fields: unknown) => ({
+  Object.defineProperty(client.db, "select", {
+    value: (_fields: unknown) => ({
       from: (_table: unknown) => ({
         where: (_cond: unknown) => ({
           limit: async (_limit: number): Promise<readonly { id: string }[]> => {
@@ -66,20 +112,13 @@ function createMockCleanupClient(options: MockCleanupClientOptions = {}): Cleanu
         }),
       }),
     }),
-    transaction: async <T>(cb: (tx: CleanupTransaction) => Promise<T>): Promise<T> => {
-      if (options.onTransaction) {
-        return (await options.onTransaction({
-          delete: (_table: unknown) => ({
-            where: async (_cond: unknown) => {
-              if (options.onDelete) {
-                return await options.onDelete(_table);
-              }
-              return [];
-            },
-          }),
-        })) as T;
-      }
-      return await cb({
+    configurable: true,
+    writable: true,
+  });
+
+  Object.defineProperty(client.db, "transaction", {
+    value: async <T>(cb: (tx: CleanupTransaction) => Promise<T>): Promise<T> => {
+      const tx: CleanupTransaction = {
         delete: (_table: unknown) => ({
           where: async (_cond: unknown) => {
             if (options.onDelete) {
@@ -88,23 +127,26 @@ function createMockCleanupClient(options: MockCleanupClientOptions = {}): Cleanu
             return [];
           },
         }),
-      });
+      };
+
+      if (options.onTransaction) {
+        await options.onTransaction(tx);
+      }
+
+      try {
+        return await cb(tx);
+      } catch (error) {
+        if (options.onRollback) {
+          options.onRollback(error);
+        }
+        throw error;
+      }
     },
-  };
+    configurable: true,
+    writable: true,
+  });
 
-  if (!options.skipVerifiedBinding) {
-    registerVerifiedDatabaseConnection(mockDb, {
-      sql: mockSql,
-      hosts: hostsList,
-      database: dbName,
-      ports: portsList,
-    });
-  }
-
-  return {
-    db: mockDb,
-    sql: mockSql,
-  };
+  return client;
 }
 
 describe("Disposable Database Safety Guard (Finding F1)", () => {
@@ -293,6 +335,36 @@ describe("Credential Redaction and Error Sanitization (Finding F22)", () => {
     );
   });
 
+  it("sanitizeDatabaseUrl redacts credentials from malformed URLs and query secrets (Finding F22)", () => {
+    // Malformed URL with access_token and client_secret in query params
+    const malformedUrlWithSecrets =
+      "postgres://admin:secret123@invalid_host:not_a_port/axentra?access_token=secret_tok_123&client_secret=super_secret_client_val";
+    const sanitized = sanitizeDatabaseUrl(malformedUrlWithSecrets);
+
+    expect(sanitized).not.toContain("secret123");
+    expect(sanitized).not.toContain("secret_tok_123");
+    expect(sanitized).not.toContain("super_secret_client_val");
+    expect(sanitized).not.toContain("access_token");
+    expect(sanitized).not.toContain("client_secret");
+
+    // Standard valid URL with access_token and client_secret is stripped to host/db
+    const validUrlWithSecrets =
+      "postgres://admin:secret123@localhost:5432/axentra_test?access_token=secret_tok_123&client_secret=super_secret_client_val";
+    expect(sanitizeDatabaseUrl(validUrlWithSecrets)).toBe("postgres://localhost:5432/axentra_test");
+  });
+
+  it("sanitizeCredentials redacts access_token and client_secret query parameters (Finding F22)", () => {
+    const rawText =
+      "Error during auth: https://localhost:5432/callback?access_token=my_secret_access_token&client_secret=my_secret_client_pass&other=public";
+    const sanitized = sanitizeCredentials(rawText);
+
+    expect(sanitized).not.toContain("my_secret_access_token");
+    expect(sanitized).not.toContain("my_secret_client_pass");
+    expect(sanitized).toContain("access_token=***");
+    expect(sanitized).toContain("client_secret=***");
+    expect(sanitized).toContain("other=public");
+  });
+
   it("sanitizeCredentials redacts connection credentials in log strings and stack traces (Finding F22)", () => {
     const rawLog =
       "[test-db] Failed to prepare test database: connect ECONNREFUSED postgres://admin_user:secret_pass_123@localhost:5432/axentra_test?password=query_secret_val&token=tok123";
@@ -360,9 +432,7 @@ describe("Client Connection Binding Guard (Finding F21)", () => {
 
     const selectSpy = mock(async () => []);
     const deleteSpy = mock(async () => []);
-    const transactionSpy = mock(async (cb: (tx: CleanupTransaction) => Promise<unknown>) =>
-      cb({ delete: deleteSpy }),
-    );
+    const transactionSpy = mock(async () => undefined);
 
     // Client targeting persistent local database 'axentra' while URL targets 'axentra_test'
     const mismatchedClient = createMockCleanupClient({
@@ -532,11 +602,8 @@ describe("safeCleanupTestCategories Multi-Layer Guard & Atomic Cleanup (Findings
     let transactionInvoked = false;
 
     const mockClient = createMockCleanupClient({
-      onTransaction: async (tx: CleanupTransaction) => {
+      onTransaction: () => {
         transactionInvoked = true;
-        await tx.delete(categoryDownloadPermissions).where({});
-        await tx.delete(categories).where({});
-        return [];
       },
       onDelete: async (table: unknown) => {
         if (table === categoryDownloadPermissions) {
@@ -562,17 +629,6 @@ describe("safeCleanupTestCategories Multi-Layer Guard & Atomic Cleanup (Findings
     let transactionRolledBack = false;
 
     const mockClient = createMockCleanupClient({
-      onTransaction: async (tx: CleanupTransaction) => {
-        try {
-          await tx.delete(categoryDownloadPermissions).where({});
-          await tx.delete(categories).where({});
-          return [];
-        } catch (error) {
-          transactionRolledBack = true;
-          permissionsDeletedInTx = false;
-          throw error;
-        }
-      },
       onDelete: async (table: unknown) => {
         if (table === categoryDownloadPermissions) {
           permissionsDeletedInTx = true;
@@ -582,6 +638,10 @@ describe("safeCleanupTestCategories Multi-Layer Guard & Atomic Cleanup (Findings
           throw new Error("Simulated database failure during category deletion");
         }
         return [];
+      },
+      onRollback: () => {
+        transactionRolledBack = true;
+        permissionsDeletedInTx = false;
       },
     });
 
@@ -601,7 +661,7 @@ describe("safeCleanupTestCategories Multi-Layer Guard & Atomic Cleanup (Findings
     async () => {
       const dbUrl = "postgres://axentra:local-postgres-password@localhost:5432/axentra_test";
       const realClient = createDatabaseClient(dbUrl);
-      (realClient.sql.options as { onnotice?: () => void }).onnotice = () => undefined;
+      await realClient.sql.unsafe("SET client_min_messages TO warning;");
 
       // Unique resource names generated per test run (Finding F24)
       const testCatId = crypto.randomUUID();
@@ -630,11 +690,14 @@ describe("safeCleanupTestCategories Multi-Layer Guard & Atomic Cleanup (Findings
           .where(eq(categoryDownloadPermissions.categoryId, testCatId));
         expect(permBefore).toBeDefined();
 
-        // 2. Create a BEFORE DELETE trigger on categories that aborts deletion
+        // 2. Create a BEFORE DELETE trigger on categories that aborts deletion strictly for this test fixture (Finding F26)
         await realClient.sql.unsafe(
           `CREATE OR REPLACE FUNCTION ${triggerFnName}() RETURNS trigger AS $$
            BEGIN
-             RAISE EXCEPTION 'Simulated trigger rejection on category delete';
+             IF OLD.id = '${testCatId}'::uuid THEN
+               RAISE EXCEPTION 'Simulated trigger rejection on category delete';
+             END IF;
+             RETURN OLD;
            END;
            $$ LANGUAGE plpgsql;`,
         );
