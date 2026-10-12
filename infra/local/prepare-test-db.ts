@@ -5,6 +5,7 @@ import {
   ALLOWED_LOCAL_TEST_HOSTS,
   assertDisposableTestDatabase,
   isDisposableTestDatabase,
+  sanitizeCredentials,
 } from "../../test/helpers/disposable-database";
 
 export const DEFAULT_LOCAL_TEST_DB_URL =
@@ -119,11 +120,16 @@ export async function ensureTestDatabaseReady(targetUrlInput?: string): Promise<
   return databaseUrl;
 }
 
+export function formatSanitizedError(error: unknown): string {
+  const rawMessage = error instanceof Error ? (error.stack ?? error.message) : String(error);
+  return sanitizeCredentials(rawMessage);
+}
+
 if (import.meta.main) {
   try {
     await ensureTestDatabaseReady();
   } catch (error) {
-    console.error("[test-db] Failed to prepare test database:", error);
+    console.error(`[test-db] Failed to prepare test database: ${formatSanitizedError(error)}`);
     process.exit(1);
   }
 }
