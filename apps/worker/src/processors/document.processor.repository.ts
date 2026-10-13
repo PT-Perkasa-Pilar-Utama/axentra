@@ -1,8 +1,6 @@
 import { and, eq, isNull, or } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import {
-  categories,
-  categoryDownloadPermissions,
   documentFiles,
   documentMetadata,
   documentSmartTags,
@@ -10,6 +8,7 @@ import {
   smartTags,
 } from "@axentra/db";
 import { PROCESSING_ENQUEUE_FAILURE_MESSAGE } from "@axentra/shared";
+import { ensureCategoryWithPermission, listAvailableCategories } from "./category.persistence";
 
 export type DocumentProcessingRecord = {
   id: string;
@@ -150,12 +149,7 @@ export class DrizzleDocumentProcessingRepository implements DocumentProcessingRe
   }
 
   public async listCategories(): Promise<ReadonlyArray<{ name: string; slug: string }>> {
-    return this.db
-      .select({
-        name: categories.name,
-        slug: categories.slug,
-      })
-      .from(categories);
+    return listAvailableCategories(this.db);
   }
 
   public async completeWithMetadata(
@@ -217,53 +211,12 @@ export class DrizzleDocumentProcessingRepository implements DocumentProcessingRe
 
       let categoryId: string | null = null;
       if (category) {
-        const [existing] = await tx
-          .select({ id: categories.id })
-          .from(categories)
-          .where(or(eq(categories.slug, category.slug), eq(categories.name, category.name)))
-          .limit(1);
-
-        if (existing) {
-          categoryId = existing.id;
-        } else {
-          const [inserted] = await tx
-            .insert(categories)
-            .values({
-              name: category.name,
-              slug: category.slug,
-              createdAt: now,
-              updatedAt: now,
-            })
-            .onConflictDoNothing()
-            .returning({ id: categories.id });
-
-          if (inserted) {
-            categoryId = inserted.id;
-            this.createdCategoryIds.push(inserted.id);
-          } else {
-            const [canonical] = await tx
-              .select({ id: categories.id })
-              .from(categories)
-              .where(or(eq(categories.slug, category.slug), eq(categories.name, category.name)))
-              .limit(1);
-            if (canonical) {
-              categoryId = canonical.id;
-            }
+        const resolved = await ensureCategoryWithPermission(tx, category, now);
+        if (resolved) {
+          categoryId = resolved.categoryId;
+          if (resolved.isNew) {
+            this.createdCategoryIds.push(resolved.categoryId);
           }
-        }
-
-        if (categoryId) {
-          await tx
-            .insert(categoryDownloadPermissions)
-            .values({
-              categoryId,
-              downloadEnabled: false,
-              createdAt: now,
-              updatedAt: now,
-            })
-            .onConflictDoNothing({
-              target: categoryDownloadPermissions.categoryId,
-            });
         }
       }
 
