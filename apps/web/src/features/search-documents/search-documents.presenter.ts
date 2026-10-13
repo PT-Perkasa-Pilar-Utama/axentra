@@ -10,6 +10,7 @@ export type SearchDocumentsPresenter = {
   isLoading: boolean;
   isError: boolean;
   isEmpty: boolean;
+  hasResults: boolean;
   results: SearchResultItem[];
   handleInputChange: (value: string) => void;
   handleSubmit: (e: React.FormEvent) => void;
@@ -51,14 +52,20 @@ export function useSearchDocumentsPresenter(): SearchDocumentsPresenter {
   }, [query]);
 
   const isLoading = query.isFetching;
+  const isError = query.isError;
+  const results = query.data ?? [];
+  const isEmpty = query.isSuccess && results.length === 0 && keyword.length > 0;
+
+  const hasResults = !isLoading && !isError && results.length > 0;
 
   return {
     inputValue,
     keyword,
     isLoading,
-    isError: query.isError,
-    isEmpty: query.isSuccess && query.data?.length === 0 && keyword.length > 0,
-    results: query.data ?? [],
+    isError,
+    isEmpty,
+    hasResults,
+    results,
     handleInputChange,
     handleSubmit,
     clearSearch,

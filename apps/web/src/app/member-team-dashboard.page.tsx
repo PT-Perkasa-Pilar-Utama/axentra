@@ -10,10 +10,8 @@ import { useRecentDocumentsPresenter } from "../features/recent-documents/recent
 import { useTopTagsPresenter } from "../features/top-tags/top-tags.presenter";
 import { TopTagsView } from "../features/top-tags/top-tags.view";
 import { useSearchDocumentsPresenter } from "../features/search-documents/search-documents.presenter";
-import {
-  SearchBarView,
-  SearchResultsView,
-} from "../features/search-documents/search-documents.view";
+import { SearchBarView } from "../features/search-documents/search-bar.view";
+import { SearchResultsView } from "../features/search-documents/search-results.view";
 
 export function MemberTeamDashboardPage(): React.JSX.Element {
   const uploadPresenter = useDocumentUploadPresenter();
