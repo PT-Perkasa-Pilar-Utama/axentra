@@ -1,27 +1,10 @@
-import { z } from "zod";
+import type { z } from "zod";
+import { searchDocumentSchema } from "@axentra/shared";
 import { apiRequest } from "../../lib/api-client";
 
-const searchResultItemSchema = z.object({
-  id: z.string().uuid(),
-  filename: z.string(),
-  processingStatus: z.string(),
-  createdAt: z.string(),
-  snippet: z.string().nullable(),
-  highlights: z
-    .array(
-      z.object({
-        start: z.number(),
-        end: z.number(),
-      }),
-    )
-    .default([]),
-});
-
-export type SearchResultItem = z.infer<typeof searchResultItemSchema>;
+export type SearchResultItem = z.infer<typeof searchDocumentSchema>;
 
 export async function searchDocuments(q: string): Promise<SearchResultItem[]> {
-  return apiRequest(
-    `/search/documents?q=${encodeURIComponent(q)}`,
-    z.array(searchResultItemSchema),
-  );
+  const params = new URLSearchParams({ q });
+  return apiRequest(`/search/documents?${params.toString()}`, searchDocumentSchema.array());
 }

@@ -166,8 +166,15 @@ describe("Search Documents Integration (FE-S2-04)", () => {
     globalThis.fetch = originalFetch;
   });
 
+  // Resolusi F2 & F6: Memisahkan event Enter dan form submit dengan test helper
+  const submitSearch = (input: HTMLElement) => {
+    fireEvent.keyDown(input, { key: "Enter", code: "Enter", keyCode: 13, charCode: 13 });
+    const form = input.closest("form");
+    if (!form) throw new Error("Search form element not found in the DOM");
+    fireEvent.submit(form);
+  };
+
   test("AC-06.01: Submits via Enter key and displays at least one result", async () => {
-    // Resolusi F6: Hapus casting 'as unknown as typeof fetch'
     globalThis.fetch = createFetchMock();
     const queryClient = makeQueryClient();
 
@@ -182,8 +189,7 @@ describe("Search Documents Integration (FE-S2-04)", () => {
     });
 
     await act(async () => {
-      fireEvent.keyDown(searchInput, { key: "Enter", code: "Enter", keyCode: 13, charCode: 13 });
-      fireEvent.submit(searchInput.closest("form") as HTMLFormElement);
+      submitSearch(searchInput);
     });
 
     expect(screen.getByText("Mencari dokumen...")).toBeTruthy();
@@ -192,7 +198,6 @@ describe("Search Documents Integration (FE-S2-04)", () => {
   });
 
   test("AC-06.02: Each result card shows filename and text snippet", async () => {
-    // Resolusi F6: Hapus casting
     globalThis.fetch = createFetchMock();
     const queryClient = makeQueryClient();
 
@@ -204,8 +209,7 @@ describe("Search Documents Integration (FE-S2-04)", () => {
 
     await act(async () => {
       fireEvent.change(searchInput, { target: { value: "keuangan" } });
-      fireEvent.keyDown(searchInput, { key: "Enter", code: "Enter", keyCode: 13, charCode: 13 });
-      fireEvent.submit(searchInput.closest("form") as HTMLFormElement);
+      submitSearch(searchInput);
     });
 
     expect(await screen.findByText("laporan-keuangan-2026.pdf")).toBeTruthy();
@@ -214,7 +218,6 @@ describe("Search Documents Integration (FE-S2-04)", () => {
   });
 
   test("AC-06.04: Displays no-result message when keyword yields empty data", async () => {
-    // Resolusi F6: Hapus casting
     globalThis.fetch = createFetchMock();
     const queryClient = makeQueryClient();
 
@@ -226,8 +229,7 @@ describe("Search Documents Integration (FE-S2-04)", () => {
 
     await act(async () => {
       fireEvent.change(searchInput, { target: { value: "kosong" } });
-      fireEvent.keyDown(searchInput, { key: "Enter", code: "Enter", keyCode: 13, charCode: 13 });
-      fireEvent.submit(searchInput.closest("form") as HTMLFormElement);
+      submitSearch(searchInput);
     });
 
     const emptyMessage = await screen.findByText(/Tidak ada hasil yang ditemukan untuk/i);
@@ -236,7 +238,6 @@ describe("Search Documents Integration (FE-S2-04)", () => {
   });
 
   test("Handles error state: retry button click recovers and shows results", async () => {
-    // Resolusi F6: Hapus casting
     globalThis.fetch = createFetchMock();
     const queryClient = makeQueryClient();
 
@@ -248,8 +249,7 @@ describe("Search Documents Integration (FE-S2-04)", () => {
 
     await act(async () => {
       fireEvent.change(searchInput, { target: { value: "error" } });
-      fireEvent.keyDown(searchInput, { key: "Enter", code: "Enter", keyCode: 13, charCode: 13 });
-      fireEvent.submit(searchInput.closest("form") as HTMLFormElement);
+      submitSearch(searchInput);
     });
 
     const retryButton = await screen.findByRole("button", { name: "Coba lagi" });
@@ -257,7 +257,6 @@ describe("Search Documents Integration (FE-S2-04)", () => {
     expect(screen.getByText("Gagal memuat hasil pencarian.")).toBeTruthy();
     expect(screen.getByRole("alert")).toBeTruthy();
 
-    // Resolusi F6: Hapus casting
     globalThis.fetch = createSuccessFetchMock();
 
     await act(async () => {
@@ -269,7 +268,6 @@ describe("Search Documents Integration (FE-S2-04)", () => {
   });
 
   test("Clears search and returns to Recent Documents view", async () => {
-    // Resolusi F6: Hapus casting
     globalThis.fetch = createFetchMock();
     const queryClient = makeQueryClient();
 
@@ -281,8 +279,7 @@ describe("Search Documents Integration (FE-S2-04)", () => {
 
     await act(async () => {
       fireEvent.change(searchInput, { target: { value: "keuangan" } });
-      fireEvent.keyDown(searchInput, { key: "Enter", code: "Enter", keyCode: 13, charCode: 13 });
-      fireEvent.submit(searchInput.closest("form") as HTMLFormElement);
+      submitSearch(searchInput);
     });
 
     await screen.findByText("laporan-keuangan-2026.pdf");
