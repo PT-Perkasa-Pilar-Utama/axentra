@@ -1,24 +1,26 @@
 import { describe, expect, it } from "bun:test";
-import { ensureCategoryWithPermission, listAvailableCategories } from "./category.persistence";
-import type { DatabaseTransaction } from "./category.persistence";
-import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import { categories, categoryDownloadPermissions } from "@axentra/db";
+import {
+  ensureCategoryWithPermission,
+  listAvailableCategories,
+  type CategoryPersistenceOperations,
+  type CategoryQueryOperations,
+} from "./category.persistence";
 
-describe("category.persistence (Finding F27)", () => {
+describe("category.persistence (Findings F27, F28)", () => {
   describe("listAvailableCategories", () => {
-    it("returns list of categories from database", async () => {
+    it("returns list of categories from query operations", async () => {
       const mockCategories = [
         { name: "Reporting", slug: "reporting" },
         { name: "Contract", slug: "contract" },
       ];
 
-      const mockDb = {
-        select: (_fields: unknown) => ({
-          from: (_table: unknown) => Promise.resolve(mockCategories),
-        }),
-      } as unknown as PostgresJsDatabase;
+      const queryOps: CategoryQueryOperations = {
+        async listCategories() {
+          return mockCategories;
+        },
+      };
 
-      const result = await listAvailableCategories(mockDb);
+      const result = await listAvailableCategories(queryOps);
       expect(result).toEqual(mockCategories);
     });
   });
@@ -26,134 +28,144 @@ describe("category.persistence (Finding F27)", () => {
   describe("ensureCategoryWithPermission", () => {
     it("returns existing category without inserting new category (isNew: false)", async () => {
       const existingId = "cat-existing-123";
-      const permissionInserted: Array<{ categoryId: string; downloadEnabled: boolean }> = [];
+      const permissionsInserted: Array<{ categoryId: string; now: Date }> = [];
+      let insertCalled = false;
 
-      const mockTx = {
-        select: (_fields: unknown) => ({
-          from: (_table: unknown) => ({
-            where: (_cond: unknown) => ({
-              limit: async (_limit: number) => [{ id: existingId }],
-            }),
-          }),
-        }),
-        insert: (table: unknown) => ({
-          values: (vals: { categoryId: string; downloadEnabled: boolean }) => {
-            if (table === categoryDownloadPermissions) {
-              permissionInserted.push(vals);
-            }
-            return {
-              onConflictDoNothing: () => Promise.resolve(),
-            };
-          },
-        }),
-      } as unknown as DatabaseTransaction;
+      const persistenceOps: CategoryPersistenceOperations = {
+        async findCategoryBySlugOrName(slug: string, name: string) {
+          if (slug === "reporting" && name === "Reporting") {
+            return { id: existingId };
+          }
+          return null;
+        },
+        async insertCategory(_name: string, _slug: string, _now: Date) {
+          insertCalled = true;
+          return null;
+        },
+        async ensureCategoryPermission(categoryId: string, now: Date) {
+          permissionsInserted.push({ categoryId, now });
+        },
+      };
 
+      const testNow = new Date("2026-10-14T10:00:00.000Z");
       const result = await ensureCategoryWithPermission(
-        mockTx,
+        persistenceOps,
         { name: "Reporting", slug: "reporting" },
-        new Date(),
+        testNow,
       );
 
-      expect(result).not.toBeNull();
-      expect(result?.categoryId).toBe(existingId);
-      expect(result?.isNew).toBe(false);
-      expect(permissionInserted).toHaveLength(1);
-      expect(permissionInserted[0]?.categoryId).toBe(existingId);
-      expect(permissionInserted[0]?.downloadEnabled).toBe(false);
+      expect(result).toEqual({
+        categoryId: existingId,
+        isNew: false,
+      });
+      expect(insertCalled).toBe(false);
+      expect(permissionsInserted).toHaveLength(1);
+      expect(permissionsInserted[0]).toEqual({
+        categoryId: existingId,
+        now: testNow,
+      });
     });
 
     it("inserts new category when not found and returns isNew: true", async () => {
       const newCatId = "cat-new-456";
-      let categoryInserted = false;
-      const permissionInserted: Array<{ categoryId: string; downloadEnabled: boolean }> = [];
+      let insertedParams: { name: string; slug: string; now: Date } | undefined;
+      const permissionsInserted: Array<{ categoryId: string; now: Date }> = [];
 
-      const mockTx = {
-        select: (_fields: unknown) => ({
-          from: (_table: unknown) => ({
-            where: (_cond: unknown) => ({
-              limit: async (_limit: number) => [],
-            }),
-          }),
-        }),
-        insert: (table: unknown) => ({
-          values: (vals: unknown) => {
-            if (table === categories) {
-              categoryInserted = true;
-              return {
-                onConflictDoNothing: () => ({
-                  returning: async () => [{ id: newCatId }],
-                }),
-              };
-            }
-            if (table === categoryDownloadPermissions) {
-              permissionInserted.push(vals as { categoryId: string; downloadEnabled: boolean });
-              return {
-                onConflictDoNothing: () => Promise.resolve(),
-              };
-            }
-            return {
-              onConflictDoNothing: () => Promise.resolve(),
-            };
-          },
-        }),
-      } as unknown as DatabaseTransaction;
+      const persistenceOps: CategoryPersistenceOperations = {
+        async findCategoryBySlugOrName(_slug: string, _name: string) {
+          return null;
+        },
+        async insertCategory(name: string, slug: string, now: Date) {
+          insertedParams = { name, slug, now };
+          return { id: newCatId };
+        },
+        async ensureCategoryPermission(categoryId: string, now: Date) {
+          permissionsInserted.push({ categoryId, now });
+        },
+      };
 
+      const testNow = new Date("2026-10-14T10:00:00.000Z");
       const result = await ensureCategoryWithPermission(
-        mockTx,
+        persistenceOps,
         { name: "New Category", slug: "new-category" },
-        new Date(),
+        testNow,
       );
 
-      expect(result).not.toBeNull();
-      expect(result?.categoryId).toBe(newCatId);
-      expect(result?.isNew).toBe(true);
-      expect(categoryInserted).toBe(true);
-      expect(permissionInserted).toHaveLength(1);
-      expect(permissionInserted[0]?.categoryId).toBe(newCatId);
-      expect(permissionInserted[0]?.downloadEnabled).toBe(false);
+      expect(result).toEqual({
+        categoryId: newCatId,
+        isNew: true,
+      });
+      expect(insertedParams).toEqual({
+        name: "New Category",
+        slug: "new-category",
+        now: testNow,
+      });
+      expect(permissionsInserted).toHaveLength(1);
+      expect(permissionsInserted[0]).toEqual({
+        categoryId: newCatId,
+        now: testNow,
+      });
     });
 
     it("falls back to canonical category if concurrent insert conflicts", async () => {
       const canonicalId = "cat-canonical-789";
       let selectCount = 0;
+      const permissionsInserted: Array<{ categoryId: string; now: Date }> = [];
 
-      const mockTx = {
-        select: (_fields: unknown) => ({
-          from: (_table: unknown) => ({
-            where: (_cond: unknown) => ({
-              limit: async (_limit: number) => {
-                selectCount++;
-                // First select returns empty (not found), second select returns canonical
-                return selectCount === 1 ? [] : [{ id: canonicalId }];
-              },
-            }),
-          }),
-        }),
-        insert: (table: unknown) => ({
-          values: (_vals: unknown) => {
-            if (table === categories) {
-              return {
-                onConflictDoNothing: () => ({
-                  returning: async () => [], // simulated conflict: returns empty
-                }),
-              };
-            }
-            return {
-              onConflictDoNothing: () => Promise.resolve(),
-            };
-          },
-        }),
-      } as unknown as DatabaseTransaction;
+      const persistenceOps: CategoryPersistenceOperations = {
+        async findCategoryBySlugOrName(_slug: string, _name: string) {
+          selectCount++;
+          // First lookup returns null (not found), second lookup after conflict returns canonical
+          return selectCount === 1 ? null : { id: canonicalId };
+        },
+        async insertCategory(_name: string, _slug: string, _now: Date) {
+          // Simulated unique constraint conflict (returns null due to onConflictDoNothing)
+          return null;
+        },
+        async ensureCategoryPermission(categoryId: string, now: Date) {
+          permissionsInserted.push({ categoryId, now });
+        },
+      };
+
+      const testNow = new Date("2026-10-14T10:00:00.000Z");
+      const result = await ensureCategoryWithPermission(
+        persistenceOps,
+        { name: "Concurrent Category", slug: "concurrent-category" },
+        testNow,
+      );
+
+      expect(result).toEqual({
+        categoryId: canonicalId,
+        isNew: false,
+      });
+      expect(selectCount).toBe(2);
+      expect(permissionsInserted).toHaveLength(1);
+      expect(permissionsInserted[0]).toEqual({
+        categoryId: canonicalId,
+        now: testNow,
+      });
+    });
+
+    it("returns null if category cannot be found or inserted", async () => {
+      const persistenceOps: CategoryPersistenceOperations = {
+        async findCategoryBySlugOrName(_slug: string, _name: string) {
+          return null;
+        },
+        async insertCategory(_name: string, _slug: string, _now: Date) {
+          return null;
+        },
+        async ensureCategoryPermission(_categoryId: string, _now: Date) {
+          throw new Error("Should not be called if categoryId is unresolved");
+        },
+      };
 
       const result = await ensureCategoryWithPermission(
-        mockTx,
-        { name: "Concurrent Category", slug: "concurrent-category" },
+        persistenceOps,
+        { name: "Missing Category", slug: "missing-category" },
         new Date(),
       );
 
-      expect(result).not.toBeNull();
-      expect(result?.categoryId).toBe(canonicalId);
-      expect(result?.isNew).toBe(false);
+      expect(result).toBeNull();
     });
   });
 });
