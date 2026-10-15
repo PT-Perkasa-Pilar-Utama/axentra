@@ -37,8 +37,20 @@ import {
 } from "./documents.metadata.operations";
 import { readDocumentSmartTags, storeDocumentSmartTags } from "./smart-tags.operations";
 import { readDocumentCategory } from "./category.operations";
+import type { IDownloadRepository } from "./download.repository";
+import { InMemoryDownloadRepository } from "./download.repository";
+import {
+  executeDownloadOperation,
+  type DownloadOperationResult,
+  type ExecuteDownloadInput,
+} from "./download.operations";
 
-export type { CheckDuplicateInput, ExtractMetadataOptions };
+export type {
+  CheckDuplicateInput,
+  DownloadOperationResult,
+  ExecuteDownloadInput,
+  ExtractMetadataOptions,
+};
 
 export type DocumentServiceDependencies = {
   repository?: IDocumentRepository | undefined;
@@ -51,6 +63,7 @@ export type DocumentServiceDependencies = {
   contentHashRepository?: IDocumentContentHashRepository | undefined;
   smartTagsRepository?: IDocumentSmartTagsRepository | undefined;
   categoryRepository?: IDocumentCategoryRepository | undefined;
+  downloadRepository?: IDownloadRepository | undefined;
 };
 
 export type RecentDocumentList = {
@@ -78,6 +91,7 @@ export type IDocumentService = {
   ): Promise<DocumentMetadataResult>;
   storeMetadata(data: SaveMetadataInput): Promise<DocumentMetadataResult>;
   enqueueProcessingJob(documentId: string): Promise<string>;
+  downloadDocument(input: ExecuteDownloadInput): Promise<DownloadOperationResult>;
 };
 
 export class DocumentService implements IDocumentService {
@@ -91,6 +105,7 @@ export class DocumentService implements IDocumentService {
   private readonly contentHashRepository?: IDocumentContentHashRepository | undefined;
   private readonly smartTagsRepository: IDocumentSmartTagsRepository;
   private readonly categoryRepository: IDocumentCategoryRepository;
+  private readonly downloadRepository: IDownloadRepository;
 
   public constructor(dependencies: DocumentServiceDependencies = {}) {
     this.repository = dependencies.repository ?? createInMemoryRepository();
@@ -113,6 +128,7 @@ export class DocumentService implements IDocumentService {
       dependencies.smartTagsRepository ?? new InMemoryDocumentSmartTagsRepository();
     this.categoryRepository =
       dependencies.categoryRepository ?? new InMemoryDocumentCategoryRepository();
+    this.downloadRepository = dependencies.downloadRepository ?? new InMemoryDownloadRepository();
   }
 
   public async validateUpload(
@@ -210,6 +226,17 @@ export class DocumentService implements IDocumentService {
       schemaVersion: 1,
       requestedAt: new Date().toISOString(),
     });
+  }
+
+  public async downloadDocument(input: ExecuteDownloadInput): Promise<DownloadOperationResult> {
+    return executeDownloadOperation(
+      {
+        downloadRepository: this.downloadRepository,
+        storage: this.storage,
+        logger: this.logger,
+      },
+      input,
+    );
   }
 }
 

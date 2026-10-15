@@ -40,9 +40,9 @@ PLANNED POST   /documents/upload
 PLANNED POST   /documents/check-duplicate
 PLANNED GET    /documents/:id
 PLANNED GET    /documents/:id/preview
-PLANNED GET    /documents/:id/download
+OK      GET    /documents/:id/download
 PLANNED POST   /documents/bulk-download
-PLANNED GET    /documents/:id/related
+OK      GET    /documents/:id/related
 ```
 
 ### Processing

@@ -163,3 +163,53 @@ export const documentDetailSchema = documentSummarySchema.extend({
   canDownload: z.boolean().optional(),
 });
 export type DocumentDetail = z.infer<typeof documentDetailSchema>;
+
+export const DEFAULT_DOWNLOAD_TTL_SECONDS = 300;
+export const MINIMUM_DOWNLOAD_TTL_SECONDS = 60;
+export const MAXIMUM_DOWNLOAD_TTL_SECONDS = 900;
+export const DOWNLOAD_ACCESS_DENIED_MESSAGE =
+  "Akses unduh tidak diizinkan untuk kategori dokumen ini";
+
+export const downloadDocumentQuerySchema = z.object({
+  stream: z
+    .preprocess((val) => {
+      if (typeof val === "boolean") return val;
+      if (typeof val === "string") {
+        const lower = val.trim().toLowerCase();
+        return lower === "true" || lower === "1";
+      }
+      return false;
+    }, z.boolean())
+    .default(false),
+  expiresInSeconds: z.preprocess((val) => {
+    if (val === undefined || val === null || val === "") return undefined;
+    return Number(val);
+  }, z.number().int().min(MINIMUM_DOWNLOAD_TTL_SECONDS).max(MAXIMUM_DOWNLOAD_TTL_SECONDS).optional()),
+});
+export type DownloadDocumentQuery = z.infer<typeof downloadDocumentQuerySchema>;
+
+export const downloadDocumentResponseSchema = z.object({
+  downloadUrl: z.string().url(),
+  filename: z.string().min(1),
+  mimeType: z.string().min(1),
+  fileSize: z.number().int().nonnegative(),
+  expiresInSeconds: z.number().int().positive(),
+});
+export type DownloadDocumentResponse = z.infer<typeof downloadDocumentResponseSchema>;
+
+export const downloadDocumentSuccessResponseSchema = z.object({
+  success: z.literal(true),
+  data: downloadDocumentResponseSchema,
+});
+export type DownloadDocumentSuccessResponse = z.infer<typeof downloadDocumentSuccessResponseSchema>;
+
+export const downloadAuditEventSchema = z.object({
+  id: z.string().uuid(),
+  userId: z.string().uuid().nullable().optional(),
+  userName: z.string().nullable().optional(),
+  userEmail: z.string().nullable().optional(),
+  documentId: z.string().uuid().nullable().optional(),
+  documentName: z.string().min(1),
+  downloadedAt: z.string().datetime(),
+});
+export type DownloadAuditEvent = z.infer<typeof downloadAuditEventSchema>;
