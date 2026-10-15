@@ -1,7 +1,7 @@
 import type { z } from "zod";
-import { recentDocumentSchema, smartTagSchema } from "@axentra/shared";
+import { bulkDownloadRequestSchema, recentDocumentSchema, smartTagSchema } from "@axentra/shared";
 import type { RecentDocument } from "@axentra/shared";
-import { apiRequest } from "../../lib/api-client";
+import { apiDownloadRequest, apiRequest } from "../../lib/api-client";
 
 export type { RecentDocument };
 
@@ -26,4 +26,31 @@ export async function listRecentDocuments(
 
 export async function getDocumentSmartTags(documentId: string): Promise<SmartTagResponse[]> {
   return apiRequest(`/documents/${documentId}/smart-tags`, smartTagSchema.array());
+}
+
+export async function bulkDownloadDocuments(documentIds: readonly string[]): Promise<Blob> {
+  const parsed = bulkDownloadRequestSchema.parse({ documentIds: [...documentIds] });
+  return apiDownloadRequest("/documents/bulk-download", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(parsed),
+  });
+}
+
+export function triggerBlobDownload(blob: Blob, filename = "documents.zip"): void {
+  if (typeof window === "undefined" || typeof window.document === "undefined") {
+    return;
+  }
+  const createObjectURL = window.URL?.createObjectURL?.bind(window.URL) ?? (() => "blob:mock");
+  const revokeObjectURL = window.URL?.revokeObjectURL?.bind(window.URL) ?? (() => {});
+  const url = createObjectURL(blob);
+  const anchor = window.document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  window.document.body.appendChild(anchor);
+  anchor.click();
+  window.document.body.removeChild(anchor);
+  revokeObjectURL(url);
 }

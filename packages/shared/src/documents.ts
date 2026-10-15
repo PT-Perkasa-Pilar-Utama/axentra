@@ -147,3 +147,11 @@ export const documentMetadataSchema = z.object({
 });
 
 export type DocumentMetadata = z.infer<typeof documentMetadataSchema>;
+
+export const bulkDownloadRequestSchema = z.object({
+  documentIds: z
+    .array(z.string().uuid({ message: "ID dokumen harus berupa UUID yang valid" }))
+    .min(1, "Minimal satu dokumen harus dipilih"),
+});
+
+export type BulkDownloadRequest = z.infer<typeof bulkDownloadRequestSchema>;

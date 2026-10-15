@@ -71,6 +71,7 @@ function buildListResponse(data: RecentDocument[]): string {
 function createFetchMock(
   stage: { current: ListStage },
   documentsOverride?: RecentDocument[],
+  bulkDownloadHandler?: (init?: RequestInit) => Response,
 ): typeof fetch {
   const handler = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = String(input);
@@ -81,6 +82,12 @@ function createFetchMock(
 
     const authorization = new Headers(init?.headers).get("authorization");
     expect(authorization).toBe(`Bearer ${memberSession.token}`);
+
+    if (url.includes("/documents/bulk-download")) {
+      expect(init?.method).toBe("POST");
+      expect(new Headers(init?.headers).get("content-type")).toBe("application/json");
+      return bulkDownloadHandler?.(init) ?? new Response(new Blob(["zip"]), { status: 200 });
+    }
 
     if (url.includes("/documents/upload")) {
       const accepted: DocumentUploadAcceptedData = {
@@ -471,4 +478,66 @@ describe("Recent documents and Tags integration", () => {
 
     expect(await screen.findByRole("button", { name: "Finance" })).toBeTruthy();
   }, 10000);
+
+  test("AC-10.01 selects multiple documents and starts one ZIP download", async () => {
+    const firstId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const secondId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const documents: RecentDocument[] = [
+      {
+        id: firstId,
+        filename: "laporan.pdf",
+        processingStatus: "completed",
+        createdAt,
+        tags: [],
+      },
+      {
+        id: secondId,
+        filename: "kontrak.docx",
+        processingStatus: "completed",
+        createdAt,
+        tags: [],
+      },
+    ];
+    let requestBody = "";
+    globalThis.fetch = createFetchMock({ current: "completed" }, documents, (init) => {
+      requestBody = typeof init?.body === "string" ? init.body : "";
+      return new Response(new Blob(["zip-content"], { type: "application/zip" }), {
+        status: 200,
+      });
+    });
+    const queryClient = makeQueryClient();
+
+    await act(async () => {
+      renderDashboard(queryClient);
+    });
+
+    const firstCheckbox = await screen.findByRole("checkbox", { name: "Pilih laporan.pdf" });
+    const secondCheckbox = screen.getByRole("checkbox", { name: "Pilih kontrak.docx" });
+    const downloadButton = screen.getByRole("button", { name: "Download Selected" });
+    expect(downloadButton instanceof HTMLButtonElement).toBe(true);
+    if (!(downloadButton instanceof HTMLButtonElement)) {
+      throw new Error("Tombol unduh tidak tersedia");
+    }
+    expect(downloadButton.disabled).toBe(true);
+
+    await act(async () => {
+      fireEvent.click(firstCheckbox);
+      fireEvent.click(secondCheckbox);
+    });
+    expect(downloadButton.disabled).toBe(false);
+
+    await act(async () => {
+      fireEvent.click(downloadButton);
+    });
+
+    expect(requestBody).toBe(JSON.stringify({ documentIds: [firstId, secondId] }));
+    if (
+      !(firstCheckbox instanceof HTMLInputElement) ||
+      !(secondCheckbox instanceof HTMLInputElement)
+    ) {
+      throw new Error("Checkbox dokumen tidak valid");
+    }
+    expect(firstCheckbox.checked).toBe(false);
+    expect(secondCheckbox.checked).toBe(false);
+  });
 });

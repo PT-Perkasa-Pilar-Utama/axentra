@@ -123,3 +123,54 @@ export async function apiRequest<T>(
     clearTimeout(timeout);
   }
 }
+
+export async function apiDownloadRequest(path: string, init?: RequestInit): Promise<Blob> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
+  try {
+    const signal = init?.signal
+      ? AbortSignal.any([init.signal, controller.signal])
+      : controller.signal;
+    const response = await fetch(`${config.VITE_API_BASE_URL}${path}`, {
+      ...init,
+      headers: mergeRequestHeaders({
+        accept: "application/zip, application/octet-stream, application/json",
+        ...init?.headers,
+      }),
+      signal,
+    });
+
+    if (!response.ok) {
+      let payload: unknown;
+      try {
+        payload = await response.json();
+      } catch {
+        payload = null;
+      }
+      if (isErrorEnvelope(payload)) {
+        if (
+          response.status === 401 ||
+          payload.error.code === "UNAUTHORIZED" ||
+          payload.error.code === "UNAUTHENTICATED"
+        ) {
+          unauthorizedHandler?.();
+        }
+        throw new ApiClientError(payload.error.code, payload.error.message, response.status);
+      }
+      throw new ApiClientError("DOWNLOAD_FAILED", "Gagal mengunduh berkas", response.status);
+    }
+
+    return await response.blob();
+  } catch (error) {
+    if (error instanceof ApiClientError) throw error;
+    if (error instanceof DOMException && error.name === "AbortError") {
+      if (init?.signal?.aborted) {
+        throw new ApiClientError("REQUEST_CANCELLED", "Permintaan dibatalkan", 0);
+      }
+      throw new ApiClientError("REQUEST_TIMEOUT", "Server tidak merespons tepat waktu", 0);
+    }
+    throw new ApiClientError("NETWORK_ERROR", "Tidak dapat terhubung ke server", 0);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
