@@ -8,9 +8,11 @@ export type DatabaseClient = {
   sql: Sql;
 };
 
-type VerifiedDatabaseConnection = Readonly<{
-  sql: Sql;
+export type VerifiedDatabaseConnection = Readonly<{
+  sql: unknown;
   hosts: readonly string[];
+  database: string;
+  ports: readonly number[];
 }>;
 
 const verifiedDatabaseConnections = new WeakMap<object, VerifiedDatabaseConnection>();
@@ -34,6 +36,11 @@ export function createDatabaseClient(databaseUrl: string): DatabaseClient {
   const options = sql.options;
   const configuredHosts = options.host;
   const hosts = Object.freeze(configuredHosts.map((host) => host.toLowerCase()));
+  const database = options.database;
+  const configuredPorts = options.port;
+  const ports = Object.freeze(
+    (Array.isArray(configuredPorts) ? configuredPorts : [configuredPorts]).map(Number),
+  );
   Object.freeze(configuredHosts);
   Object.defineProperty(options, "host", {
     configurable: false,
@@ -47,7 +54,7 @@ export function createDatabaseClient(databaseUrl: string): DatabaseClient {
     value: options,
     writable: false,
   });
-  verifiedDatabaseConnections.set(db, Object.freeze({ sql, hosts }));
+  verifiedDatabaseConnections.set(db, Object.freeze({ sql, hosts, database, ports }));
 
   return { db, sql };
 }

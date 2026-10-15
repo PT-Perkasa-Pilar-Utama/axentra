@@ -50,7 +50,7 @@ PLANNED GET    /documents/:id/related
 ```text
 OK      GET /documents/:id/metadata
 OK      GET /documents/:id/smart-tags
-PLANNED GET /documents/:id/category
+OK      GET /documents/:id/category
 ```
 
 ### Search, Tags, and Categories
@@ -58,7 +58,7 @@ PLANNED GET /documents/:id/category
 ```text
 OK GET /search/documents
 OK GET /tags/top
-PLANNED GET /categories
+OK GET /categories
 ```
 
 ### Analytics

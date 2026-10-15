@@ -4,6 +4,7 @@ import { createLogger } from "@axentra/observability";
 import type { QueueProducer } from "@axentra/queue";
 import type { StorageAdapter } from "@axentra/storage";
 import {
+  type CategorySummary,
   type CheckDuplicateResponse,
   type DocumentMetadataResult,
   type DocumentUploadAcceptedData,
@@ -22,6 +23,8 @@ import type { IDocumentMetadataRepository, SaveMetadataInput } from "./metadata.
 import { InMemoryDocumentMetadataRepository } from "./metadata.repository";
 import type { IDocumentSmartTagsRepository } from "./smart-tags.repository";
 import { InMemoryDocumentSmartTagsRepository } from "./smart-tags.repository";
+import type { IDocumentCategoryRepository } from "./category.repository";
+import { InMemoryDocumentCategoryRepository } from "./category.repository";
 import { createInMemoryRepository, createInMemoryStorage } from "./documents.service.helpers";
 import { NotFoundError } from "../../http/errors";
 import { persistUploadedDocuments } from "./documents.upload.operations";
@@ -33,6 +36,7 @@ import {
   type ExtractMetadataOptions,
 } from "./documents.metadata.operations";
 import { readDocumentSmartTags, storeDocumentSmartTags } from "./smart-tags.operations";
+import { readDocumentCategory } from "./category.operations";
 
 export type { CheckDuplicateInput, ExtractMetadataOptions };
 
@@ -46,6 +50,7 @@ export type DocumentServiceDependencies = {
   queueProducer?: QueueProducer | undefined;
   contentHashRepository?: IDocumentContentHashRepository | undefined;
   smartTagsRepository?: IDocumentSmartTagsRepository | undefined;
+  categoryRepository?: IDocumentCategoryRepository | undefined;
 };
 
 export type RecentDocumentList = {
@@ -65,6 +70,7 @@ export type IDocumentService = {
   listRelatedDocuments(documentId: string): Promise<ReadonlyArray<RelatedDocument>>;
   getDocumentMetadata(documentId: string): Promise<DocumentMetadataResult>;
   getDocumentSmartTags(documentId: string): Promise<ReadonlyArray<SmartTag>>;
+  getDocumentCategory(documentId: string): Promise<CategorySummary | null>;
   storeSmartTags(documentId: string, tags: ReadonlyArray<string>): Promise<ReadonlyArray<SmartTag>>;
   extractAndStoreMetadata(
     documentId: string,
@@ -84,6 +90,7 @@ export class DocumentService implements IDocumentService {
   private readonly queueProducer?: QueueProducer | undefined;
   private readonly contentHashRepository?: IDocumentContentHashRepository | undefined;
   private readonly smartTagsRepository: IDocumentSmartTagsRepository;
+  private readonly categoryRepository: IDocumentCategoryRepository;
 
   public constructor(dependencies: DocumentServiceDependencies = {}) {
     this.repository = dependencies.repository ?? createInMemoryRepository();
@@ -104,6 +111,8 @@ export class DocumentService implements IDocumentService {
     this.contentHashRepository = dependencies.contentHashRepository;
     this.smartTagsRepository =
       dependencies.smartTagsRepository ?? new InMemoryDocumentSmartTagsRepository();
+    this.categoryRepository =
+      dependencies.categoryRepository ?? new InMemoryDocumentCategoryRepository();
   }
 
   public async validateUpload(
@@ -161,6 +170,10 @@ export class DocumentService implements IDocumentService {
 
   public async getDocumentSmartTags(documentId: string): Promise<ReadonlyArray<SmartTag>> {
     return readDocumentSmartTags(this.smartTagsRepository, documentId);
+  }
+
+  public async getDocumentCategory(documentId: string): Promise<CategorySummary | null> {
+    return readDocumentCategory(this.categoryRepository, documentId);
   }
 
   public async storeSmartTags(
