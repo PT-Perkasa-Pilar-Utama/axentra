@@ -7,6 +7,7 @@ export const SEARCH_DOCUMENTS_QUERY_KEY = ["search-documents"] as const;
 export type SearchDocumentsPresenter = {
   inputValue: string;
   keyword: string;
+  categoryId?: string | undefined;
   isLoading: boolean;
   isError: boolean;
   isEmpty: boolean;
@@ -15,17 +16,19 @@ export type SearchDocumentsPresenter = {
   handleInputChange: (value: string) => void;
   handleSubmit: (e: React.FormEvent) => void;
   clearSearch: () => void;
+  setCategoryFilter: (id: string | undefined) => void;
   retry: () => Promise<void>;
 };
 
 export function useSearchDocumentsPresenter(): SearchDocumentsPresenter {
   const [inputValue, setInputValue] = useState("");
   const [keyword, setKeyword] = useState("");
+  const [categoryId, setCategoryId] = useState<string | undefined>();
 
   const query = useQuery({
-    queryKey: [...SEARCH_DOCUMENTS_QUERY_KEY, keyword],
-    queryFn: () => searchDocuments(keyword),
-    enabled: keyword.trim().length > 0,
+    queryKey: [...SEARCH_DOCUMENTS_QUERY_KEY, keyword, categoryId],
+    queryFn: () => searchDocuments(keyword, categoryId),
+    enabled: keyword.trim().length > 0 || categoryId !== undefined,
     staleTime: 60 * 1000,
     retry: 1,
   });
@@ -45,6 +48,11 @@ export function useSearchDocumentsPresenter(): SearchDocumentsPresenter {
   const clearSearch = useCallback(() => {
     setInputValue("");
     setKeyword("");
+    setCategoryId(undefined);
+  }, []);
+
+  const setCategoryFilter = useCallback((id: string | undefined) => {
+    setCategoryId(id);
   }, []);
 
   const retry = useCallback(async (): Promise<void> => {
@@ -54,13 +62,14 @@ export function useSearchDocumentsPresenter(): SearchDocumentsPresenter {
   const isLoading = query.isFetching;
   const isError = query.isError;
   const results = query.data ?? [];
-  const isEmpty = query.isSuccess && results.length === 0 && keyword.length > 0;
-
+  const isEmpty =
+    query.isSuccess && results.length === 0 && (keyword.length > 0 || categoryId !== undefined);
   const hasResults = !isLoading && !isError && results.length > 0;
 
   return {
     inputValue,
     keyword,
+    categoryId,
     isLoading,
     isError,
     isEmpty,
@@ -69,6 +78,7 @@ export function useSearchDocumentsPresenter(): SearchDocumentsPresenter {
     handleInputChange,
     handleSubmit,
     clearSearch,
+    setCategoryFilter,
     retry,
   };
 }
