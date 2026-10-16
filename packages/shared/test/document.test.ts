@@ -17,6 +17,9 @@ import {
   downloadDocumentQuerySchema,
   downloadDocumentResponseSchema,
   downloadDocumentSuccessResponseSchema,
+  PREVIEW_URL_TTL_SECONDS,
+  previewDocumentResponseSchema,
+  previewDocumentSuccessResponseSchema,
   processingStatusSchema,
   recentDocumentListQuerySchema,
   recentDocumentListResponseSchema,
@@ -509,6 +512,47 @@ describe("document shared schemas", () => {
           mimeType: "application/pdf",
           fileSize: -1,
           expiresInSeconds: 300,
+        }),
+      ).toThrow();
+    });
+  });
+
+  describe("previewDocumentResponseSchema and success response", () => {
+    it("accepts valid preview response data", () => {
+      const valid = {
+        previewUrl: "https://storage.local/bucket/documents/uuid/file.pdf?sig=abc",
+        filename: "laporan.pdf",
+        mimeType: "application/pdf",
+        fileSize: 1048576,
+        expiresInSeconds: PREVIEW_URL_TTL_SECONDS,
+      };
+      expect(previewDocumentResponseSchema.parse(valid)).toEqual(valid);
+
+      const envelope = {
+        success: true as const,
+        data: valid,
+      };
+      expect(previewDocumentSuccessResponseSchema.parse(envelope)).toEqual(envelope);
+    });
+
+    it("rejects invalid previewUrl or negative fileSize", () => {
+      expect(() =>
+        previewDocumentResponseSchema.parse({
+          previewUrl: "not-a-url",
+          filename: "laporan.pdf",
+          mimeType: "application/pdf",
+          fileSize: 1048576,
+          expiresInSeconds: PREVIEW_URL_TTL_SECONDS,
+        }),
+      ).toThrow();
+
+      expect(() =>
+        previewDocumentResponseSchema.parse({
+          previewUrl: "https://storage.local/file.pdf",
+          filename: "laporan.pdf",
+          mimeType: "application/pdf",
+          fileSize: -1,
+          expiresInSeconds: PREVIEW_URL_TTL_SECONDS,
         }),
       ).toThrow();
     });

@@ -44,12 +44,21 @@ import {
   type DownloadOperationResult,
   type ExecuteDownloadInput,
 } from "./download.operations";
+import type { IPreviewRepository } from "./preview.repository";
+import { InMemoryPreviewRepository } from "./preview.repository";
+import {
+  executePreviewOperation,
+  type PreviewOperationResult,
+  type ExecutePreviewInput,
+} from "./preview.operations";
 
 export type {
   CheckDuplicateInput,
   DownloadOperationResult,
   ExecuteDownloadInput,
+  ExecutePreviewInput,
   ExtractMetadataOptions,
+  PreviewOperationResult,
 };
 
 export type DocumentServiceDependencies = {
@@ -64,6 +73,7 @@ export type DocumentServiceDependencies = {
   smartTagsRepository?: IDocumentSmartTagsRepository | undefined;
   categoryRepository?: IDocumentCategoryRepository | undefined;
   downloadRepository?: IDownloadRepository | undefined;
+  previewRepository?: IPreviewRepository | undefined;
 };
 
 export type RecentDocumentList = {
@@ -92,6 +102,7 @@ export type IDocumentService = {
   storeMetadata(data: SaveMetadataInput): Promise<DocumentMetadataResult>;
   enqueueProcessingJob(documentId: string): Promise<string>;
   downloadDocument(input: ExecuteDownloadInput): Promise<DownloadOperationResult>;
+  previewDocument(input: ExecutePreviewInput): Promise<PreviewOperationResult>;
 };
 
 export class DocumentService implements IDocumentService {
@@ -106,6 +117,7 @@ export class DocumentService implements IDocumentService {
   private readonly smartTagsRepository: IDocumentSmartTagsRepository;
   private readonly categoryRepository: IDocumentCategoryRepository;
   private readonly downloadRepository: IDownloadRepository;
+  private readonly previewRepository: IPreviewRepository;
 
   public constructor(dependencies: DocumentServiceDependencies = {}) {
     this.repository = dependencies.repository ?? createInMemoryRepository();
@@ -129,6 +141,7 @@ export class DocumentService implements IDocumentService {
     this.categoryRepository =
       dependencies.categoryRepository ?? new InMemoryDocumentCategoryRepository();
     this.downloadRepository = dependencies.downloadRepository ?? new InMemoryDownloadRepository();
+    this.previewRepository = dependencies.previewRepository ?? new InMemoryPreviewRepository();
   }
 
   public async validateUpload(
@@ -234,6 +247,16 @@ export class DocumentService implements IDocumentService {
         downloadRepository: this.downloadRepository,
         storage: this.storage,
         logger: this.logger,
+      },
+      input,
+    );
+  }
+
+  public async previewDocument(input: ExecutePreviewInput): Promise<PreviewOperationResult> {
+    return executePreviewOperation(
+      {
+        previewRepository: this.previewRepository,
+        storage: this.storage,
       },
       input,
     );

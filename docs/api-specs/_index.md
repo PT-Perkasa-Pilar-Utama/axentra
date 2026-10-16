@@ -39,7 +39,7 @@ OK      GET    /documents
 PLANNED POST   /documents/upload
 PLANNED POST   /documents/check-duplicate
 PLANNED GET    /documents/:id
-PLANNED GET    /documents/:id/preview
+OK      GET    /documents/:id/preview
 OK      GET    /documents/:id/download
 PLANNED POST   /documents/bulk-download
 OK      GET    /documents/:id/related

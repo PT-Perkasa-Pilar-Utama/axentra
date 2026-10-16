@@ -161,7 +161,46 @@ Planned response includes:
 
 ### `GET /api/v1/documents/:id/preview`
 
-Shows document content without downloading the original file.
+Status: Implemented (BE-S3-01).
+
+Shows document content without downloading the original file by issuing a bounded signed URL for the
+stored file. The object key is never returned as a response field and signed URLs are never logged.
+
+**Authorization:**
+
+- Requires authenticated session (`Bearer <token>`).
+- Allowed roles: `member_team`, `head_of_team`, `admin`.
+- Preview is not gated by category download permission; that permission controls
+  `GET /documents/:id/download` only.
+
+**Parameters:**
+
+- `id` (path, required) — UUID of the target document.
+
+**Success Response (`200 OK`):**
+
+```json
+{
+  "success": true,
+  "data": {
+    "previewUrl": "https://storage.local/documents/11111111-1111-4111-8111-111111111111/laporan.pdf?...",
+    "filename": "laporan.pdf",
+    "mimeType": "application/pdf",
+    "fileSize": 1048576,
+    "expiresInSeconds": 300
+  }
+}
+```
+
+`previewUrl` is a bounded signed URL (`PREVIEW_URL_TTL_SECONDS = 300`). PDF content renders inline in
+the browser; for DOCX the Web viewer decides how to render or fall back. Preview does not write a
+download audit event.
+
+**Error Responses:**
+
+- `400 VALIDATION_ERROR`: `id` is not a valid UUID.
+- `401 UNAUTHORIZED`: Missing, forged, or expired token.
+- `404 NOT_FOUND`: Document not found, soft-deleted, or stored file record not found.
 
 ### `GET /api/v1/documents/:id/download`
 
@@ -256,6 +295,8 @@ Success response:
 
 ## Authorization Rules
 
-- Member Team can preview and download only when category permission allows it.
+- Preview is available to Member Team, Head of Team, and Admin for active documents; it is not
+  gated by category download permission.
+- Member Team can download only when category permission allows it.
 - Newly auto-created categories start without download permission.
 - Head of Team controls category download permission.

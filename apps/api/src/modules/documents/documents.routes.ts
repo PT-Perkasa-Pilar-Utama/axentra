@@ -10,6 +10,7 @@ import { createGetDocumentSmartTagsHandler } from "./smart-tags.handler";
 import { createGetDocumentCategoryHandler } from "./category.handler";
 import { createListRelatedDocumentsHandler } from "./related.handler";
 import { createDownloadDocumentHandler } from "./download.handler";
+import { createPreviewDocumentHandler } from "./preview.handler";
 import type { DocumentService } from "./documents.service";
 
 export type DocumentRouteDependencies = {
@@ -75,6 +76,13 @@ export function createDocumentRoutes(
     requireAuth(verifier),
     requireRole(["member_team", "head_of_team"]),
     createGetDocumentCategoryHandler(dependencies),
+  );
+
+  routes.get(
+    "/:id/preview",
+    requireAuth(verifier),
+    requireRole(["member_team", "head_of_team", "admin"]),
+    createPreviewDocumentHandler(dependencies),
   );
 
   routes.get(
