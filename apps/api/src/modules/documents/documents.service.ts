@@ -4,6 +4,7 @@ import { createLogger } from "@axentra/observability";
 import type { QueueProducer } from "@axentra/queue";
 import type { StorageAdapter } from "@axentra/storage";
 import {
+  type CategorySummary,
   type CheckDuplicateResponse,
   type DocumentMetadataResult,
   type DocumentUploadAcceptedData,
@@ -22,6 +23,8 @@ import type { IDocumentMetadataRepository, SaveMetadataInput } from "./metadata.
 import { InMemoryDocumentMetadataRepository } from "./metadata.repository";
 import type { IDocumentSmartTagsRepository } from "./smart-tags.repository";
 import { InMemoryDocumentSmartTagsRepository } from "./smart-tags.repository";
+import type { IDocumentCategoryRepository } from "./category.repository";
+import { InMemoryDocumentCategoryRepository } from "./category.repository";
 import { createInMemoryRepository, createInMemoryStorage } from "./documents.service.helpers";
 import { NotFoundError } from "../../http/errors";
 import { persistUploadedDocuments } from "./documents.upload.operations";
@@ -33,8 +36,30 @@ import {
   type ExtractMetadataOptions,
 } from "./documents.metadata.operations";
 import { readDocumentSmartTags, storeDocumentSmartTags } from "./smart-tags.operations";
+import { readDocumentCategory } from "./category.operations";
+import type { IDownloadRepository } from "./download.repository";
+import { InMemoryDownloadRepository } from "./download.repository";
+import {
+  executeDownloadOperation,
+  type DownloadOperationResult,
+  type ExecuteDownloadInput,
+} from "./download.operations";
+import type { IPreviewRepository } from "./preview.repository";
+import { InMemoryPreviewRepository } from "./preview.repository";
+import {
+  executePreviewOperation,
+  type PreviewOperationResult,
+  type ExecutePreviewInput,
+} from "./preview.operations";
 
-export type { CheckDuplicateInput, ExtractMetadataOptions };
+export type {
+  CheckDuplicateInput,
+  DownloadOperationResult,
+  ExecuteDownloadInput,
+  ExecutePreviewInput,
+  ExtractMetadataOptions,
+  PreviewOperationResult,
+};
 
 export type DocumentServiceDependencies = {
   repository?: IDocumentRepository | undefined;
@@ -46,6 +71,9 @@ export type DocumentServiceDependencies = {
   queueProducer?: QueueProducer | undefined;
   contentHashRepository?: IDocumentContentHashRepository | undefined;
   smartTagsRepository?: IDocumentSmartTagsRepository | undefined;
+  categoryRepository?: IDocumentCategoryRepository | undefined;
+  downloadRepository?: IDownloadRepository | undefined;
+  previewRepository?: IPreviewRepository | undefined;
 };
 
 export type RecentDocumentList = {
@@ -65,6 +93,7 @@ export type IDocumentService = {
   listRelatedDocuments(documentId: string): Promise<ReadonlyArray<RelatedDocument>>;
   getDocumentMetadata(documentId: string): Promise<DocumentMetadataResult>;
   getDocumentSmartTags(documentId: string): Promise<ReadonlyArray<SmartTag>>;
+  getDocumentCategory(documentId: string): Promise<CategorySummary | null>;
   storeSmartTags(documentId: string, tags: ReadonlyArray<string>): Promise<ReadonlyArray<SmartTag>>;
   extractAndStoreMetadata(
     documentId: string,
@@ -72,6 +101,8 @@ export type IDocumentService = {
   ): Promise<DocumentMetadataResult>;
   storeMetadata(data: SaveMetadataInput): Promise<DocumentMetadataResult>;
   enqueueProcessingJob(documentId: string): Promise<string>;
+  downloadDocument(input: ExecuteDownloadInput): Promise<DownloadOperationResult>;
+  previewDocument(input: ExecutePreviewInput): Promise<PreviewOperationResult>;
 };
 
 export class DocumentService implements IDocumentService {
@@ -84,6 +115,9 @@ export class DocumentService implements IDocumentService {
   private readonly queueProducer?: QueueProducer | undefined;
   private readonly contentHashRepository?: IDocumentContentHashRepository | undefined;
   private readonly smartTagsRepository: IDocumentSmartTagsRepository;
+  private readonly categoryRepository: IDocumentCategoryRepository;
+  private readonly downloadRepository: IDownloadRepository;
+  private readonly previewRepository: IPreviewRepository;
 
   public constructor(dependencies: DocumentServiceDependencies = {}) {
     this.repository = dependencies.repository ?? createInMemoryRepository();
@@ -104,6 +138,10 @@ export class DocumentService implements IDocumentService {
     this.contentHashRepository = dependencies.contentHashRepository;
     this.smartTagsRepository =
       dependencies.smartTagsRepository ?? new InMemoryDocumentSmartTagsRepository();
+    this.categoryRepository =
+      dependencies.categoryRepository ?? new InMemoryDocumentCategoryRepository();
+    this.downloadRepository = dependencies.downloadRepository ?? new InMemoryDownloadRepository();
+    this.previewRepository = dependencies.previewRepository ?? new InMemoryPreviewRepository();
   }
 
   public async validateUpload(
@@ -163,6 +201,10 @@ export class DocumentService implements IDocumentService {
     return readDocumentSmartTags(this.smartTagsRepository, documentId);
   }
 
+  public async getDocumentCategory(documentId: string): Promise<CategorySummary | null> {
+    return readDocumentCategory(this.categoryRepository, documentId);
+  }
+
   public async storeSmartTags(
     documentId: string,
     tags: ReadonlyArray<string>,
@@ -197,6 +239,27 @@ export class DocumentService implements IDocumentService {
       schemaVersion: 1,
       requestedAt: new Date().toISOString(),
     });
+  }
+
+  public async downloadDocument(input: ExecuteDownloadInput): Promise<DownloadOperationResult> {
+    return executeDownloadOperation(
+      {
+        downloadRepository: this.downloadRepository,
+        storage: this.storage,
+        logger: this.logger,
+      },
+      input,
+    );
+  }
+
+  public async previewDocument(input: ExecutePreviewInput): Promise<PreviewOperationResult> {
+    return executePreviewOperation(
+      {
+        previewRepository: this.previewRepository,
+        storage: this.storage,
+      },
+      input,
+    );
   }
 }
 

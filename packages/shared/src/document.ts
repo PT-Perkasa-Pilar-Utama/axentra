@@ -15,6 +15,36 @@ export const categorySummarySchema = z.object({
 });
 export type CategorySummary = z.infer<typeof categorySummarySchema>;
 
+export const documentCategoryResponseSchema = z.object({
+  success: z.literal(true),
+  data: categorySummarySchema.nullable(),
+});
+export type DocumentCategoryResponse = z.infer<typeof documentCategoryResponseSchema>;
+
+const blankQueryValue = (value: unknown, fallback: number): unknown =>
+  value === undefined || value === "" ? fallback : value;
+
+export const CATEGORIES_DEFAULT_LIMIT = 50;
+export const CATEGORIES_MAX_LIMIT = 100;
+
+export const categoriesQuerySchema = z.object({
+  limit: z.preprocess(
+    (value) => blankQueryValue(value, CATEGORIES_DEFAULT_LIMIT),
+    z.coerce
+      .number()
+      .int()
+      .min(1, { message: "Limit minimal 1" })
+      .max(CATEGORIES_MAX_LIMIT, { message: `Limit maksimal ${CATEGORIES_MAX_LIMIT}` }),
+  ),
+});
+export type CategoriesQuery = z.infer<typeof categoriesQuerySchema>;
+
+export const categoriesResponseSchema = z.object({
+  success: z.literal(true),
+  data: z.array(categorySummarySchema).max(CATEGORIES_MAX_LIMIT),
+});
+export type CategoriesResponse = z.infer<typeof categoriesResponseSchema>;
+
 export const smartTagSchema = z.object({
   id: z.string().uuid(),
   name: z.string().min(1),
@@ -82,9 +112,6 @@ export const relatedDocumentsResponseSchema = z.object({
 });
 export type RelatedDocumentsResponse = z.infer<typeof relatedDocumentsResponseSchema>;
 
-const blankQueryValue = (value: unknown, fallback: number): unknown =>
-  value === undefined || value === "" ? fallback : value;
-
 export const recentDocumentListQuerySchema = z.object({
   page: z.preprocess(
     (value) => blankQueryValue(value, 1),
@@ -136,3 +163,89 @@ export const documentDetailSchema = documentSummarySchema.extend({
   canDownload: z.boolean().optional(),
 });
 export type DocumentDetail = z.infer<typeof documentDetailSchema>;
+
+export const DEFAULT_DOWNLOAD_TTL_SECONDS = 300;
+export const MINIMUM_DOWNLOAD_TTL_SECONDS = 60;
+export const MAXIMUM_DOWNLOAD_TTL_SECONDS = 900;
+export const DOWNLOAD_ACCESS_DENIED_MESSAGE =
+  "Akses unduh tidak diizinkan untuk kategori dokumen ini";
+
+export const downloadDocumentQuerySchema = z.object({
+  stream: z
+    .preprocess((val) => {
+      if (typeof val === "boolean") return val;
+      if (typeof val === "string") {
+        const lower = val.trim().toLowerCase();
+        return lower === "true" || lower === "1";
+      }
+      return false;
+    }, z.boolean())
+    .default(false),
+  expiresInSeconds: z.preprocess(
+    (val) => {
+      if (val === undefined || val === null || val === "") return undefined;
+      return Number(val);
+    },
+    z
+      .number({
+        message: "Masa berlaku URL harus berupa angka",
+      })
+      .refine((val) => !Number.isNaN(val), {
+        message: "Masa berlaku URL harus berupa angka",
+      })
+      .refine((val) => Number.isInteger(val), {
+        message: "Masa berlaku URL harus berupa bilangan bulat",
+      })
+      .refine((val) => val >= MINIMUM_DOWNLOAD_TTL_SECONDS, {
+        message: `Masa berlaku URL minimal ${MINIMUM_DOWNLOAD_TTL_SECONDS} detik`,
+      })
+      .refine((val) => val <= MAXIMUM_DOWNLOAD_TTL_SECONDS, {
+        message: `Masa berlaku URL maksimal ${MAXIMUM_DOWNLOAD_TTL_SECONDS} detik`,
+      })
+      .optional(),
+  ),
+});
+export type DownloadDocumentQuery = z.infer<typeof downloadDocumentQuerySchema>;
+
+export const downloadDocumentResponseSchema = z.object({
+  downloadUrl: z.string().url(),
+  filename: z.string().min(1),
+  mimeType: z.string().min(1),
+  fileSize: z.number().int().nonnegative(),
+  expiresInSeconds: z.number().int().positive(),
+});
+export type DownloadDocumentResponse = z.infer<typeof downloadDocumentResponseSchema>;
+
+export const downloadDocumentSuccessResponseSchema = z.object({
+  success: z.literal(true),
+  data: downloadDocumentResponseSchema,
+});
+export type DownloadDocumentSuccessResponse = z.infer<typeof downloadDocumentSuccessResponseSchema>;
+
+export const downloadAuditEventSchema = z.object({
+  id: z.string().uuid(),
+  userId: z.string().uuid().nullable().optional(),
+  userName: z.string().nullable().optional(),
+  userEmail: z.string().nullable().optional(),
+  documentId: z.string().uuid().nullable().optional(),
+  documentName: z.string().min(1),
+  downloadedAt: z.string().datetime(),
+});
+export type DownloadAuditEvent = z.infer<typeof downloadAuditEventSchema>;
+
+export const PREVIEW_URL_TTL_SECONDS = 300;
+
+export const previewDocumentResponseSchema = z.object({
+  previewUrl: z.string().url(),
+  filename: z.string().min(1),
+  mimeType: z.string().min(1),
+  fileSize: z.number().int().nonnegative(),
+  expiresInSeconds: z.number().int().positive(),
+});
+export type PreviewDocumentResponse = z.infer<typeof previewDocumentResponseSchema>;
+
+export const previewDocumentSuccessResponseSchema = z.object({
+  success: z.literal(true),
+  data: previewDocumentResponseSchema,
+});
+export type PreviewDocumentSuccessResponse = z.infer<typeof previewDocumentSuccessResponseSchema>;

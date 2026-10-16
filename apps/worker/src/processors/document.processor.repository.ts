@@ -8,6 +8,7 @@ import {
   smartTags,
 } from "@axentra/db";
 import { PROCESSING_ENQUEUE_FAILURE_MESSAGE } from "@axentra/shared";
+import { ensureCategoryWithPermission, listAvailableCategories } from "./category.persistence";
 
 export type DocumentProcessingRecord = {
   id: string;
@@ -48,10 +49,14 @@ export type DocumentProcessingRepository = {
     documentId: string,
     metadata: CompleteDocumentMetadataInput,
     tags?: ReadonlyArray<string> | undefined,
+    category?: { name: string; slug: string } | null | undefined,
   ) => Promise<void>;
+  listCategories?: () => Promise<ReadonlyArray<{ name: string; slug: string }>>;
 };
 
 export class DrizzleDocumentProcessingRepository implements DocumentProcessingRepository {
+  public readonly createdCategoryIds: string[] = [];
+
   public constructor(private readonly db: PostgresJsDatabase) {}
 
   public async listRecoverableDocuments(): Promise<ReadonlyArray<FailedProcessingDocument>> {
@@ -143,10 +148,15 @@ export class DrizzleDocumentProcessingRepository implements DocumentProcessingRe
       .where(eq(documents.id, documentId));
   }
 
+  public async listCategories(): Promise<ReadonlyArray<{ name: string; slug: string }>> {
+    return listAvailableCategories(this.db);
+  }
+
   public async completeWithMetadata(
     documentId: string,
     metadata: CompleteDocumentMetadataInput,
     tags?: ReadonlyArray<string> | undefined,
+    category?: { name: string; slug: string } | null | undefined,
   ): Promise<void> {
     const now = new Date();
     await this.db.transaction(async (tx) => {
@@ -199,14 +209,33 @@ export class DrizzleDocumentProcessingRepository implements DocumentProcessingRe
         }
       }
 
-      await tx
-        .update(documents)
-        .set({
-          processingStatus: "completed",
-          errorMessage: null,
-          updatedAt: now,
-        })
-        .where(eq(documents.id, documentId));
+      let categoryId: string | null = null;
+      if (category) {
+        const resolved = await ensureCategoryWithPermission(tx, category, now);
+        if (resolved) {
+          categoryId = resolved.categoryId;
+          if (resolved.isNew) {
+            this.createdCategoryIds.push(resolved.categoryId);
+          }
+        }
+      }
+
+      const updateValues: {
+        processingStatus: "completed";
+        errorMessage: null;
+        updatedAt: Date;
+        categoryId?: string;
+      } = {
+        processingStatus: "completed",
+        errorMessage: null,
+        updatedAt: now,
+      };
+
+      if (categoryId) {
+        updateValues.categoryId = categoryId;
+      }
+
+      await tx.update(documents).set(updateValues).where(eq(documents.id, documentId));
     });
   }
 }

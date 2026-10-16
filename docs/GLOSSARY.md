@@ -276,7 +276,7 @@ authorization substitute.
 
 ### Member Team
 
-BA persona who uploads documents, searches, filters, previews, and downloads documents when category
+BA persona who uploads documents, searches, filters, and previews; downloads documents when category
 permission allows it.
 
 Planned role code: `member_team`.

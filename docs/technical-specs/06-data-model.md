@@ -19,7 +19,7 @@ packages/db/src/schema/index.ts
 | Health check      | Implemented          | Ping query (`SELECT 1`) validating database readiness                                |
 | Document core     | Implemented          | 8 domain tables covering documents, files, metadata, categories, tags (DB-S1-01)     |
 | Identity/Users    | Implemented (Schema) | `users` table schema & migration added (DB-S1-01); runtime auth integration deferred |
-| Audit trail       | Planned              | `download_audit_events` planned in subsequent cards                                  |
+| Audit trail       | Implemented          | `download_audit_events` schema and migration added (BE-S3-02)                        |
 
 ## Table Conventions
 
@@ -213,6 +213,26 @@ The identity persistence table storing user credentials and role assignments.
 **Indexes:**
 
 - `users_email_unique_idx` UNIQUE on `(email)`
+
+#### 10. `download_audit_events`
+
+Point-in-time facts recording authorized file downloads (AC-09.01, AC-12.01).
+
+| Column          | Type          | Constraints                             | Description                     |
+| --------------- | ------------- | --------------------------------------- | ------------------------------- |
+| `id`            | `uuid`        | Primary Key, default random             | Unique event identifier         |
+| `user_id`       | `uuid`        | Nullable, FK -> `users.id` SET NULL     | Downloading user identifier     |
+| `user_name`     | `text`        | Nullable                                | User display name snapshot      |
+| `user_email`    | `text`        | Nullable                                | User email address snapshot     |
+| `document_id`   | `uuid`        | Nullable, FK -> `documents.id` SET NULL | Downloaded document identifier  |
+| `document_name` | `text`        | NOT NULL                                | Original document name snapshot |
+| `downloaded_at` | `timestamptz` | NOT NULL, default now()                 | Download event timestamp        |
+
+**Indexes:**
+
+- `download_audit_events_user_id_idx` on `(user_id)`
+- `download_audit_events_document_id_idx` on `(document_id)`
+- `download_audit_events_downloaded_at_idx` on `(downloaded_at)`
 
 ---
 

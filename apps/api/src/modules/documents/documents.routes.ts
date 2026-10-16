@@ -7,7 +7,10 @@ import { createCheckDuplicateHandler } from "./duplicate.handler";
 import { createListRecentDocumentsHandler } from "./documents.list.handler";
 import { createGetDocumentMetadataHandler } from "./metadata.handler";
 import { createGetDocumentSmartTagsHandler } from "./smart-tags.handler";
+import { createGetDocumentCategoryHandler } from "./category.handler";
 import { createListRelatedDocumentsHandler } from "./related.handler";
+import { createDownloadDocumentHandler } from "./download.handler";
+import { createPreviewDocumentHandler } from "./preview.handler";
 import type { DocumentService } from "./documents.service";
 
 export type DocumentRouteDependencies = {
@@ -66,6 +69,27 @@ export function createDocumentRoutes(
     requireAuth(verifier),
     requireRole(["member_team", "head_of_team"]),
     createGetDocumentSmartTagsHandler(dependencies),
+  );
+
+  routes.get(
+    "/:id/category",
+    requireAuth(verifier),
+    requireRole(["member_team", "head_of_team"]),
+    createGetDocumentCategoryHandler(dependencies),
+  );
+
+  routes.get(
+    "/:id/preview",
+    requireAuth(verifier),
+    requireRole(["member_team", "head_of_team", "admin"]),
+    createPreviewDocumentHandler(dependencies),
+  );
+
+  routes.get(
+    "/:id/download",
+    requireAuth(verifier),
+    requireRole(["member_team", "head_of_team", "admin"]),
+    createDownloadDocumentHandler(dependencies),
   );
 
   return routes;
