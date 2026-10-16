@@ -4,6 +4,7 @@ import { clearAuthToken, getAuthToken, setAuthToken } from "../src/lib/auth-toke
 import {
   mergeRequestHeaders,
   apiRequest,
+  apiDownloadRequest,
   isSuccessEnvelope,
   setAuthTokenGetter,
 } from "../src/lib/api-client";
@@ -54,6 +55,45 @@ describe("API response contract", () => {
     try {
       await expect(apiRequest("/health", z.object({ status: z.string() }))).rejects.toMatchObject({
         code: "INVALID_RESPONSE",
+      });
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  test("maps bulk-download API envelopes to ApiClientError", async () => {
+    const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
+      createMockFetch(
+        async () =>
+          new Response(
+            JSON.stringify({
+              success: false,
+              error: { code: "NOT_FOUND", message: "Dokumen tidak ditemukan" },
+            }),
+            { status: 404, headers: { "content-type": "application/json" } },
+          ),
+      ),
+    );
+    try {
+      await expect(apiDownloadRequest("/documents/bulk-download")).rejects.toMatchObject({
+        name: "ApiClientError",
+        code: "NOT_FOUND",
+        message: "Dokumen tidak ditemukan",
+        status: 404,
+      });
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  test("maps non-envelope bulk-download failures to DOWNLOAD_FAILED", async () => {
+    const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
+      createMockFetch(async () => new Response("not-json", { status: 502 })),
+    );
+    try {
+      await expect(apiDownloadRequest("/documents/bulk-download")).rejects.toMatchObject({
+        code: "DOWNLOAD_FAILED",
+        status: 502,
       });
     } finally {
       fetchSpy.mockRestore();

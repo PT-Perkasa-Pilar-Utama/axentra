@@ -60,12 +60,24 @@ function DownloadIcon(): React.JSX.Element {
   );
 }
 
-export function DownloadButton({ presenter }: RecentDocumentsViewProps): React.JSX.Element {
+export type DownloadButtonProps = {
+  presenter: RecentDocumentsPresenter;
+};
+
+export function DownloadButton({ presenter }: DownloadButtonProps): React.JSX.Element {
+  let disabledReason: string | undefined;
+  if (presenter.selectedIds.size === 0) {
+    disabledReason = "Pilih minimal satu dokumen untuk mengunduh";
+  } else if (presenter.isDownloading) {
+    disabledReason = "Sedang mengunduh dokumen...";
+  }
+
   return (
     <button
       type="button"
       onClick={() => void presenter.downloadSelected()}
       disabled={presenter.selectedIds.size === 0 || presenter.isDownloading}
+      title={disabledReason}
       aria-label="Download Selected"
       aria-busy={presenter.isDownloading}
       className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-[#65a448] px-4 text-sm font-medium text-white transition-colors hover:bg-[#5b963f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#65a448] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 sm:px-5"
@@ -76,7 +88,9 @@ export function DownloadButton({ presenter }: RecentDocumentsViewProps): React.J
   );
 }
 
-function RecentDocumentActions({ presenter }: RecentDocumentsViewProps): React.JSX.Element {
+export type RecentDocumentActionsProps = DownloadButtonProps;
+
+function RecentDocumentActions({ presenter }: RecentDocumentActionsProps): React.JSX.Element {
   return (
     <div className="flex min-w-0 flex-wrap items-center justify-end gap-3 sm:gap-5">
       <nav aria-label="Navigasi halaman" className="flex items-center gap-1 text-gray-500">

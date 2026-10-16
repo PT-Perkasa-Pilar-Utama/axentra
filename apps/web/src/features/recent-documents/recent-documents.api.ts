@@ -40,17 +40,12 @@ export async function bulkDownloadDocuments(documentIds: readonly string[]): Pro
 }
 
 export function triggerBlobDownload(blob: Blob, filename = "documents.zip"): void {
-  if (typeof window === "undefined" || typeof window.document === "undefined") {
-    return;
-  }
-  const createObjectURL = window.URL?.createObjectURL?.bind(window.URL) ?? (() => "blob:mock");
-  const revokeObjectURL = window.URL?.revokeObjectURL?.bind(window.URL) ?? (() => {});
-  const url = createObjectURL(blob);
-  const anchor = window.document.createElement("a");
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = filename;
-  window.document.body.appendChild(anchor);
+  document.body.appendChild(anchor);
   anchor.click();
-  window.document.body.removeChild(anchor);
-  revokeObjectURL(url);
+  document.body.removeChild(anchor);
+  URL.revokeObjectURL(url);
 }

@@ -7,6 +7,8 @@ try {
 }
 if (typeof window !== "undefined" && window.document) {
   globalThis.document = window.document;
+  window.URL.createObjectURL = () => "blob:test-download";
+  window.URL.revokeObjectURL = () => undefined;
 }
 
 import { afterEach, describe, expect, test } from "bun:test";
@@ -528,6 +530,7 @@ describe("Recent documents and Tags integration", () => {
 
     await act(async () => {
       fireEvent.click(downloadButton);
+      await new Promise((resolve) => setTimeout(resolve, 50));
     });
 
     expect(requestBody).toBe(JSON.stringify({ documentIds: [firstId, secondId] }));
@@ -539,5 +542,48 @@ describe("Recent documents and Tags integration", () => {
     }
     expect(firstCheckbox.checked).toBe(false);
     expect(secondCheckbox.checked).toBe(false);
+  });
+
+  test("AC-10.01 keeps selected documents and shows an error when ZIP download fails", async () => {
+    const documents: RecentDocument[] = [
+      {
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        filename: "laporan.pdf",
+        processingStatus: "completed",
+        createdAt,
+        tags: [],
+      },
+    ];
+    globalThis.fetch = createFetchMock(
+      { current: "completed" },
+      documents,
+      () =>
+        new Response(
+          JSON.stringify({
+            success: false,
+            error: { code: "NOT_FOUND", message: "Dokumen tidak ditemukan" },
+          }),
+          { status: 404, headers: { "content-type": "application/json" } },
+        ),
+    );
+
+    await act(async () => {
+      renderDashboard(makeQueryClient());
+    });
+
+    const checkbox = await screen.findByRole("checkbox", { name: "Pilih laporan.pdf" });
+    const downloadButton = screen.getByRole("button", { name: "Download Selected" });
+    await act(async () => {
+      fireEvent.click(checkbox);
+      fireEvent.click(downloadButton);
+    });
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Dokumen tidak ditemukan");
+    if (!(checkbox instanceof HTMLInputElement) || !(downloadButton instanceof HTMLButtonElement)) {
+      throw new Error("Kontrol unduhan tidak valid");
+    }
+    expect(checkbox.checked).toBe(true);
+    expect(downloadButton.disabled).toBe(false);
   });
 });

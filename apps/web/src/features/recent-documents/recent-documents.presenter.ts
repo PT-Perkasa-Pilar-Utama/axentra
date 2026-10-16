@@ -49,7 +49,6 @@ export type RecentDocumentsPresenter = {
   downloadError: string | null;
   toggleSelect: (id: string) => void;
   clearSelection: () => void;
-  isSelected: (id: string) => boolean;
   downloadSelected: () => Promise<void>;
 };
 
@@ -150,10 +149,6 @@ export function useRecentDocumentsPresenter(
     () => new Set([...selectedIds].filter((id) => visibleIds.has(id))),
     [selectedIds, visibleIds],
   );
-  const isSelected = useCallback(
-    (id: string): boolean => visibleSelectedIds.has(id),
-    [visibleSelectedIds],
-  );
 
   const toggleSelect = useCallback(
     (id: string): void => {
@@ -181,7 +176,7 @@ export function useRecentDocumentsPresenter(
     try {
       const blob = await bulkDownloadDocuments([...visibleSelectedIds]);
       triggerBlobDownload(blob);
-      setSelectedIds(new Set());
+      clearSelection();
     } catch (error) {
       setDownloadError(
         error instanceof ApiClientError
@@ -191,7 +186,7 @@ export function useRecentDocumentsPresenter(
     } finally {
       setIsDownloading(false);
     }
-  }, [isDownloading, visibleSelectedIds]);
+  }, [clearSelection, isDownloading, visibleSelectedIds]);
 
   const items: RecentDocumentItem[] = documents.map((doc, index) => {
     const tagQuery = smartTagsQueries[index];
@@ -234,7 +229,6 @@ export function useRecentDocumentsPresenter(
     downloadError,
     toggleSelect,
     clearSelection,
-    isSelected,
     downloadSelected,
   };
 }
