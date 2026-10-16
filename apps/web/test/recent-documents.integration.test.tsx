@@ -11,7 +11,7 @@ if (typeof window !== "undefined" && window.document) {
   window.URL.revokeObjectURL = () => undefined;
 }
 
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryRouter, RouterProvider } from "react-router";
@@ -501,47 +501,62 @@ describe("Recent documents and Tags integration", () => {
       },
     ];
     let requestBody = "";
+    const zipBlob = new Blob(["zip-content"], { type: "application/zip" });
+    const clickedDownload = { filename: "" };
+    const createObjectUrl = spyOn(URL, "createObjectURL").mockReturnValue("blob:test-download");
+    const anchorClick = spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(
+      function (this: HTMLAnchorElement): void {
+        clickedDownload.filename = this.download;
+      },
+    );
     globalThis.fetch = createFetchMock({ current: "completed" }, documents, (init) => {
       requestBody = typeof init?.body === "string" ? init.body : "";
-      return new Response(new Blob(["zip-content"], { type: "application/zip" }), {
-        status: 200,
-      });
+      return new Response(zipBlob, { status: 200 });
     });
     const queryClient = makeQueryClient();
 
-    await act(async () => {
-      renderDashboard(queryClient);
-    });
+    try {
+      await act(async () => {
+        renderDashboard(queryClient);
+      });
 
-    const firstCheckbox = await screen.findByRole("checkbox", { name: "Pilih laporan.pdf" });
-    const secondCheckbox = screen.getByRole("checkbox", { name: "Pilih kontrak.docx" });
-    const downloadButton = screen.getByRole("button", { name: "Download Selected" });
-    expect(downloadButton instanceof HTMLButtonElement).toBe(true);
-    if (!(downloadButton instanceof HTMLButtonElement)) {
-      throw new Error("Tombol unduh tidak tersedia");
+      const firstCheckbox = await screen.findByRole("checkbox", { name: "Pilih laporan.pdf" });
+      const secondCheckbox = screen.getByRole("checkbox", { name: "Pilih kontrak.docx" });
+      const downloadButton = screen.getByRole("button", { name: "Download Selected" });
+      expect(downloadButton instanceof HTMLButtonElement).toBe(true);
+      if (!(downloadButton instanceof HTMLButtonElement)) {
+        throw new Error("Tombol unduh tidak tersedia");
+      }
+      expect(downloadButton.disabled).toBe(true);
+
+      await act(async () => {
+        fireEvent.click(firstCheckbox);
+        fireEvent.click(secondCheckbox);
+      });
+      expect(downloadButton.disabled).toBe(false);
+
+      await act(async () => {
+        fireEvent.click(downloadButton);
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+
+      expect(requestBody).toBe(JSON.stringify({ documentIds: [firstId, secondId] }));
+      expect(createObjectUrl).toHaveBeenCalledWith(zipBlob);
+      expect(anchorClick).toHaveBeenCalled();
+      expect(clickedDownload.filename).toBe("documents.zip");
+
+      if (
+        !(firstCheckbox instanceof HTMLInputElement) ||
+        !(secondCheckbox instanceof HTMLInputElement)
+      ) {
+        throw new Error("Checkbox dokumen tidak valid");
+      }
+      expect(firstCheckbox.checked).toBe(false);
+      expect(secondCheckbox.checked).toBe(false);
+    } finally {
+      createObjectUrl.mockRestore();
+      anchorClick.mockRestore();
     }
-    expect(downloadButton.disabled).toBe(true);
-
-    await act(async () => {
-      fireEvent.click(firstCheckbox);
-      fireEvent.click(secondCheckbox);
-    });
-    expect(downloadButton.disabled).toBe(false);
-
-    await act(async () => {
-      fireEvent.click(downloadButton);
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    });
-
-    expect(requestBody).toBe(JSON.stringify({ documentIds: [firstId, secondId] }));
-    if (
-      !(firstCheckbox instanceof HTMLInputElement) ||
-      !(secondCheckbox instanceof HTMLInputElement)
-    ) {
-      throw new Error("Checkbox dokumen tidak valid");
-    }
-    expect(firstCheckbox.checked).toBe(false);
-    expect(secondCheckbox.checked).toBe(false);
   });
 
   test("AC-10.01 keeps selected documents and shows an error when ZIP download fails", async () => {

@@ -1,11 +1,20 @@
-import type { z } from "zod";
-import { bulkDownloadRequestSchema, recentDocumentSchema, smartTagSchema } from "@axentra/shared";
+import { z } from "zod";
+import { recentDocumentSchema, smartTagSchema } from "@axentra/shared";
 import type { RecentDocument } from "@axentra/shared";
 import { apiDownloadRequest, apiRequest } from "../../lib/api-client";
 
 export type { RecentDocument };
 
 export type SmartTagResponse = z.infer<typeof smartTagSchema>;
+
+// TODO(BE-S3-03): Replace with the backend-approved contract when BE-S3-03 publishes it.
+export const bulkDownloadRequestSchema = z.object({
+  documentIds: z
+    .array(z.string().uuid({ message: "ID dokumen harus berupa UUID yang valid" }))
+    .min(1, "Minimal satu dokumen harus dipilih"),
+});
+
+export type BulkDownloadRequest = z.infer<typeof bulkDownloadRequestSchema>;
 
 export async function listRecentDocuments(
   page = 1,

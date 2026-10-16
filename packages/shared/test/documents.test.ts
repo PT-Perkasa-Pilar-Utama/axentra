@@ -4,7 +4,6 @@ import {
   DOCUMENT_ERROR_CODES,
   DOCUMENT_MIME_ALLOWLIST_BY_TYPE,
   MAX_DOCUMENT_FILE_SIZE_BYTES,
-  bulkDownloadRequestSchema,
   documentUploadAcceptedDataSchema,
   documentUploadFileMetaSchema,
   getDocumentExtension,
@@ -99,23 +98,6 @@ describe("document shared contracts", () => {
       files: [validMeta],
     };
     expect(documentUploadAcceptedDataSchema.safeParse(wrongMessagePayload).success).toBe(false);
-  });
-
-  test("validates bulk download request schema with Zod", () => {
-    const valid = {
-      documentIds: ["11111111-1111-4111-8111-111111111111"],
-    };
-    expect(bulkDownloadRequestSchema.safeParse(valid).success).toBe(true);
-
-    const empty = {
-      documentIds: [],
-    };
-    expect(bulkDownloadRequestSchema.safeParse(empty).success).toBe(false);
-
-    const invalidUuid = {
-      documentIds: ["not-a-uuid"],
-    };
-    expect(bulkDownloadRequestSchema.safeParse(invalidUuid).success).toBe(false);
   });
 
   test("exposes stable error codes and copy", () => {

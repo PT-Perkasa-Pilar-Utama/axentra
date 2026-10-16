@@ -106,7 +106,6 @@ export {
   searchDocumentsResponseSchema,
 } from "./search";
 export type {
-  BulkDownloadRequest,
   CheckDuplicateRequest,
   CheckDuplicateResponse,
   CheckDuplicateSuccessResponse,
@@ -131,7 +130,6 @@ export {
   MAX_DOCX_BATCH_COUNT,
   SUPPORTED_DOCUMENT_EXTENSIONS,
   SUPPORTED_DOCUMENT_MIME_TYPES,
-  bulkDownloadRequestSchema,
   checkDuplicateRequestSchema,
   checkDuplicateResponseSchema,
   checkDuplicateSuccessResponseSchema,
