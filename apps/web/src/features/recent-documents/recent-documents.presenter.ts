@@ -1,9 +1,15 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
 
-import { listRecentDocuments, getDocumentSmartTags } from "./recent-documents.api";
+import {
+  bulkDownloadDocuments,
+  getDocumentSmartTags,
+  listRecentDocuments,
+  triggerBlobDownload,
+} from "./recent-documents.api";
 import type { RecentDocument } from "./recent-documents.api";
 import { TOP_TAGS_QUERY_KEY } from "../top-tags/top-tags.presenter";
+import { ApiClientError } from "../../lib/api-client";
 
 export const RECENT_DOCUMENTS_QUERY_KEY = ["recent-documents"] as const;
 const recentDocumentsPollIntervalMs = 2000;
@@ -28,6 +34,7 @@ export type RecentDocumentItem = {
   statusLabel: string;
   processingStatus: RecentDocument["processingStatus"];
   smartTags: DocumentSmartTagsState;
+  isSelected: boolean;
 };
 
 export type RecentDocumentsPresenter = {
@@ -37,6 +44,12 @@ export type RecentDocumentsPresenter = {
   items: RecentDocumentItem[];
   refresh: () => Promise<void>;
   retry: () => Promise<void>;
+  selectedIds: ReadonlySet<string>;
+  isDownloading: boolean;
+  downloadError: string | null;
+  toggleSelect: (id: string) => void;
+  clearSelection: () => void;
+  downloadSelected: () => Promise<void>;
 };
 
 function formatDate(iso: string): string {
@@ -77,6 +90,9 @@ export function useRecentDocumentsPresenter(
 ): RecentDocumentsPresenter {
   const queryClient = useQueryClient();
   const isPollingRef = useRef(false);
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   const tagsArray = activeTagNames ? Array.from(activeTagNames) : [];
   const isFilterActive = tagsArray.length > 0;
@@ -100,7 +116,7 @@ export function useRecentDocumentsPresenter(
       hasPendingDocument(current.state.data ?? []) ? recentDocumentsPollIntervalMs : false,
   });
 
-  const documents = query.data ?? [];
+  const documents = useMemo(() => query.data ?? [], [query.data]);
   const isPending =
     hasPendingDocument(documents) ||
     (isFilterActive && hasPendingDocument(pendingMonitorQuery.data ?? []));
@@ -128,6 +144,50 @@ export function useRecentDocumentsPresenter(
     })),
   });
 
+  const visibleIds = useMemo(() => new Set(documents.map((document) => document.id)), [documents]);
+  const visibleSelectedIds = useMemo(
+    () => new Set([...selectedIds].filter((id) => visibleIds.has(id))),
+    [selectedIds, visibleIds],
+  );
+
+  const toggleSelect = useCallback(
+    (id: string): void => {
+      if (!visibleIds.has(id)) return;
+      setDownloadError(null);
+      setSelectedIds((current) => {
+        const next = new Set([...current].filter((selectedId) => visibleIds.has(selectedId)));
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+    },
+    [visibleIds],
+  );
+
+  const clearSelection = useCallback((): void => {
+    setSelectedIds(new Set());
+    setDownloadError(null);
+  }, []);
+
+  const downloadSelected = useCallback(async (): Promise<void> => {
+    if (visibleSelectedIds.size === 0 || isDownloading) return;
+    setIsDownloading(true);
+    setDownloadError(null);
+    try {
+      const blob = await bulkDownloadDocuments([...visibleSelectedIds]);
+      triggerBlobDownload(blob);
+      clearSelection();
+    } catch (error) {
+      setDownloadError(
+        error instanceof ApiClientError
+          ? error.message
+          : "Gagal mengunduh dokumen yang dipilih. Coba lagi.",
+      );
+    } finally {
+      setIsDownloading(false);
+    }
+  }, [clearSelection, isDownloading, visibleSelectedIds]);
+
   const items: RecentDocumentItem[] = documents.map((doc, index) => {
     const tagQuery = smartTagsQueries[index];
     return {
@@ -145,6 +205,7 @@ export function useRecentDocumentsPresenter(
           void tagQuery?.refetch();
         },
       },
+      isSelected: visibleSelectedIds.has(doc.id),
     };
   });
 
@@ -163,5 +224,11 @@ export function useRecentDocumentsPresenter(
     items,
     refresh,
     retry,
+    selectedIds: visibleSelectedIds,
+    isDownloading,
+    downloadError,
+    toggleSelect,
+    clearSelection,
+    downloadSelected,
   };
 }

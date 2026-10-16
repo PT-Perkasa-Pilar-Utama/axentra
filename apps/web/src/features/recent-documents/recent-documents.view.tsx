@@ -4,42 +4,17 @@ import type {
   DocumentSmartTagsState,
   RecentDocumentItem,
 } from "./recent-documents.presenter";
+import {
+  DownloadButton,
+  RecentDocumentActions,
+  type DownloadButtonProps,
+  type RecentDocumentActionsProps,
+} from "./recent-document-actions.view";
+
+export { DownloadButton, RecentDocumentActions };
+export type { DownloadButtonProps, RecentDocumentActionsProps };
 
 const emptyMessage = "Tidak ada hasil yang ditemukan";
-
-function ChevronLeftIcon(): React.JSX.Element {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className="h-4 w-4"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="m15 18-6-6 6-6" />
-    </svg>
-  );
-}
-
-function ChevronRightIcon(): React.JSX.Element {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className="h-4 w-4"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="m9 18 6-6-6-6" />
-    </svg>
-  );
-}
 
 // Resolusi F17: Deklarasi tipe bernama secara eksplisit
 export type DocumentSmartTagsProps = {
@@ -106,33 +81,14 @@ export function RecentDocumentsView({ presenter }: RecentDocumentsViewProps): Re
     <section aria-label="Semua dokumen">
       <div className="mb-3 flex items-center justify-between gap-4">
         <h2 className="text-sm font-semibold text-gray-900">Semua Dokumen</h2>
-        <nav aria-label="Navigasi halaman" className="flex items-center gap-1 text-gray-500">
-          <button
-            type="button"
-            disabled
-            title="Fitur navigasi halaman belum tersedia"
-            aria-label="Halaman sebelumnya"
-            className="rounded p-1 text-gray-400 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <ChevronLeftIcon />
-          </button>
-          <span
-            aria-current="page"
-            className="flex h-8 min-w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-xs font-medium text-gray-700"
-          >
-            1
-          </span>
-          <button
-            type="button"
-            disabled
-            title="Fitur navigasi halaman belum tersedia"
-            aria-label="Halaman berikutnya"
-            className="rounded p-1 text-[#65a448] hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <ChevronRightIcon />
-          </button>
-        </nav>
+        <RecentDocumentActions presenter={presenter} />
       </div>
+
+      {presenter.downloadError && (
+        <p role="alert" className="mb-3 text-sm text-rose-600">
+          {presenter.downloadError}
+        </p>
+      )}
 
       {presenter.isLoading && (
         <div
@@ -176,9 +132,10 @@ export function RecentDocumentsView({ presenter }: RecentDocumentsViewProps): Re
             >
               <input
                 type="checkbox"
+                checked={item.isSelected}
+                onChange={() => presenter.toggleSelect(item.id)}
                 aria-label={`Pilih ${item.filename}`}
-                className="h-5 w-5 shrink-0 rounded border-gray-300 accent-[#65a448]"
-                readOnly
+                className="h-5 w-5 shrink-0 cursor-pointer rounded border-gray-300 accent-[#65a448] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#65a448] focus-visible:ring-offset-1"
               />
 
               <div className="min-w-0 flex-1">
