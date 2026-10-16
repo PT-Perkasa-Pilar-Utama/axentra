@@ -15,6 +15,7 @@ import { DrizzleDocumentCategoryRepository } from "./modules/documents/category.
 import { DrizzleCategoriesRepository } from "./modules/categories/categories.repository";
 import { createCategoriesService } from "./modules/categories/categories.service";
 import { DrizzleDownloadRepository } from "./modules/documents/download.repository";
+import { DrizzlePreviewRepository } from "./modules/documents/preview.repository";
 
 import { DrizzleTopTagsRepository } from "./modules/tags/tags.repository";
 import { createTopTagsService } from "./modules/tags/tags.service";
@@ -91,6 +92,7 @@ async function start(): Promise<void> {
     smartTagsRepository: new DrizzleDocumentSmartTagsRepository(database.db),
     categoryRepository: new DrizzleDocumentCategoryRepository(database.db),
     downloadRepository: new DrizzleDownloadRepository(database.db),
+    previewRepository: new DrizzlePreviewRepository(database.db),
   });
   const topTagsService = createTopTagsService(new DrizzleTopTagsRepository(database.db));
   const searchService = createSearchService(new DrizzleSearchRepository(database.db));
