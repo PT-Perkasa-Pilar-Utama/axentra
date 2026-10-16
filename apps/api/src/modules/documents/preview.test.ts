@@ -183,6 +183,13 @@ describe("GET /api/v1/documents/:id/preview — BE-S3-01", () => {
 
       expect(response.status).toBe(200);
       const body = previewDocumentSuccessResponseSchema.parse(await response.json());
+      expect(Object.keys(body.data).sort()).toEqual([
+        "expiresInSeconds",
+        "fileSize",
+        "filename",
+        "mimeType",
+        "previewUrl",
+      ]);
       expect(body.data.filename).toBe("laporan.pdf");
       expect(body.data.mimeType).toBe("application/pdf");
       expect(body.data.fileSize).toBe(samplePdfBytes.byteLength);
