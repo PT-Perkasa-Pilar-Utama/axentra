@@ -5,6 +5,7 @@ import { jsonSuccess } from "../../http/responses";
 import { ValidationError } from "../../http/errors";
 import { getAuthenticatedUser } from "../../middleware/auth";
 import type { DocumentRouteDependencies } from "./documents.routes";
+import { sanitizeFilename } from "./documents.service.helpers";
 
 export function createDownloadDocumentHandler(
   dependencies: DocumentRouteDependencies,
@@ -38,12 +39,13 @@ export function createDownloadDocumentHandler(
     });
 
     if (result.kind === "stream") {
-      const safeFilename = encodeURIComponent(result.filename);
+      const asciiFallback = sanitizeFilename(result.filename);
+      const utf8Filename = encodeURIComponent(result.filename);
       return new Response(result.bytes, {
         status: 200,
         headers: {
           "Content-Type": result.mimeType,
-          "Content-Disposition": `attachment; filename="${result.filename.replace(/"/g, '\\"')}"; filename*=UTF-8''${safeFilename}`,
+          "Content-Disposition": `attachment; filename="${asciiFallback}"; filename*=UTF-8''${utf8Filename}`,
           "Content-Length": result.fileSize.toString(),
         },
       });

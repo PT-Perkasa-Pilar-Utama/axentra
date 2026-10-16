@@ -444,9 +444,32 @@ describe("document shared schemas", () => {
       });
     });
 
-    it("rejects expiresInSeconds outside 60-900 bounds", () => {
-      expect(() => downloadDocumentQuerySchema.parse({ expiresInSeconds: 59 })).toThrow();
-      expect(() => downloadDocumentQuerySchema.parse({ expiresInSeconds: 901 })).toThrow();
+    it("rejects expiresInSeconds outside 60-900 bounds with Indonesian messages", () => {
+      const minResult = downloadDocumentQuerySchema.safeParse({ expiresInSeconds: 59 });
+      expect(minResult.success).toBe(false);
+      if (!minResult.success) {
+        expect(minResult.error.issues[0]?.message).toBe("Masa berlaku URL minimal 60 detik");
+      }
+
+      const maxResult = downloadDocumentQuerySchema.safeParse({ expiresInSeconds: 901 });
+      expect(maxResult.success).toBe(false);
+      if (!maxResult.success) {
+        expect(maxResult.error.issues[0]?.message).toBe("Masa berlaku URL maksimal 900 detik");
+      }
+
+      const nanResult = downloadDocumentQuerySchema.safeParse({ expiresInSeconds: "abc" });
+      expect(nanResult.success).toBe(false);
+      if (!nanResult.success) {
+        expect(nanResult.error.issues[0]?.message).toBe("Masa berlaku URL harus berupa angka");
+      }
+
+      const floatResult = downloadDocumentQuerySchema.safeParse({ expiresInSeconds: 60.5 });
+      expect(floatResult.success).toBe(false);
+      if (!floatResult.success) {
+        expect(floatResult.error.issues[0]?.message).toBe(
+          "Masa berlaku URL harus berupa bilangan bulat",
+        );
+      }
     });
   });
 

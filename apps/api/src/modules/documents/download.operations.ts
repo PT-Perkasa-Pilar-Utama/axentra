@@ -1,4 +1,5 @@
 import type { Logger } from "@axentra/observability";
+import { summarizeError } from "@axentra/observability";
 import type { StorageAdapter } from "@axentra/storage";
 import {
   DEFAULT_DOWNLOAD_TTL_SECONDS,
@@ -52,6 +53,8 @@ export async function executeDownloadOperation(
     throw new NotFoundError("File dokumen tidak ditemukan");
   }
 
+  const file = target.file;
+
   // Enforce category download permission for member_team (AC-09.01, AC-13.01)
   if (input.user.role === "member_team") {
     if (!target.document.categoryId) {
@@ -62,46 +65,51 @@ export async function executeDownloadOperation(
     }
   }
 
-  // Successful authorization: record audit event (AC-09.01, AC-12.01)
-  try {
-    await dependencies.downloadRepository.recordDownloadAuditEvent({
-      userId: input.user.id,
-      userName: input.user.name ?? input.user.email,
-      userEmail: input.user.email,
-      documentId: target.document.id,
-      documentName: target.file.originalName,
-      downloadedAt: new Date(),
-    });
-  } catch (error) {
-    dependencies.logger?.error({
-      message: "Gagal mencatat audit event download",
-      documentId: target.document.id,
-      userId: input.user.id,
-      error,
-    });
-    throw error;
-  }
+  const recordAudit = async (): Promise<void> => {
+    try {
+      await dependencies.downloadRepository.recordDownloadAuditEvent({
+        userId: input.user.id,
+        userName: input.user.name ?? input.user.email,
+        userEmail: input.user.email,
+        documentId: target.document.id,
+        documentName: file.originalName,
+        downloadedAt: new Date(),
+      });
+    } catch (error) {
+      dependencies.logger?.error(
+        {
+          documentId: target.document.id,
+          userId: input.user.id,
+          error: summarizeError(error),
+        },
+        "Gagal mencatat audit event download",
+      );
+      throw error;
+    }
+  };
 
   if (input.stream === true) {
-    const bytes = await dependencies.storage.getObject(target.file.storageKey);
+    const bytes = await dependencies.storage.getObject(file.storageKey);
+    await recordAudit();
     return {
       kind: "stream",
-      filename: target.file.originalName,
-      mimeType: target.file.mimeType,
-      fileSize: target.file.fileSize,
+      filename: file.originalName,
+      mimeType: file.mimeType,
+      fileSize: file.fileSize,
       bytes,
     };
   }
 
   const ttl = input.expiresInSeconds ?? DEFAULT_DOWNLOAD_TTL_SECONDS;
-  const downloadUrl = await dependencies.storage.createDownloadUrl(target.file.storageKey, ttl);
+  const downloadUrl = await dependencies.storage.createDownloadUrl(file.storageKey, ttl);
+  await recordAudit();
 
   return {
     kind: "url",
     downloadUrl,
-    filename: target.file.originalName,
-    mimeType: target.file.mimeType,
-    fileSize: target.file.fileSize,
+    filename: file.originalName,
+    mimeType: file.mimeType,
+    fileSize: file.fileSize,
     expiresInSeconds: ttl,
   };
 }

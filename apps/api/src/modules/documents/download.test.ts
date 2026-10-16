@@ -16,6 +16,7 @@ const UNCATEGORIZED_DOC_ID = "33333333-3333-4333-8333-333333333333";
 const DISABLED_CAT_DOC_ID = "44444444-4444-4444-8444-444444444444";
 const ENABLED_CAT_DOC_ID = "55555555-5555-4555-8555-555555555555";
 const DELETED_DOC_ID = "66666666-6666-4666-8666-666666666666";
+const NON_ASCII_DOC_ID = "77777777-7777-4777-8777-777777777777";
 
 const testLogger = createLogger({
   service: "axentra-api",
@@ -183,6 +184,28 @@ function createSetup(storage?: StorageAdapter) {
     },
   });
 
+  // 6. Valid doc with non-ASCII filename (F1)
+  downloadRepo.setTarget(NON_ASCII_DOC_ID, {
+    document: {
+      id: NON_ASCII_DOC_ID,
+      title: "Laporan – Q3",
+      categoryId: "cat-reporting-1",
+      processingStatus: "completed",
+      deletedAt: null,
+    },
+    file: {
+      id: "file-6",
+      storageKey: "storage/laporan.pdf",
+      originalName: "Laporan – Q3 (中文 & 日本語).pdf",
+      mimeType: "application/pdf",
+      fileSize: samplePdfBytes.byteLength,
+      fileExtension: "pdf",
+    },
+    categoryPermission: {
+      downloadEnabled: true,
+    },
+  });
+
   const documentService = createDocumentService({
     downloadRepository: downloadRepo,
     storage: mockStorage,
@@ -236,19 +259,31 @@ describe("GET /api/v1/documents/:id/download — BE-S3-02", () => {
       expect(downloadRepo.getRecordedAuditEvents().length).toBe(0);
     });
 
-    test("returns 400 when expiresInSeconds is outside bounds [60, 900]", async () => {
+    test("returns 400 with Indonesian message when expiresInSeconds is invalid or outside bounds [60, 900] (F2)", async () => {
       const { app, downloadRepo } = createSetup();
       const responseLow = await app.request(
         `/api/v1/documents/${ENABLED_CAT_DOC_ID}/download?expiresInSeconds=30`,
         { headers: { authorization: "Bearer member-token" } },
       );
       expect(responseLow.status).toBe(400);
+      const lowBody = apiErrorSchema.parse(await responseLow.json());
+      expect(lowBody.error.message).toBe("Masa berlaku URL minimal 60 detik");
 
       const responseHigh = await app.request(
         `/api/v1/documents/${ENABLED_CAT_DOC_ID}/download?expiresInSeconds=1000`,
         { headers: { authorization: "Bearer member-token" } },
       );
       expect(responseHigh.status).toBe(400);
+      const highBody = apiErrorSchema.parse(await responseHigh.json());
+      expect(highBody.error.message).toBe("Masa berlaku URL maksimal 900 detik");
+
+      const responseNaN = await app.request(
+        `/api/v1/documents/${ENABLED_CAT_DOC_ID}/download?expiresInSeconds=abc`,
+        { headers: { authorization: "Bearer member-token" } },
+      );
+      expect(responseNaN.status).toBe(400);
+      const nanBody = apiErrorSchema.parse(await responseNaN.json());
+      expect(nanBody.error.message).toBe("Masa berlaku URL harus berupa angka");
 
       expect(downloadRepo.getRecordedAuditEvents().length).toBe(0);
     });
@@ -426,6 +461,68 @@ describe("GET /api/v1/documents/:id/download — BE-S3-02", () => {
       const bytes = new Uint8Array(await response.arrayBuffer());
       expect(bytes).toEqual(samplePdfBytes);
       expect(downloadRepo.getRecordedAuditEvents().length).toBe(1);
+    });
+
+    test("streams non-ASCII filename without 500 and with ASCII-safe Content-Disposition fallback (F1)", async () => {
+      const { app, downloadRepo } = createSetup();
+      const response = await app.request(
+        `/api/v1/documents/${NON_ASCII_DOC_ID}/download?stream=true`,
+        { headers: { authorization: "Bearer member-token" } },
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toBe("application/pdf");
+      const contentDisposition = response.headers.get("content-disposition");
+      expect(contentDisposition).not.toBeNull();
+      // ASCII fallback uses sanitizeFilename (replaces non-ASCII characters with _)
+      expect(contentDisposition).toContain('filename="Laporan___Q3___________.pdf"');
+      // UTF-8 filename* retains full Unicode filename per RFC 5987 / 6266
+      expect(contentDisposition).toContain(
+        `filename*=UTF-8''${encodeURIComponent("Laporan – Q3 (中文 & 日本語).pdf")}`,
+      );
+
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      expect(bytes).toEqual(samplePdfBytes);
+      expect(downloadRepo.getRecordedAuditEvents().length).toBe(1);
+    });
+  });
+
+  describe("Storage Failure Handling (F3 & F7)", () => {
+    test("does not record audit event when getObject throws in stream mode", async () => {
+      const failingStorage: StorageAdapter = {
+        ...createMockStorage(),
+        getObject: async () => {
+          throw new Error("S3 read failure");
+        },
+      };
+      const { app, downloadRepo } = createSetup(failingStorage);
+      const response = await app.request(
+        `/api/v1/documents/${ENABLED_CAT_DOC_ID}/download?stream=true`,
+        { headers: { authorization: "Bearer member-token" } },
+      );
+
+      expect(response.status).toBe(500);
+      const body = apiErrorSchema.parse(await response.json());
+      expect(body.error.code).toBe("INTERNAL_ERROR");
+      expect(downloadRepo.getRecordedAuditEvents().length).toBe(0);
+    });
+
+    test("does not record audit event when createDownloadUrl throws in signed URL mode", async () => {
+      const failingStorage: StorageAdapter = {
+        ...createMockStorage(),
+        createDownloadUrl: async () => {
+          throw new Error("S3 presign failure");
+        },
+      };
+      const { app, downloadRepo } = createSetup(failingStorage);
+      const response = await app.request(`/api/v1/documents/${ENABLED_CAT_DOC_ID}/download`, {
+        headers: { authorization: "Bearer member-token" },
+      });
+
+      expect(response.status).toBe(500);
+      const body = apiErrorSchema.parse(await response.json());
+      expect(body.error.code).toBe("INTERNAL_ERROR");
+      expect(downloadRepo.getRecordedAuditEvents().length).toBe(0);
     });
   });
 });

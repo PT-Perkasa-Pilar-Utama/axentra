@@ -181,10 +181,29 @@ export const downloadDocumentQuerySchema = z.object({
       return false;
     }, z.boolean())
     .default(false),
-  expiresInSeconds: z.preprocess((val) => {
-    if (val === undefined || val === null || val === "") return undefined;
-    return Number(val);
-  }, z.number().int().min(MINIMUM_DOWNLOAD_TTL_SECONDS).max(MAXIMUM_DOWNLOAD_TTL_SECONDS).optional()),
+  expiresInSeconds: z.preprocess(
+    (val) => {
+      if (val === undefined || val === null || val === "") return undefined;
+      return Number(val);
+    },
+    z
+      .number({
+        message: "Masa berlaku URL harus berupa angka",
+      })
+      .refine((val) => !Number.isNaN(val), {
+        message: "Masa berlaku URL harus berupa angka",
+      })
+      .refine((val) => Number.isInteger(val), {
+        message: "Masa berlaku URL harus berupa bilangan bulat",
+      })
+      .refine((val) => val >= MINIMUM_DOWNLOAD_TTL_SECONDS, {
+        message: `Masa berlaku URL minimal ${MINIMUM_DOWNLOAD_TTL_SECONDS} detik`,
+      })
+      .refine((val) => val <= MAXIMUM_DOWNLOAD_TTL_SECONDS, {
+        message: `Masa berlaku URL maksimal ${MAXIMUM_DOWNLOAD_TTL_SECONDS} detik`,
+      })
+      .optional(),
+  ),
 });
 export type DownloadDocumentQuery = z.infer<typeof downloadDocumentQuerySchema>;
 
