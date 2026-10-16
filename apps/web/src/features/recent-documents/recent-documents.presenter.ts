@@ -1,12 +1,20 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
 
-import { listRecentDocuments, getDocumentSmartTags } from "./recent-documents.api";
+import {
+  getDocumentCategory,
+  getDocumentSmartTags,
+  listRecentDocuments,
+} from "./recent-documents.api";
 import type { RecentDocument } from "./recent-documents.api";
 import { TOP_TAGS_QUERY_KEY } from "../top-tags/top-tags.presenter";
+import { CATEGORIES_QUERY_KEY } from "../categories/categories.presenter";
 
 export const RECENT_DOCUMENTS_QUERY_KEY = ["recent-documents"] as const;
 const recentDocumentsPollIntervalMs = 2000;
+
+export const DOCUMENT_SMART_TAGS_QUERY_KEY = ["document-smart-tags"] as const;
+export const DOCUMENT_CATEGORY_QUERY_KEY = ["document-category"] as const;
 
 export type DocumentSmartTagItem = {
   id: string;
@@ -28,6 +36,12 @@ export type RecentDocumentItem = {
   statusLabel: string;
   processingStatus: RecentDocument["processingStatus"];
   smartTags: DocumentSmartTagsState;
+  category: {
+    isLoading: boolean;
+    isError: boolean;
+    name: string | null;
+    retry: () => void;
+  };
 };
 
 export type RecentDocumentsPresenter = {
@@ -69,8 +83,6 @@ function hasPendingDocument(documents: readonly RecentDocument[]): boolean {
   );
 }
 
-export const DOCUMENT_SMART_TAGS_QUERY_KEY = ["document-smart-tags"] as const;
-
 export function useRecentDocumentsPresenter(
   limit = 20,
   activeTagNames?: ReadonlySet<string>,
@@ -111,6 +123,8 @@ export function useRecentDocumentsPresenter(
     } else if (isPollingRef.current && !isPending) {
       void queryClient.invalidateQueries({ queryKey: TOP_TAGS_QUERY_KEY });
       void queryClient.invalidateQueries({ queryKey: [...DOCUMENT_SMART_TAGS_QUERY_KEY] });
+      void queryClient.invalidateQueries({ queryKey: [...DOCUMENT_CATEGORY_QUERY_KEY] });
+      void queryClient.invalidateQueries({ queryKey: CATEGORIES_QUERY_KEY });
       if (isFilterActive) {
         void queryClient.invalidateQueries({ queryKey: [...RECENT_DOCUMENTS_QUERY_KEY] });
       }
@@ -127,9 +141,18 @@ export function useRecentDocumentsPresenter(
       enabled: doc.processingStatus === "completed",
     })),
   });
+  const categoryQueries = useQueries({
+    queries: documents.map((doc) => ({
+      queryKey: [...DOCUMENT_CATEGORY_QUERY_KEY, doc.id],
+      queryFn: () => getDocumentCategory(doc.id),
+      staleTime: 5 * 60 * 1000,
+      enabled: doc.processingStatus === "completed",
+    })),
+  });
 
   const items: RecentDocumentItem[] = documents.map((doc, index) => {
     const tagQuery = smartTagsQueries[index];
+    const categoryQuery = categoryQueries[index];
     return {
       id: doc.id,
       filename: doc.filename,
@@ -143,6 +166,14 @@ export function useRecentDocumentsPresenter(
         tags: tagQuery?.data ?? [],
         retry: () => {
           void tagQuery?.refetch();
+        },
+      },
+      category: {
+        isLoading: categoryQuery?.isFetching ?? false,
+        isError: categoryQuery?.isError ?? false,
+        name: categoryQuery?.data?.name ?? null,
+        retry: () => {
+          void categoryQuery?.refetch();
         },
       },
     };

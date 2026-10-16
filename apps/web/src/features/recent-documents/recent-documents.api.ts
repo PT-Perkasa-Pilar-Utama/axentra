@@ -1,9 +1,9 @@
 import type { z } from "zod";
-import { recentDocumentSchema, smartTagSchema } from "@axentra/shared";
-import type { RecentDocument } from "@axentra/shared";
+import { categorySummarySchema, recentDocumentSchema, smartTagSchema } from "@axentra/shared";
+import type { CategorySummary, RecentDocument } from "@axentra/shared";
 import { apiRequest } from "../../lib/api-client";
 
-export type { RecentDocument };
+export type { CategorySummary, RecentDocument };
 
 export type SmartTagResponse = z.infer<typeof smartTagSchema>;
 
@@ -26,4 +26,8 @@ export async function listRecentDocuments(
 
 export async function getDocumentSmartTags(documentId: string): Promise<SmartTagResponse[]> {
   return apiRequest(`/documents/${documentId}/smart-tags`, smartTagSchema.array());
+}
+
+export async function getDocumentCategory(documentId: string): Promise<CategorySummary | null> {
+  return apiRequest(`/documents/${documentId}/category`, categorySummarySchema.nullable());
 }

@@ -10,7 +10,7 @@ if (typeof window !== "undefined" && window.document) {
 }
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import type { DocumentUploadAcceptedData, RecentDocument } from "@axentra/shared";
@@ -76,8 +76,6 @@ function createFetchMock(
     const url = String(input);
 
     expect(url).not.toContain("/api/v1/api/v1/");
-    expect(url).not.toContain("/categories");
-    expect(url).not.toContain("/search/documents");
 
     const authorization = new Headers(init?.headers).get("authorization");
     expect(authorization).toBe(`Bearer ${memberSession.token}`);
@@ -89,6 +87,10 @@ function createFetchMock(
         files: [{ filename: "laporan.pdf", size: 123, documentType: "pdf" }],
       };
       return new Response(JSON.stringify({ success: true, data: accepted }), { status: 202 });
+    }
+
+    if (url.includes("/categories?")) {
+      return new Response(JSON.stringify({ success: true, data: [] }), { status: 200 });
     }
 
     if (url.includes("/tags/top")) {
@@ -107,8 +109,11 @@ function createFetchMock(
       );
     }
 
-    // MOCK BARU (Resolusi F1): Endpoint spesifik untuk mengambil tag per dokumen
-    if (url.includes("/smart-tags")) {
+    if (url.includes("/documents/") && url.endsWith("/category")) {
+      return new Response(JSON.stringify({ success: true, data: null }), { status: 200 });
+    }
+
+    if (url.includes("/documents/") && url.endsWith("/smart-tags")) {
       const urlBase = url.split("?")[0] ?? "";
       const parts = urlBase.split("/");
       const docId = parts[parts.length - 2]; // Mendapatkan ID dari /documents/:id/smart-tags
@@ -216,30 +221,70 @@ describe("Recent documents and Tags integration", () => {
     globalThis.fetch = originalFetch;
   });
 
-  test("FE-S2-03 shows unavailable categories without fake filters or category API calls", async () => {
-    globalThis.fetch = createFetchMock({ current: "completed" });
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  test("shows real categories from the API and filters search results when selected", async () => {
+    const responseDocument = recentDocument("completed");
+    const reporting = {
+      id: "44444444-4444-4444-8444-444444444444",
+      name: "Reporting",
+      slug: "reporting",
+      downloadEnabled: false,
+      createdAt,
+      updatedAt: createdAt,
+    };
+    globalThis.fetch = Object.assign(
+      async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const url = String(input);
+        expect(new Headers(init?.headers).get("authorization")).toBe(
+          `Bearer ${memberSession.token}`,
+        );
+        if (url.includes("/categories?")) {
+          return new Response(JSON.stringify({ success: true, data: [reporting] }), {
+            status: 200,
+          });
+        }
+        if (url.includes("/search/documents?")) {
+          const params = new URL(url.startsWith("http") ? url : `http://localhost${url}`)
+            .searchParams;
+          expect(params.get("categoryId")).toBe(reporting.id);
+          expect(params.get("q")).toBeNull();
+          return new Response(
+            JSON.stringify({
+              success: true,
+              data: [
+                {
+                  id: responseDocument.id,
+                  filename: responseDocument.filename,
+                  processingStatus: "completed",
+                  createdAt,
+                  snippet: null,
+                  highlights: [],
+                },
+              ],
+            }),
+            { status: 200 },
+          );
+        }
+        if (url.includes("/documents?") || url.includes("/tags/top")) {
+          return new Response(buildListResponse([responseDocument]), { status: 200 });
+        }
+        return new Response(JSON.stringify({ success: true, data: null }), { status: 200 });
+      },
+      { preconnect: (): void => {} },
+    );
+    const queryClient = makeQueryClient();
 
     await act(async () => {
       renderDashboard(queryClient);
     });
 
-    const categories = screen.getByRole("region", { name: "Kategori" });
-    expect(within(categories).getByText("Kategori belum tersedia")).toBeTruthy();
-    expect(
-      within(categories).getByText(
-        "Navigasi kategori belum aktif. Untuk sementara, gunakan daftar dokumen terbaru di dasbor.",
-      ),
-    ).toBeTruthy();
-    expect(within(categories).queryByText(/daftar semua dokumen/i)).toBeNull();
-    expect(within(categories).queryByRole("button")).toBeNull();
-    expect(within(categories).queryByRole("link")).toBeNull();
-    expect(screen.getAllByRole("heading", { name: "Kategori" })).toHaveLength(1);
-    expect(screen.getByRole("link", { name: "Dashboard" }).getAttribute("aria-current")).toBe(
-      "page",
-    );
+    const categoryButton = await screen.findByRole("button", { name: "Reporting" });
+    await act(async () => {
+      fireEvent.click(categoryButton);
+    });
+
     expect(await screen.findByText("laporan.pdf")).toBeTruthy();
-    expect(screen.getByText("Selesai Diproses")).toBeTruthy();
+    expect(categoryButton.getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByText("Dokumen dalam kategori")).toBeTruthy();
   });
 
   test("shows laporan.pdf and its Smart Tag after the document reaches completed", async () => {

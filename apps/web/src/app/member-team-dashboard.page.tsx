@@ -3,6 +3,7 @@ import type React from "react";
 
 import perkasaLogo from "../assets/perkasa-logo-sidebar.png";
 import { CategoryNavigationView } from "../features/categories/categories.view";
+import { useCategoriesPresenter } from "../features/categories/categories.presenter";
 import { useDocumentUploadPresenter } from "../features/document-upload/document-upload.presenter";
 import { DocumentUploadAreaView } from "../features/document-upload/document-upload.view";
 import { RecentDocumentsView } from "../features/recent-documents/recent-documents.view";
@@ -18,8 +19,13 @@ export function MemberTeamDashboardPage(): React.JSX.Element {
   const topTagsPresenter = useTopTagsPresenter("dashboard");
   const documentsPresenter = useRecentDocumentsPresenter(5, topTagsPresenter.activeTagNames);
   const searchPresenter = useSearchDocumentsPresenter();
+  const categoriesPresenter = useCategoriesPresenter(
+    searchPresenter.categoryId,
+    searchPresenter.setCategoryFilter,
+  );
 
-  const isSearching = searchPresenter.keyword.length > 0;
+  const isSearching =
+    searchPresenter.keyword.length > 0 || searchPresenter.categoryId !== undefined;
 
   return (
     <main
@@ -52,7 +58,7 @@ export function MemberTeamDashboardPage(): React.JSX.Element {
               <span>Dashboard</span>
             </NavLink>
           </nav>
-          <CategoryNavigationView />
+          <CategoryNavigationView presenter={categoriesPresenter} />
         </aside>
 
         <div className="min-w-0 px-4 sm:px-6 md:px-4">
