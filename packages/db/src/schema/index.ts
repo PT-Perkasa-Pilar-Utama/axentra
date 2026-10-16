@@ -21,4 +21,5 @@ export {
   smartTags,
   smartTagsRelations,
 } from "./tags";
+export { downloadAuditEvents, downloadAuditEventsRelations } from "./audit";
 export { users } from "./users";

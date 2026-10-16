@@ -13,6 +13,10 @@ import {
   documentMetadataSchema,
   documentSmartTagsResponseSchema,
   documentSummarySchema,
+  downloadAuditEventSchema,
+  downloadDocumentQuerySchema,
+  downloadDocumentResponseSchema,
+  downloadDocumentSuccessResponseSchema,
   processingStatusSchema,
   recentDocumentListQuerySchema,
   recentDocumentListResponseSchema,
@@ -401,6 +405,140 @@ describe("document shared schemas", () => {
         canDownload: false,
       };
       expect(documentDetailSchema.parse(detail)).toEqual(detail);
+    });
+  });
+
+  describe("downloadDocumentQuerySchema", () => {
+    it("parses empty query with defaults", () => {
+      const parsed = downloadDocumentQuerySchema.parse({});
+      expect(parsed).toEqual({ stream: false, expiresInSeconds: undefined });
+    });
+
+    it("parses stream boolean and strings", () => {
+      expect(downloadDocumentQuerySchema.parse({ stream: "true" })).toEqual({
+        stream: true,
+        expiresInSeconds: undefined,
+      });
+      expect(downloadDocumentQuerySchema.parse({ stream: "1" })).toEqual({
+        stream: true,
+        expiresInSeconds: undefined,
+      });
+      expect(downloadDocumentQuerySchema.parse({ stream: false })).toEqual({
+        stream: false,
+        expiresInSeconds: undefined,
+      });
+    });
+
+    it("parses valid expiresInSeconds", () => {
+      expect(downloadDocumentQuerySchema.parse({ expiresInSeconds: "300" })).toEqual({
+        stream: false,
+        expiresInSeconds: 300,
+      });
+      expect(downloadDocumentQuerySchema.parse({ expiresInSeconds: 60 })).toEqual({
+        stream: false,
+        expiresInSeconds: 60,
+      });
+      expect(downloadDocumentQuerySchema.parse({ expiresInSeconds: 900 })).toEqual({
+        stream: false,
+        expiresInSeconds: 900,
+      });
+    });
+
+    it("rejects expiresInSeconds outside 60-900 bounds with Indonesian messages", () => {
+      const minResult = downloadDocumentQuerySchema.safeParse({ expiresInSeconds: 59 });
+      expect(minResult.success).toBe(false);
+      if (!minResult.success) {
+        expect(minResult.error.issues[0]?.message).toBe("Masa berlaku URL minimal 60 detik");
+      }
+
+      const maxResult = downloadDocumentQuerySchema.safeParse({ expiresInSeconds: 901 });
+      expect(maxResult.success).toBe(false);
+      if (!maxResult.success) {
+        expect(maxResult.error.issues[0]?.message).toBe("Masa berlaku URL maksimal 900 detik");
+      }
+
+      const nanResult = downloadDocumentQuerySchema.safeParse({ expiresInSeconds: "abc" });
+      expect(nanResult.success).toBe(false);
+      if (!nanResult.success) {
+        expect(nanResult.error.issues[0]?.message).toBe("Masa berlaku URL harus berupa angka");
+      }
+
+      const floatResult = downloadDocumentQuerySchema.safeParse({ expiresInSeconds: 60.5 });
+      expect(floatResult.success).toBe(false);
+      if (!floatResult.success) {
+        expect(floatResult.error.issues[0]?.message).toBe(
+          "Masa berlaku URL harus berupa bilangan bulat",
+        );
+      }
+    });
+  });
+
+  describe("downloadDocumentResponseSchema and success response", () => {
+    it("accepts valid download response data", () => {
+      const valid = {
+        downloadUrl: "https://storage.local/bucket/documents/uuid/file.pdf?sig=abc",
+        filename: "laporan.pdf",
+        mimeType: "application/pdf",
+        fileSize: 1048576,
+        expiresInSeconds: 300,
+      };
+      expect(downloadDocumentResponseSchema.parse(valid)).toEqual(valid);
+
+      const envelope = {
+        success: true as const,
+        data: valid,
+      };
+      expect(downloadDocumentSuccessResponseSchema.parse(envelope)).toEqual(envelope);
+    });
+
+    it("rejects invalid downloadUrl or negative fileSize", () => {
+      expect(() =>
+        downloadDocumentResponseSchema.parse({
+          downloadUrl: "not-a-url",
+          filename: "laporan.pdf",
+          mimeType: "application/pdf",
+          fileSize: 1048576,
+          expiresInSeconds: 300,
+        }),
+      ).toThrow();
+
+      expect(() =>
+        downloadDocumentResponseSchema.parse({
+          downloadUrl: "https://storage.local/file.pdf",
+          filename: "laporan.pdf",
+          mimeType: "application/pdf",
+          fileSize: -1,
+          expiresInSeconds: 300,
+        }),
+      ).toThrow();
+    });
+  });
+
+  describe("downloadAuditEventSchema", () => {
+    it("accepts valid audit event record", () => {
+      const event = {
+        id: "55555555-5555-4555-8555-555555555555",
+        userId: "11111111-1111-4111-8111-111111111111",
+        userName: "Member User",
+        userEmail: "member@example.com",
+        documentId: "22222222-2222-4222-8222-222222222222",
+        documentName: "laporan.pdf",
+        downloadedAt: new Date().toISOString(),
+      };
+      expect(downloadAuditEventSchema.parse(event)).toEqual(event);
+    });
+
+    it("accepts null/undefined userId and documentId for deleted references", () => {
+      const event = {
+        id: "55555555-5555-4555-8555-555555555555",
+        userId: null,
+        userName: null,
+        userEmail: null,
+        documentId: null,
+        documentName: "laporan.pdf",
+        downloadedAt: new Date().toISOString(),
+      };
+      expect(downloadAuditEventSchema.parse(event)).toEqual(event);
     });
   });
 });

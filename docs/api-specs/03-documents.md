@@ -165,7 +165,58 @@ Shows document content without downloading the original file.
 
 ### `GET /api/v1/documents/:id/download`
 
-Downloads original file format when the current user has permission.
+Status: Implemented (BE-S3-02).
+
+Downloads original file format when the current user has permission. Supports issuing a bounded signed URL or streaming the file directly.
+
+**Authorization:**
+
+- Requires authenticated session (`Bearer <token>`).
+- Allowed roles: `member_team`, `head_of_team`, `admin`.
+- **Category Permission Recheck:**
+  - `member_team`: Can download only when the document belongs to a category with `download_enabled = true`. Returns `403 FORBIDDEN` if uncategorized or permission is disabled.
+  - `head_of_team` & `admin`: Download is permitted.
+- **Audit Logging:** Every successful download records a point-in-time fact in `download_audit_events` (`userId`, `userName`, `userEmail`, `documentId`, `documentName`, `downloadedAt`). Denied or failed requests do not write audit records.
+
+**Parameters:**
+
+- `id` (path, required) — UUID of the target document.
+
+**Query:**
+
+- `stream` (query, optional) — boolean (`true` / `1`). If true or if request header `Accept: application/octet-stream` is sent, returns the binary file stream directly.
+- `expiresInSeconds` (query, optional) — integer between `60` and `900`, default `300`. Bounded TTL for the signed URL.
+
+**Success Response (`200 OK` - Default JSON mode):**
+
+```json
+{
+  "success": true,
+  "data": {
+    "downloadUrl": "https://storage.local/documents/11111111-1111-4111-8111-111111111111/laporan.pdf?...",
+    "filename": "laporan.pdf",
+    "mimeType": "application/pdf",
+    "fileSize": 1048576,
+    "expiresInSeconds": 300
+  }
+}
+```
+
+**Success Response (`200 OK` - Stream mode):**
+
+- Status: `200 OK`
+- Headers:
+  - `Content-Type: <mimeType>`
+  - `Content-Disposition: attachment; filename="<filename>"; filename*=UTF-8''<safeFilename>`
+  - `Content-Length: <fileSize>`
+- Body: Binary file bytes.
+
+**Error Responses:**
+
+- `400 VALIDATION_ERROR`: `id` is not a valid UUID or `expiresInSeconds` outside bounds [60, 900].
+- `401 UNAUTHORIZED`: Missing, forged, or expired token.
+- `403 FORBIDDEN`: Category permission disabled or document uncategorized for `member_team` (`"Akses unduh tidak diizinkan untuk kategori dokumen ini"`).
+- `404 NOT_FOUND`: Document not found, soft-deleted, or stored file record not found.
 
 ### `POST /api/v1/documents/bulk-download`
 

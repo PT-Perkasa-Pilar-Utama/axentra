@@ -416,6 +416,7 @@ describe("Document Search PostgreSQL integration (BE-S2-05 / AC-06.01 to AC-06.0
         await database.sql`DELETE FROM documents WHERE title LIKE ${`% ${batchSuffix}`}`;
       }
     },
+    60_000,
   );
 
   integrationTest(

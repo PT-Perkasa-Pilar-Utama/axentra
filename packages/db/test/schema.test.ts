@@ -10,6 +10,7 @@ import {
   documentMetadata,
   documentSmartTags,
   documents,
+  downloadAuditEvents,
   processingStatusEnum,
   smartTags,
   userRoleEnum,
@@ -145,5 +146,32 @@ describe("database schema definitions", () => {
     const emailIndex = config.indexes.find((idx) => idx.config.name === "users_email_unique_idx");
     expect(emailIndex).toBeDefined();
     expect(emailIndex?.config.unique).toBe(true);
+  });
+
+  it("defines download_audit_events table columns and indexes", () => {
+    const cols = getTableColumns(downloadAuditEvents);
+    expect(cols.id).toBeDefined();
+    expect(cols.userId).toBeDefined();
+    expect(cols.userName).toBeDefined();
+    expect(cols.userEmail).toBeDefined();
+    expect(cols.documentId).toBeDefined();
+    expect(cols.documentName).toBeDefined();
+    expect(cols.downloadedAt).toBeDefined();
+
+    const config = getTableConfig(downloadAuditEvents);
+    const userIdIdx = config.indexes.find(
+      (idx) => idx.config.name === "download_audit_events_user_id_idx",
+    );
+    expect(userIdIdx).toBeDefined();
+
+    const docIdIdx = config.indexes.find(
+      (idx) => idx.config.name === "download_audit_events_document_id_idx",
+    );
+    expect(docIdIdx).toBeDefined();
+
+    const downloadedAtIdx = config.indexes.find(
+      (idx) => idx.config.name === "download_audit_events_downloaded_at_idx",
+    );
+    expect(downloadedAtIdx).toBeDefined();
   });
 });

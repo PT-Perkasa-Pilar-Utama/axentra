@@ -22,6 +22,13 @@
       "when": 1791189315306,
       "tag": "0002_add_document_search_trigram_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792033869710,
+      "tag": "0003_add_download_audit_events",
+      "breakpoints": true
     }
   ]
 }
