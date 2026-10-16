@@ -46,7 +46,7 @@ The platform roles and business personas are enforced via `requireRole(role)`:
 
 | Persona / Role (`UserRole`) | Allowed Operations                                                                                                                            |
 | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `member_team`               | Uploads documents, searches, previews, and downloads when category permission allows                                                          |
+| `member_team`               | Uploads documents, searches, and previews; downloads when category permission allows                                                          |
 | `head_of_team`              | Views analytics, audits download activity, and manages category download permissions                                                          |
 | `admin`                     | Authenticated platform role; does not replace `member_team` or `head_of_team` on a document route unless explicitly included in `requireRole` |
 
