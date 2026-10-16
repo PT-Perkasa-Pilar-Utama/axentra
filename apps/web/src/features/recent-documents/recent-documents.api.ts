@@ -1,9 +1,9 @@
 import { z } from "zod";
-import { recentDocumentSchema, smartTagSchema } from "@axentra/shared";
-import type { RecentDocument } from "@axentra/shared";
+import { categorySummarySchema, recentDocumentSchema, smartTagSchema } from "@axentra/shared";
+import type { CategorySummary, RecentDocument } from "@axentra/shared";
 import { apiDownloadRequest, apiRequest } from "../../lib/api-client";
 
-export type { RecentDocument };
+export type { CategorySummary, RecentDocument };
 
 export type SmartTagResponse = z.infer<typeof smartTagSchema>;
 
@@ -57,4 +57,8 @@ export function triggerBlobDownload(blob: Blob, filename = "documents.zip"): voi
   anchor.click();
   document.body.removeChild(anchor);
   URL.revokeObjectURL(url);
+}
+
+export async function getDocumentCategory(documentId: string): Promise<CategorySummary | null> {
+  return apiRequest(`/documents/${documentId}/category`, categorySummarySchema.nullable());
 }

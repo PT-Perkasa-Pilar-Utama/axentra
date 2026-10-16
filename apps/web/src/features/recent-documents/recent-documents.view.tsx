@@ -147,6 +147,26 @@ export function RecentDocumentsView({ presenter }: RecentDocumentsViewProps): Re
 
               <div className="col-start-2 mt-1 flex flex-wrap items-center gap-1.5 md:col-start-auto md:mt-0">
                 <DocumentSmartTags state={item.smartTags} status={item.processingStatus} />
+                {item.category.isLoading && item.processingStatus === "completed" && (
+                  <span
+                    className="h-5 w-16 animate-pulse rounded-full bg-emerald-100"
+                    aria-label="Memuat kategori"
+                  />
+                )}
+                {item.category.isError && item.processingStatus === "completed" && (
+                  <button
+                    type="button"
+                    onClick={item.category.retry}
+                    className="rounded text-xs text-rose-700 underline focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
+                  >
+                    Gagal memuat kategori — coba lagi
+                  </button>
+                )}
+                {item.category.name && (
+                  <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-800">
+                    {item.category.name}
+                  </span>
+                )}
               </div>
 
               <p className="hidden text-sm font-medium text-[#535a63] md:block">
