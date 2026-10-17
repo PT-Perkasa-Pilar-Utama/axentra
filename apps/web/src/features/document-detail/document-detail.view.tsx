@@ -5,9 +5,15 @@ import { CloseIcon, DownloadIcon, FileIcon } from "./document-icons";
 import { DocumentMetadataSidebar } from "./document-metadata-sidebar";
 import "./document-preview.css";
 
-export function DocumentDetailView(): React.JSX.Element {
+export type DocumentDetailViewProps = {
+  presenterOptions?: Parameters<typeof useDocumentDetailPresenter>[1];
+};
+
+export function DocumentDetailView({
+  presenterOptions,
+}: DocumentDetailViewProps = {}): React.JSX.Element {
   const { id } = useParams<{ id: string }>();
-  const presenter = useDocumentDetailPresenter(id ?? "");
+  const presenter = useDocumentDetailPresenter(id ?? "", presenterOptions);
 
   if (presenter.status === "loading") {
     return (
@@ -102,27 +108,54 @@ export function DocumentDetailView(): React.JSX.Element {
 
       {/* Main 3-Column Layout Workspace */}
       <div className="document-detail-page__body flex-1">
-        {/* Left Column: Thumbnails Rail - unavailable until BE-S3-01 provides a preview contract */}
         <aside aria-label="Halaman dokumen" className="document-detail-page__rail">
           <span className="document-detail-page__rail-icon" aria-hidden="true">
             <FileIcon />
           </span>
-          <span>Halaman belum tersedia</span>
+          <span>Thumbnail halaman belum tersedia</span>
         </aside>
 
-        {/* Center Column: Document Preview Canvas */}
         <main aria-label="Area Pratinjau Dokumen" className="document-detail-page__canvas">
-          <section aria-labelledby="preview-heading" className="document-detail-page__empty">
-            <span className="document-detail-page__empty-icon" aria-hidden="true">
-              <FileIcon />
-            </span>
-            <h2 id="preview-heading">Pratinjau belum tersedia</h2>
-            <p>
-              Isi dokumen belum dapat ditampilkan. Metadata dokumen tetap tersedia di panel
-              informasi.
-            </p>
-            <p id="download-note">Unduh tersedia setelah fitur unduh dokumen diaktifkan.</p>
-          </section>
+          {presenter.previewStatus === "loading" && (
+            <div className="document-preview-state" role="status" aria-busy="true">
+              <p>Memuat pratinjau dokumen...</p>
+            </div>
+          )}
+
+          {presenter.previewStatus === "error" && (
+            <section className="document-preview-state" aria-labelledby="preview-error-heading">
+              <h2 id="preview-error-heading">Pratinjau gagal dimuat</h2>
+              <p>Dokumen belum dapat ditampilkan. Coba muat ulang pratinjau.</p>
+              <button type="button" onClick={presenter.retryPreview}>
+                Coba lagi
+              </button>
+            </section>
+          )}
+
+          {presenter.previewStatus === "ready" &&
+            presenter.preview?.mimeType === "application/pdf" && (
+              <iframe
+                className="document-preview-frame"
+                src={presenter.preview.previewUrl}
+                title={`Pratinjau ${presenter.preview.filename}`}
+                referrerPolicy="no-referrer"
+              />
+            )}
+
+          {presenter.previewStatus === "ready" &&
+            presenter.preview !== undefined &&
+            presenter.preview.mimeType !== "application/pdf" && (
+              <section className="document-preview-state" aria-labelledby="preview-format-heading">
+                <span className="document-detail-page__empty-icon" aria-hidden="true">
+                  <FileIcon />
+                </span>
+                <h2 id="preview-format-heading">Pratinjau belum tersedia untuk format ini</h2>
+                <p>
+                  Berkas {presenter.preview.filename} sudah ditemukan, tetapi format{" "}
+                  {presenter.preview.mimeType} belum didukung untuk tampilan inline.
+                </p>
+              </section>
+            )}
         </main>
 
         {/* Right Column: Meta Data & Related Documents Sidebar */}
