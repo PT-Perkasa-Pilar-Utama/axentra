@@ -114,7 +114,7 @@ describe("Document Detail Feature (FE-S1-03 / AC-03.01)", () => {
     expect(html).toContain("Metadata");
     expect(html).toContain("Tanggal unggah");
     expect(html).toContain("Belum tersedia");
-    expect(html).toContain("Pratinjau belum tersedia");
+    expect(html).toContain("Memuat pratinjau dokumen...");
     expect(html).toContain("Dokumen Terkait");
     expect(html).toContain("Unduh");
     expect(html).toContain('disabled=""');
