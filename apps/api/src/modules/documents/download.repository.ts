@@ -7,6 +7,9 @@ import {
   downloadAuditEvents,
 } from "@axentra/db";
 
+import { DOWNLOAD_ACCESS_DENIED_MESSAGE, type AuthUser } from "@axentra/shared";
+import { ForbiddenError, NotFoundError } from "../../http/errors";
+
 export type DownloadTargetRecord = {
   document: {
     id: string;
@@ -37,6 +40,12 @@ export type CreateDownloadAuditEventInput = {
   downloadedAt?: Date | undefined;
 };
 
+export type AtomicDownloadAuditInput = {
+  user: AuthUser;
+  documentIds: ReadonlyArray<string>;
+  events: ReadonlyArray<CreateDownloadAuditEventInput>;
+};
+
 export type IDownloadRepository = {
   findDownloadTarget: (documentId: string) => Promise<DownloadTargetRecord | null>;
   findDownloadTargets: (
@@ -46,6 +55,7 @@ export type IDownloadRepository = {
   recordDownloadAuditEvents: (
     events: ReadonlyArray<CreateDownloadAuditEventInput>,
   ) => Promise<void>;
+  recordAuthorizedDownloadAuditEvents: (input: AtomicDownloadAuditInput) => Promise<void>;
 };
 
 type DownloadTargetRow = {
@@ -189,50 +199,51 @@ export class DrizzleDownloadRepository implements IDownloadRepository {
       })),
     );
   }
-}
 
-export class InMemoryDownloadRepository implements IDownloadRepository {
-  private readonly targets = new Map<string, DownloadTargetRecord>();
-  private readonly auditEvents: CreateDownloadAuditEventInput[] = [];
+  public async recordAuthorizedDownloadAuditEvents(input: AtomicDownloadAuditInput): Promise<void> {
+    if (input.documentIds.length === 0) return;
 
-  public setTarget(documentId: string, record: DownloadTargetRecord): void {
-    this.targets.set(documentId, record);
-  }
+    await this.db.transaction(async (tx) => {
+      if (input.user.role === "member_team") {
+        const rows = await tx
+          .select({
+            docId: documents.id,
+            docCategoryId: documents.categoryId,
+            docDeletedAt: documents.deletedAt,
+            permDownloadEnabled: categoryDownloadPermissions.downloadEnabled,
+          })
+          .from(documents)
+          .leftJoin(
+            categoryDownloadPermissions,
+            eq(categoryDownloadPermissions.categoryId, documents.categoryId),
+          )
+          .where(inArray(documents.id, [...input.documentIds]));
 
-  public async findDownloadTarget(documentId: string): Promise<DownloadTargetRecord | null> {
-    return this.targets.get(documentId) ?? null;
-  }
+        const rowMap = new Map(rows.map((r) => [r.docId, r]));
 
-  public async findDownloadTargets(
-    documentIds: ReadonlyArray<string>,
-  ): Promise<ReadonlyArray<DownloadTargetRecord>> {
-    const results: DownloadTargetRecord[] = [];
-    for (const id of documentIds) {
-      const target = this.targets.get(id);
-      if (target) results.push(target);
-    }
-    return results;
-  }
+        for (const docId of input.documentIds) {
+          const row = rowMap.get(docId);
+          if (!row || row.docDeletedAt !== null) {
+            throw new NotFoundError("Dokumen tidak ditemukan");
+          }
+          if (!row.docCategoryId || row.permDownloadEnabled !== true) {
+            throw new ForbiddenError(DOWNLOAD_ACCESS_DENIED_MESSAGE);
+          }
+        }
+      }
 
-  public async recordDownloadAuditEvent(event: CreateDownloadAuditEventInput): Promise<void> {
-    this.auditEvents.push({
-      ...event,
-      downloadedAt: event.downloadedAt ?? new Date(),
+      await tx.insert(downloadAuditEvents).values(
+        input.events.map((event) => ({
+          userId: event.userId ?? null,
+          userName: event.userName ?? null,
+          userEmail: event.userEmail ?? null,
+          documentId: event.documentId ?? null,
+          documentName: event.documentName,
+          downloadedAt: event.downloadedAt ?? new Date(),
+        })),
+      );
     });
   }
-
-  public async recordDownloadAuditEvents(
-    events: ReadonlyArray<CreateDownloadAuditEventInput>,
-  ): Promise<void> {
-    for (const event of events) {
-      this.auditEvents.push({
-        ...event,
-        downloadedAt: event.downloadedAt ?? new Date(),
-      });
-    }
-  }
-
-  public getRecordedAuditEvents(): ReadonlyArray<CreateDownloadAuditEventInput> {
-    return [...this.auditEvents];
-  }
 }
+
+export { InMemoryDownloadRepository } from "./download.in-memory-repository";

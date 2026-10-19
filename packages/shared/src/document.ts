@@ -251,6 +251,7 @@ export const previewDocumentSuccessResponseSchema = z.object({
 export type PreviewDocumentSuccessResponse = z.infer<typeof previewDocumentSuccessResponseSchema>;
 
 export const BULK_DOWNLOAD_MAX_DOCUMENTS = 100;
+export const BULK_DOWNLOAD_MAX_TOTAL_BYTES = 250 * 1024 * 1024; // 250 MB aggregate limit
 
 export const bulkDownloadRequestSchema = z.object({
   documentIds: z

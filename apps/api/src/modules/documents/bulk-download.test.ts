@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { createLogger } from "@axentra/observability";
 import type { StorageAdapter } from "@axentra/storage";
-import { apiErrorSchema, DOWNLOAD_ACCESS_DENIED_MESSAGE } from "@axentra/shared";
+import {
+  apiErrorSchema,
+  BULK_DOWNLOAD_MAX_TOTAL_BYTES,
+  DOWNLOAD_ACCESS_DENIED_MESSAGE,
+} from "@axentra/shared";
 import { createApp } from "../../app";
 import type { TokenVerifier } from "../../middleware/auth";
 import { createDocumentService } from "./documents.service";
@@ -16,6 +20,8 @@ const UNCATEGORIZED_DOC = "55555555-5555-4555-8555-555555555555";
 const NO_FILE_DOC = "66666666-6666-4666-8666-666666666666";
 const DELETED_DOC = "77777777-7777-4777-8777-777777777777";
 const NON_EXISTENT_DOC = "88888888-8888-4888-8888-888888888888";
+const TRAVERSAL_DOC = "99999999-9999-4999-8999-999999999999";
+const OVERSIZED_DOC = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
 const testLogger = createLogger({
   service: "axentra-api",
@@ -67,6 +73,7 @@ function createMockStorage(): StorageAdapter {
       if (key === "storage/doc1.pdf") return pdfBytes1;
       if (key === "storage/doc2.docx") return docxBytes2;
       if (key === "storage/doc3.pdf") return pdfBytes3;
+      if (key === "storage/traversal.pdf") return pdfBytes1;
       throw new Error(`Object not found for key: ${key}`);
     },
     deleteObject: async () => {},
@@ -213,6 +220,46 @@ function createSetup(storage?: StorageAdapter) {
       originalName: "deleted.pdf",
       mimeType: "application/pdf",
       fileSize: pdfBytes1.byteLength,
+      fileExtension: "pdf",
+    },
+    categoryPermission: { downloadEnabled: true },
+  });
+
+  // 8. Doc 8 - path traversal filename in database (F1)
+  downloadRepo.setTarget(TRAVERSAL_DOC, {
+    document: {
+      id: TRAVERSAL_DOC,
+      title: "Dokumen Traversal",
+      categoryId: "cat-reporting-1",
+      processingStatus: "completed",
+      deletedAt: null,
+    },
+    file: {
+      id: "file-8",
+      storageKey: "storage/traversal.pdf",
+      originalName: "../../outside.pdf",
+      mimeType: "application/pdf",
+      fileSize: pdfBytes1.byteLength,
+      fileExtension: "pdf",
+    },
+    categoryPermission: { downloadEnabled: true },
+  });
+
+  // 9. Doc 9 - oversized document exceeding 250 MB (F2)
+  downloadRepo.setTarget(OVERSIZED_DOC, {
+    document: {
+      id: OVERSIZED_DOC,
+      title: "Dokumen Raksasa",
+      categoryId: "cat-reporting-1",
+      processingStatus: "completed",
+      deletedAt: null,
+    },
+    file: {
+      id: "file-9",
+      storageKey: "storage/oversized.pdf",
+      originalName: "raksasa.pdf",
+      mimeType: "application/pdf",
+      fileSize: BULK_DOWNLOAD_MAX_TOTAL_BYTES + 1024,
       fileExtension: "pdf",
     },
     categoryPermission: { downloadEnabled: true },
@@ -543,6 +590,101 @@ describe("POST /api/v1/documents/bulk-download — BE-S3-03", () => {
 
       const auditEvents = downloadRepo.getRecordedAuditEvents();
       expect(auditEvents).toHaveLength(1);
+    });
+
+    test("sanitizes path traversal filenames in zip entries without writing outside (F1)", async () => {
+      const { app, downloadRepo } = createSetup();
+      const response = await app.request("/api/v1/documents/bulk-download", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer member-token",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ documentIds: [TRAVERSAL_DOC] }),
+      });
+
+      expect(response.status).toBe(200);
+      const zipBytes = new Uint8Array(await response.arrayBuffer());
+      const entryNames = parseZipEntryNames(zipBytes);
+
+      expect(entryNames.size).toBe(1);
+      expect(entryNames.has("outside.pdf")).toBe(true);
+      expect(entryNames.has("../../outside.pdf")).toBe(false);
+
+      const auditEvents = downloadRepo.getRecordedAuditEvents();
+      expect(auditEvents).toHaveLength(1);
+    });
+  });
+
+  describe("Resource Limits & Aggregate Payload Size (F2)", () => {
+    test("returns 413 PAYLOAD_TOO_LARGE when total document size exceeds 250 MB before storage retrieval", async () => {
+      let getObjectCalled = false;
+      const trackingStorage: StorageAdapter = {
+        ...createMockStorage(),
+        getObject: async () => {
+          getObjectCalled = true;
+          return pdfBytes1;
+        },
+      };
+
+      const { app, downloadRepo } = createSetup(trackingStorage);
+      const response = await app.request("/api/v1/documents/bulk-download", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer member-token",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ documentIds: [OVERSIZED_DOC] }),
+      });
+
+      expect(response.status).toBe(413);
+      const json = await response.json();
+      const parsed = apiErrorSchema.safeParse(json);
+      expect(parsed.success).toBe(true);
+      expect(parsed.data?.error.code).toBe("PAYLOAD_TOO_LARGE");
+      expect(parsed.data?.error.message).toContain("250 MB");
+      // Storage retrieval was never triggered
+      expect(getObjectCalled).toBe(false);
+      // No audit events written
+      expect(downloadRepo.getRecordedAuditEvents()).toHaveLength(0);
+    });
+  });
+
+  describe("Atomic Category Permission Recheck & Audit (F3)", () => {
+    test("rejects request with 403 when category permission is revoked midway during operation", async () => {
+      const context: { repo: InMemoryDownloadRepository | null } = { repo: null };
+      const interceptingStorage: StorageAdapter = {
+        ...createMockStorage(),
+        getObject: async () => {
+          // Simulate permission revocation occurring while object is being downloaded
+          const target = context.repo?.getTarget(ENABLED_DOC_1);
+          if (target) {
+            target.categoryPermission = { downloadEnabled: false };
+          }
+          return pdfBytes1;
+        },
+      };
+
+      const setup = createSetup(interceptingStorage);
+      context.repo = setup.downloadRepo;
+
+      const response = await setup.app.request("/api/v1/documents/bulk-download", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer member-token",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ documentIds: [ENABLED_DOC_1] }),
+      });
+
+      expect(response.status).toBe(403);
+      const json = await response.json();
+      const parsed = apiErrorSchema.safeParse(json);
+      expect(parsed.success).toBe(true);
+      expect(parsed.data?.error.code).toBe("FORBIDDEN");
+      expect(parsed.data?.error.message).toBe(DOWNLOAD_ACCESS_DENIED_MESSAGE);
+      // Zero audit events recorded because atomic recheck aborted
+      expect(setup.downloadRepo.getRecordedAuditEvents()).toHaveLength(0);
     });
   });
 

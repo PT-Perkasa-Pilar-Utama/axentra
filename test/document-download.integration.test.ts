@@ -193,6 +193,76 @@ describe("Document Download PostgreSQL integration (BE-S3-02 / AC-09.01)", () =>
         expect(auditRows.length).toBe(2);
         const auditDocNames = auditRows.map((r) => r.documentName).sort();
         expect(auditDocNames).toEqual(["laporan.pdf", "rahasia.docx"]);
+
+        // Clean audit table before atomic tests
+        await database.db
+          .delete(downloadAuditEvents)
+          .where(inArray(downloadAuditEvents.documentId, [docEnabledId, docDisabledId]));
+
+        // Test recordAuthorizedDownloadAuditEvents: succeeds for member_team with enabled category (F3)
+        await repo.recordAuthorizedDownloadAuditEvents({
+          user: {
+            id: userId,
+            email: `test-${testId}@axentra.local`,
+            role: "member_team",
+            name: "Test User",
+          },
+          documentIds: [docEnabledId],
+          events: [
+            {
+              userId,
+              userName: "Test User",
+              userEmail: `test-${testId}@axentra.local`,
+              documentId: docEnabledId,
+              documentName: "laporan.pdf",
+              downloadedAt,
+            },
+          ],
+        });
+
+        // Test recordAuthorizedDownloadAuditEvents: rejects for member_team with disabled category (F3)
+        expect(
+          repo.recordAuthorizedDownloadAuditEvents({
+            user: {
+              id: userId,
+              email: `test-${testId}@axentra.local`,
+              role: "member_team",
+              name: "Test User",
+            },
+            documentIds: [docDisabledId],
+            events: [
+              {
+                userId,
+                userName: "Test User",
+                userEmail: `test-${testId}@axentra.local`,
+                documentId: docDisabledId,
+                documentName: "rahasia.docx",
+                downloadedAt,
+              },
+            ],
+          }),
+        ).rejects.toThrow();
+
+        // Test recordAuthorizedDownloadAuditEvents: succeeds for head_of_team even with disabled category (F3)
+        await repo.recordAuthorizedDownloadAuditEvents({
+          user: {
+            id: userId,
+            email: `test-${testId}@axentra.local`,
+            role: "head_of_team",
+            name: "Head User",
+          },
+          documentIds: [docDisabledId],
+          events: [
+            {
+              userId,
+              userName: "Head User",
+              userEmail: `test-${testId}@axentra.local`,
+              documentId: docDisabledId,
+              documentName: "rahasia.docx",
+              downloadedAt,
+            },
+          ],
+        });
       } finally {
         // Cleanup in reverse dependency order
         await database.db

@@ -5,6 +5,44 @@ export type ZipEntry = {
   content: Uint8Array;
 };
 
+export const ZIP32_MAX_ENTRY_SIZE = 0xffffffff; // 4 GiB
+export const ZIP32_MAX_ARCHIVE_SIZE = 0xffffffff; // 4 GiB
+
+/**
+ * Sanitizes ZIP entry names to prevent path traversal attacks.
+ * Strips Windows/POSIX drive letters, directories, ../, ..\, and leading/trailing separators.
+ * If the resulting name is empty or invalid, falls back to a safe identifier.
+ */
+export function sanitizeZipEntryName(rawName: string): string {
+  // Normalize Windows separators to POSIX
+  let cleaned = rawName.replace(/\\/g, "/");
+
+  // Remove Windows drive letters (e.g. C:/)
+  cleaned = cleaned.replace(/^[a-zA-Z]:[/]*/, "");
+
+  // Remove leading slashes
+  cleaned = cleaned.replace(/^[/]+/, "");
+
+  // Take only the basename after the last slash
+  const lastSlash = cleaned.lastIndexOf("/");
+  if (lastSlash >= 0) {
+    cleaned = cleaned.slice(lastSlash + 1);
+  }
+
+  // Remove any remaining path traversal tokens (.. or .)
+  cleaned = cleaned
+    .replace(/\.\.+[/]*/g, "")
+    .replace(/[/]/g, "")
+    .trim();
+
+  // If empty or purely dots, fallback
+  if (!cleaned || cleaned === "." || cleaned === "..") {
+    return "document";
+  }
+
+  return cleaned;
+}
+
 /**
  * Converts a JS Date into MS-DOS packed time and date (2 bytes each).
  */
@@ -25,13 +63,14 @@ export function toDosDateTime(date: Date = new Date()): { time: number; date: nu
 /**
  * Disambiguates duplicate filenames by appending an incrementing index
  * before the file extension (e.g. "laporan.pdf" -> "laporan (1).pdf").
+ * Also sanitizes entry names against path traversal.
  */
 export function deduplicateEntryNames(entries: ReadonlyArray<ZipEntry>): Array<ZipEntry> {
   const seenCount = new Map<string, number>();
   const result: Array<ZipEntry> = [];
 
   for (const entry of entries) {
-    const rawName = entry.name.trim();
+    const rawName = sanitizeZipEntryName(entry.name);
     const count = seenCount.get(rawName) ?? 0;
     seenCount.set(rawName, count + 1);
 
@@ -75,6 +114,10 @@ export function createZipArchive(
   let currentOffset = 0;
 
   for (const entry of uniqueEntries) {
+    if (entry.content.byteLength > ZIP32_MAX_ENTRY_SIZE) {
+      throw new Error(`Ukuran entry ZIP "${entry.name}" melebihi batas 32-bit (4 GiB)`);
+    }
+
     const nameBytes = new TextEncoder().encode(entry.name);
     const content = entry.content;
     const checksum = crc32(content);
@@ -146,6 +189,10 @@ export function createZipArchive(
 
   // 4. Assemble final archive
   const totalLength = currentOffset + centralDirSize + eocd.length;
+  if (totalLength > ZIP32_MAX_ARCHIVE_SIZE) {
+    throw new Error("Ukuran total arsip ZIP melebihi batas 32-bit (4 GiB)");
+  }
+
   const result = new Uint8Array(totalLength);
   let pos = 0;
 

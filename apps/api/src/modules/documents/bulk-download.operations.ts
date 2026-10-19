@@ -1,8 +1,12 @@
 import type { Logger } from "@axentra/observability";
 import { summarizeError } from "@axentra/observability";
 import type { StorageAdapter } from "@axentra/storage";
-import { DOWNLOAD_ACCESS_DENIED_MESSAGE, type AuthUser } from "@axentra/shared";
-import { ForbiddenError, NotFoundError } from "../../http/errors";
+import {
+  BULK_DOWNLOAD_MAX_TOTAL_BYTES,
+  DOWNLOAD_ACCESS_DENIED_MESSAGE,
+  type AuthUser,
+} from "@axentra/shared";
+import { ForbiddenError, NotFoundError, PayloadTooLargeError } from "../../http/errors";
 import type { IDownloadRepository } from "./download.repository";
 import { createZipArchive, type ZipEntry } from "./zip.writer";
 
@@ -59,7 +63,19 @@ export async function executeBulkDownloadOperation(
     }
   }
 
-  // 3. Fetch file binaries from storage
+  // 3. Enforce aggregate file size limit before fetching objects into memory (F2)
+  const totalBytes = uniqueIds.reduce((sum, docId) => {
+    const target = targetMap.get(docId);
+    return sum + (target?.file?.fileSize ?? 0);
+  }, 0);
+
+  if (totalBytes > BULK_DOWNLOAD_MAX_TOTAL_BYTES) {
+    throw new PayloadTooLargeError(
+      "Total ukuran dokumen melebihi batas maksimum unduhan massal (250 MB)",
+    );
+  }
+
+  // 4. Fetch file binaries from storage
   const entries: Array<ZipEntry> = [];
   for (const docId of uniqueIds) {
     const target = targetMap.get(docId);
@@ -72,14 +88,16 @@ export async function executeBulkDownloadOperation(
     });
   }
 
-  // 4. Assemble the ZIP archive
+  // 5. Assemble the ZIP archive (with path traversal sanitization and filename collision handling)
   const zipBytes = createZipArchive(entries);
 
-  // 5. Record point-in-time download audit events only after successful storage retrieval
+  // 6. Atomically recheck category permissions and record point-in-time audit events (F3)
   try {
     const now = new Date();
-    await dependencies.downloadRepository.recordDownloadAuditEvents(
-      uniqueIds.map((docId) => {
+    await dependencies.downloadRepository.recordAuthorizedDownloadAuditEvents({
+      user: input.user,
+      documentIds: uniqueIds,
+      events: uniqueIds.map((docId) => {
         const target = targetMap.get(docId);
         const fileName = target?.file?.originalName ?? "unknown";
         return {
@@ -91,7 +109,7 @@ export async function executeBulkDownloadOperation(
           downloadedAt: now,
         };
       }),
-    );
+    });
   } catch (error) {
     dependencies.logger?.error(
       {

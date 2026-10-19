@@ -3,6 +3,7 @@ import { crc32 } from "node:zlib";
 import {
   createZipArchive,
   deduplicateEntryNames,
+  sanitizeZipEntryName,
   toDosDateTime,
   type ZipEntry,
 } from "./zip.writer";
@@ -31,6 +32,41 @@ describe("zip.writer", () => {
       const { date: dosDate } = toDosDateTime(oldDate);
       const yearOffset = (dosDate >> 9) & 0x7f;
       expect(yearOffset).toBe(0);
+    });
+  });
+
+  describe("sanitizeZipEntryName", () => {
+    it("strips POSIX path traversal (../../outside.pdf)", () => {
+      expect(sanitizeZipEntryName("../../outside.pdf")).toBe("outside.pdf");
+      expect(sanitizeZipEntryName("../../../secret.docx")).toBe("secret.docx");
+    });
+
+    it("strips Windows path traversal (..\\..\\outside.pdf)", () => {
+      expect(sanitizeZipEntryName("..\\..\\outside.pdf")).toBe("outside.pdf");
+      expect(sanitizeZipEntryName("..\\..\\..\\secret.docx")).toBe("secret.docx");
+    });
+
+    it("strips Windows drive letters and directories (C:\\Windows\\System32\\cmd.exe)", () => {
+      expect(sanitizeZipEntryName("C:\\Windows\\System32\\cmd.exe")).toBe("cmd.exe");
+      expect(sanitizeZipEntryName("D:/Documents/Reports/q1.pdf")).toBe("q1.pdf");
+    });
+
+    it("strips POSIX absolute paths (/etc/passwd)", () => {
+      expect(sanitizeZipEntryName("/etc/passwd")).toBe("passwd");
+      expect(sanitizeZipEntryName("/var/log/app.log")).toBe("app.log");
+    });
+
+    it("falls back to 'document' when name consists only of traversal tokens or separators", () => {
+      expect(sanitizeZipEntryName("..")).toBe("document");
+      expect(sanitizeZipEntryName("../..")).toBe("document");
+      expect(sanitizeZipEntryName("..\\..\\")).toBe("document");
+      expect(sanitizeZipEntryName("/")).toBe("document");
+      expect(sanitizeZipEntryName("   ")).toBe("document");
+    });
+
+    it("preserves legitimate filenames with dots or spaces", () => {
+      expect(sanitizeZipEntryName("Laporan Keuangan Q1.pdf")).toBe("Laporan Keuangan Q1.pdf");
+      expect(sanitizeZipEntryName("archive.tar.gz")).toBe("archive.tar.gz");
     });
   });
 
