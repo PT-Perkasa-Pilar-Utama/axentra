@@ -154,6 +154,13 @@ describe("Document Download PostgreSQL integration (BE-S3-02 / AC-09.01)", () =>
         expect(targetDisabled?.file?.originalName).toBe("rahasia.docx");
         expect(targetDisabled?.categoryPermission?.downloadEnabled).toBe(false);
 
+        // Test findDownloadTargets (batch query for BE-S3-03)
+        const batchTargets = await repo.findDownloadTargets([docEnabledId, docDisabledId]);
+        expect(batchTargets).toHaveLength(2);
+        const batchTargetMap = new Map(batchTargets.map((t) => [t.document.id, t]));
+        expect(batchTargetMap.get(docEnabledId)?.file?.originalName).toBe("laporan.pdf");
+        expect(batchTargetMap.get(docDisabledId)?.file?.originalName).toBe("rahasia.docx");
+
         // Test recordDownloadAuditEvent
         const downloadedAt = new Date();
         await repo.recordDownloadAuditEvent({
@@ -165,16 +172,27 @@ describe("Document Download PostgreSQL integration (BE-S3-02 / AC-09.01)", () =>
           downloadedAt,
         });
 
+        // Test recordDownloadAuditEvents (batch write for BE-S3-03)
+        await repo.recordDownloadAuditEvents([
+          {
+            userId,
+            userName: "Test User",
+            userEmail: `test-${testId}@axentra.local`,
+            documentId: docDisabledId,
+            documentName: "rahasia.docx",
+            downloadedAt,
+          },
+        ]);
+
         // Query audit event from real database
         const auditRows = await database.db
           .select()
           .from(downloadAuditEvents)
-          .where(eq(downloadAuditEvents.documentId, docEnabledId));
+          .where(inArray(downloadAuditEvents.documentId, [docEnabledId, docDisabledId]));
 
-        expect(auditRows.length).toBe(1);
-        expect(auditRows[0]?.userId).toBe(userId);
-        expect(auditRows[0]?.userName).toBe("Test User");
-        expect(auditRows[0]?.documentName).toBe("laporan.pdf");
+        expect(auditRows.length).toBe(2);
+        const auditDocNames = auditRows.map((r) => r.documentName).sort();
+        expect(auditDocNames).toEqual(["laporan.pdf", "rahasia.docx"]);
       } finally {
         // Cleanup in reverse dependency order
         await database.db

@@ -44,6 +44,11 @@ import {
   type DownloadOperationResult,
   type ExecuteDownloadInput,
 } from "./download.operations";
+import {
+  executeBulkDownloadOperation,
+  type BulkDownloadOperationResult,
+  type ExecuteBulkDownloadInput,
+} from "./bulk-download.operations";
 import type { IPreviewRepository } from "./preview.repository";
 import { InMemoryPreviewRepository } from "./preview.repository";
 import {
@@ -53,8 +58,10 @@ import {
 } from "./preview.operations";
 
 export type {
+  BulkDownloadOperationResult,
   CheckDuplicateInput,
   DownloadOperationResult,
+  ExecuteBulkDownloadInput,
   ExecuteDownloadInput,
   ExecutePreviewInput,
   ExtractMetadataOptions,
@@ -102,6 +109,7 @@ export type IDocumentService = {
   storeMetadata(data: SaveMetadataInput): Promise<DocumentMetadataResult>;
   enqueueProcessingJob(documentId: string): Promise<string>;
   downloadDocument(input: ExecuteDownloadInput): Promise<DownloadOperationResult>;
+  bulkDownloadDocuments(input: ExecuteBulkDownloadInput): Promise<BulkDownloadOperationResult>;
   previewDocument(input: ExecutePreviewInput): Promise<PreviewOperationResult>;
 };
 
@@ -243,6 +251,19 @@ export class DocumentService implements IDocumentService {
 
   public async downloadDocument(input: ExecuteDownloadInput): Promise<DownloadOperationResult> {
     return executeDownloadOperation(
+      {
+        downloadRepository: this.downloadRepository,
+        storage: this.storage,
+        logger: this.logger,
+      },
+      input,
+    );
+  }
+
+  public async bulkDownloadDocuments(
+    input: ExecuteBulkDownloadInput,
+  ): Promise<BulkDownloadOperationResult> {
+    return executeBulkDownloadOperation(
       {
         downloadRepository: this.downloadRepository,
         storage: this.storage,

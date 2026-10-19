@@ -19,6 +19,7 @@ export type {
   CategoriesQuery,
   CategoriesResponse,
   CategorySummary,
+  BulkDownloadRequest,
   DocumentCategoryResponse,
   DocumentDetail,
   DocumentFileInfo,
@@ -42,6 +43,7 @@ export type {
   SmartTag,
 } from "./document";
 export {
+  BULK_DOWNLOAD_MAX_DOCUMENTS,
   CATEGORIES_DEFAULT_LIMIT,
   CATEGORIES_MAX_LIMIT,
   DEFAULT_DOWNLOAD_TTL_SECONDS,
@@ -50,6 +52,7 @@ export {
   MINIMUM_DOWNLOAD_TTL_SECONDS,
   PREVIEW_URL_TTL_SECONDS,
   RELATED_DOCUMENTS_MAX_LIMIT,
+  bulkDownloadRequestSchema,
   categoriesQuerySchema,
   categoriesResponseSchema,
   categorySummarySchema,

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "bun:test";
 
 import {
+  BULK_DOWNLOAD_MAX_DOCUMENTS,
+  bulkDownloadRequestSchema,
   CATEGORIES_DEFAULT_LIMIT,
   CATEGORIES_MAX_LIMIT,
   categoriesQuerySchema,
@@ -583,6 +585,46 @@ describe("document shared schemas", () => {
         downloadedAt: new Date().toISOString(),
       };
       expect(downloadAuditEventSchema.parse(event)).toEqual(event);
+    });
+  });
+
+  describe("bulkDownloadRequestSchema", () => {
+    it("accepts valid bulk download request with UUIDs", () => {
+      const payload = {
+        documentIds: [
+          "11111111-1111-4111-8111-111111111111",
+          "22222222-2222-4222-8222-222222222222",
+        ],
+      };
+      expect(bulkDownloadRequestSchema.parse(payload)).toEqual(payload);
+    });
+
+    it("rejects empty documentIds array", () => {
+      expect(() =>
+        bulkDownloadRequestSchema.parse({
+          documentIds: [],
+        }),
+      ).toThrow("Minimal satu dokumen harus dipilih");
+    });
+
+    it("rejects documentIds array containing invalid UUID", () => {
+      expect(() =>
+        bulkDownloadRequestSchema.parse({
+          documentIds: ["not-a-uuid"],
+        }),
+      ).toThrow("ID dokumen harus berupa UUID yang valid");
+    });
+
+    it("rejects documentIds array exceeding BULK_DOWNLOAD_MAX_DOCUMENTS (100)", () => {
+      const oversized = Array.from(
+        { length: BULK_DOWNLOAD_MAX_DOCUMENTS + 1 },
+        () => "11111111-1111-4111-8111-111111111111",
+      );
+      expect(() =>
+        bulkDownloadRequestSchema.parse({
+          documentIds: oversized,
+        }),
+      ).toThrow(`Maksimal ${BULK_DOWNLOAD_MAX_DOCUMENTS} dokumen per unduhan massal`);
     });
   });
 });
