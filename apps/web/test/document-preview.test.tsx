@@ -1,14 +1,3 @@
-// Ensure Happy DOM is available for tests; register if not already.
-const { GlobalRegistrator } = require("@happy-dom/global-registrator");
-try {
-  GlobalRegistrator.register();
-} catch {
-  /* already registered */
-}
-if (typeof window !== "undefined" && window.document) {
-  globalThis.document = window.document;
-}
-
 import { afterEach, describe, expect, test } from "bun:test";
 import { createElement } from "react";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
@@ -34,7 +23,7 @@ const sampleDoc: DocumentMetadataResult = {
 };
 
 const pdfPreview: PreviewDocumentResponse = {
-  previewUrl: "https://storage.local/signed-preview.pdf?signature=synthetic-test-value",
+  previewUrl: "about:blank#preview-fixture",
   filename: "laporan.pdf",
   mimeType: "application/pdf",
   fileSize: 1024,
