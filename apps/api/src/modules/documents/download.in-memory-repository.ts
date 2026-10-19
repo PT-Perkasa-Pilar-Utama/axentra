@@ -1,8 +1,6 @@
-import { DOWNLOAD_ACCESS_DENIED_MESSAGE } from "@axentra/shared";
-import { ForbiddenError, NotFoundError } from "../../http/errors";
 import type {
-  AtomicDownloadAuditInput,
   CreateDownloadAuditEventInput,
+  DocumentCategoryPermissionStatus,
   DownloadTargetRecord,
   IDownloadRepository,
 } from "./download.repository";
@@ -34,6 +32,25 @@ export class InMemoryDownloadRepository implements IDownloadRepository {
     return results;
   }
 
+  public async checkCategoryPermissions(
+    documentIds: ReadonlyArray<string>,
+    _options?: { lock?: "share" | "update" } | undefined,
+  ): Promise<ReadonlyArray<DocumentCategoryPermissionStatus>> {
+    const results: DocumentCategoryPermissionStatus[] = [];
+    for (const id of documentIds) {
+      const target = this.targets.get(id);
+      if (target) {
+        results.push({
+          documentId: target.document.id,
+          categoryId: target.document.categoryId,
+          deletedAt: target.document.deletedAt,
+          downloadEnabled: target.categoryPermission?.downloadEnabled ?? null,
+        });
+      }
+    }
+    return results;
+  }
+
   public async recordDownloadAuditEvent(event: CreateDownloadAuditEventInput): Promise<void> {
     this.auditEvents.push({
       ...event,
@@ -52,31 +69,8 @@ export class InMemoryDownloadRepository implements IDownloadRepository {
     }
   }
 
-  public async recordAuthorizedDownloadAuditEvents(input: AtomicDownloadAuditInput): Promise<void> {
-    if (input.documentIds.length === 0) return;
-
-    if (input.user.role === "member_team") {
-      for (const docId of input.documentIds) {
-        const target = this.targets.get(docId);
-        if (!target || target.document.deletedAt !== null) {
-          throw new NotFoundError("Dokumen tidak ditemukan");
-        }
-        if (
-          !target.document.categoryId ||
-          !target.categoryPermission ||
-          !target.categoryPermission.downloadEnabled
-        ) {
-          throw new ForbiddenError(DOWNLOAD_ACCESS_DENIED_MESSAGE);
-        }
-      }
-    }
-
-    for (const event of input.events) {
-      this.auditEvents.push({
-        ...event,
-        downloadedAt: event.downloadedAt ?? new Date(),
-      });
-    }
+  public async transaction<T>(callback: (txRepo: IDownloadRepository) => Promise<T>): Promise<T> {
+    return await callback(this);
   }
 
   public getRecordedAuditEvents(): ReadonlyArray<CreateDownloadAuditEventInput> {

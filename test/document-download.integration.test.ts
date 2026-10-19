@@ -199,16 +199,22 @@ describe("Document Download PostgreSQL integration (BE-S3-02 / AC-09.01)", () =>
           .delete(downloadAuditEvents)
           .where(inArray(downloadAuditEvents.documentId, [docEnabledId, docDisabledId]));
 
-        // Test recordAuthorizedDownloadAuditEvents: succeeds for member_team with enabled category (F3)
-        await repo.recordAuthorizedDownloadAuditEvents({
-          user: {
-            id: userId,
-            email: `test-${testId}@axentra.local`,
-            role: "member_team",
-            name: "Test User",
-          },
-          documentIds: [docEnabledId],
-          events: [
+        // Test checkCategoryPermissions with lock: share (F3, F6)
+        const permStatuses = await repo.checkCategoryPermissions([docEnabledId, docDisabledId], {
+          lock: "share",
+        });
+        expect(permStatuses).toHaveLength(2);
+        const permMap = new Map(permStatuses.map((p) => [p.documentId, p]));
+        expect(permMap.get(docEnabledId)?.downloadEnabled).toBe(true);
+        expect(permMap.get(docDisabledId)?.downloadEnabled).toBe(false);
+
+        // Test repo.transaction executing atomic queries and writes (F6)
+        await repo.transaction(async (txRepo) => {
+          const permsInTx = await txRepo.checkCategoryPermissions([docEnabledId], {
+            lock: "share",
+          });
+          expect(permsInTx[0]?.downloadEnabled).toBe(true);
+          await txRepo.recordDownloadAuditEvents([
             {
               userId,
               userName: "Test User",
@@ -217,52 +223,16 @@ describe("Document Download PostgreSQL integration (BE-S3-02 / AC-09.01)", () =>
               documentName: "laporan.pdf",
               downloadedAt,
             },
-          ],
+          ]);
         });
 
-        // Test recordAuthorizedDownloadAuditEvents: rejects for member_team with disabled category (F3)
-        expect(
-          repo.recordAuthorizedDownloadAuditEvents({
-            user: {
-              id: userId,
-              email: `test-${testId}@axentra.local`,
-              role: "member_team",
-              name: "Test User",
-            },
-            documentIds: [docDisabledId],
-            events: [
-              {
-                userId,
-                userName: "Test User",
-                userEmail: `test-${testId}@axentra.local`,
-                documentId: docDisabledId,
-                documentName: "rahasia.docx",
-                downloadedAt,
-              },
-            ],
-          }),
-        ).rejects.toThrow();
-
-        // Test recordAuthorizedDownloadAuditEvents: succeeds for head_of_team even with disabled category (F3)
-        await repo.recordAuthorizedDownloadAuditEvents({
-          user: {
-            id: userId,
-            email: `test-${testId}@axentra.local`,
-            role: "head_of_team",
-            name: "Head User",
-          },
-          documentIds: [docDisabledId],
-          events: [
-            {
-              userId,
-              userName: "Head User",
-              userEmail: `test-${testId}@axentra.local`,
-              documentId: docDisabledId,
-              documentName: "rahasia.docx",
-              downloadedAt,
-            },
-          ],
-        });
+        // Verify audit event written through transaction
+        const txAuditRows = await database.db
+          .select()
+          .from(downloadAuditEvents)
+          .where(eq(downloadAuditEvents.documentId, docEnabledId));
+        expect(txAuditRows).toHaveLength(1);
+        expect(txAuditRows[0]?.documentName).toBe("laporan.pdf");
       } finally {
         // Cleanup in reverse dependency order
         await database.db
@@ -285,6 +255,151 @@ describe("Document Download PostgreSQL integration (BE-S3-02 / AC-09.01)", () =>
         await database.db
           .delete(categories)
           .where(inArray(categories.id, [categoryEnabledId, categoryDisabledId]));
+        await database.db.delete(users).where(eq(users.id, userId));
+      }
+    },
+  );
+
+  integrationTest(
+    "serializes category permission verification with FOR SHARE lock against concurrent permission revocation (F3)",
+    async () => {
+      if (database === undefined) {
+        throw new Error("PostgreSQL integration database was not initialized");
+      }
+
+      const [
+        {
+          categories,
+          categoryDownloadPermissions,
+          documentFiles,
+          documents,
+          downloadAuditEvents,
+          users,
+        },
+        { DrizzleDownloadRepository },
+      ] = await Promise.all([
+        import("@axentra/db"),
+        import("../apps/api/src/modules/documents/download.repository"),
+      ]);
+
+      const testId = crypto.randomUUID();
+      const userId = crypto.randomUUID();
+      const categoryId = crypto.randomUUID();
+      const docId = crypto.randomUUID();
+      const fileId = crypto.randomUUID();
+
+      const repo = new DrizzleDownloadRepository(database.db);
+
+      try {
+        await database.db.insert(users).values({
+          id: userId,
+          email: `concurrent-${testId}@axentra.local`,
+          name: "Concurrent Test User",
+          passwordHash: "dummy-hash",
+          role: "member_team",
+        });
+
+        await database.db.insert(categories).values({
+          id: categoryId,
+          name: `Concurrent-${testId}`,
+          slug: `concurrent-${testId}`,
+        });
+
+        await database.db.insert(categoryDownloadPermissions).values({
+          categoryId,
+          downloadEnabled: true,
+        });
+
+        await database.db.insert(documents).values({
+          id: docId,
+          title: `Concurrent-${testId}.pdf`,
+          categoryId,
+          processingStatus: "completed",
+        });
+
+        await database.db.insert(documentFiles).values({
+          id: fileId,
+          documentId: docId,
+          storageKey: `documents/${docId}/concurrent.pdf`,
+          originalName: "concurrent.pdf",
+          mimeType: "application/pdf",
+          fileSize: 1024,
+          fileExtension: "pdf",
+        });
+
+        let t1HasLock = false;
+        let t1CanCommit = false;
+        let t2FinishedBeforeT1 = false;
+
+        // T1 starts transaction, queries with lock: 'share', records audit, then commits
+        const t1Promise = repo.transaction(async (txRepo) => {
+          const perms = await txRepo.checkCategoryPermissions([docId], { lock: "share" });
+          expect(perms).toHaveLength(1);
+          expect(perms[0]?.downloadEnabled).toBe(true);
+
+          t1HasLock = true;
+
+          // Hold transaction open until T2 initiates its concurrent update
+          while (!t1CanCommit) {
+            await new Promise((resolve) => setTimeout(resolve, 10));
+          }
+
+          await txRepo.recordDownloadAuditEvents([
+            {
+              userId,
+              userName: "Concurrent Test User",
+              userEmail: `concurrent-${testId}@axentra.local`,
+              documentId: docId,
+              documentName: "concurrent.pdf",
+              downloadedAt: new Date(),
+            },
+          ]);
+        });
+
+        // Wait until T1 acquires the SHARE lock
+        while (!t1HasLock) {
+          await new Promise((resolve) => setTimeout(resolve, 5));
+        }
+
+        // T2 attempts concurrent revocation of download permission while T1 holds SHARE lock
+        const t2Promise = (async () => {
+          await database.db
+            .update(categoryDownloadPermissions)
+            .set({ downloadEnabled: false })
+            .where(eq(categoryDownloadPermissions.categoryId, categoryId));
+          if (!t1CanCommit) {
+            t2FinishedBeforeT1 = true;
+          }
+        })();
+
+        // Verify T2 is blocked by PostgreSQL's row-level lock and cannot commit before T1
+        await new Promise((resolve) => setTimeout(resolve, 60));
+        expect(t2FinishedBeforeT1).toBe(false);
+
+        // Allow T1 to proceed, record audit event, and commit
+        t1CanCommit = true;
+        await Promise.all([t1Promise, t2Promise]);
+
+        // Verify T1's audit event was safely committed
+        const auditRows = await database.db
+          .select()
+          .from(downloadAuditEvents)
+          .where(eq(downloadAuditEvents.documentId, docId));
+        expect(auditRows).toHaveLength(1);
+
+        // Verify T2's update succeeded immediately after T1 released the SHARE lock
+        const updatedPerms = await repo.checkCategoryPermissions([docId]);
+        expect(updatedPerms[0]?.downloadEnabled).toBe(false);
+      } finally {
+        await database.db
+          .delete(downloadAuditEvents)
+          .where(eq(downloadAuditEvents.documentId, docId));
+        await database.db.delete(documentFiles).where(eq(documentFiles.id, fileId));
+        await database.db.delete(documents).where(eq(documents.id, docId));
+        await database.db
+          .delete(categoryDownloadPermissions)
+          .where(eq(categoryDownloadPermissions.categoryId, categoryId));
+        await database.db.delete(categories).where(eq(categories.id, categoryId));
         await database.db.delete(users).where(eq(users.id, userId));
       }
     },

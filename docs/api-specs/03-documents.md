@@ -285,8 +285,10 @@ Accepts selected document IDs, validates existence, enforces category download p
 - `documentIds` — array of valid UUID strings.
 - Minimum 1 document (`400 VALIDATION_ERROR`: `"Minimal satu dokumen harus dipilih"`).
 - Maximum 100 documents (`400 VALIDATION_ERROR`: `"Maksimal 100 dokumen per unduhan massal"`).
+- Maximum total aggregate size: 250 MB (`262,144,000` bytes) across all requested documents (`413 PAYLOAD_TOO_LARGE`: `"Total ukuran dokumen melebihi batas maksimum unduhan massal (250 MB)"`).
 - Duplicate document IDs in the request are automatically deduplicated.
 - If multiple documents share the same original filename, entry filenames inside the `.zip` archive are disambiguated (e.g. `laporan.pdf`, `laporan (1).pdf`).
+- Entry filenames inside the archive are sanitized to prevent directory traversal (`../`, `..\`, absolute paths).
 
 **Success Response (`200 OK`):**
 
@@ -303,6 +305,7 @@ Accepts selected document IDs, validates existence, enforces category download p
 - `401 UNAUTHORIZED`: Missing, forged, or expired token.
 - `403 FORBIDDEN`: Category download permission disabled or document uncategorized for `member_team` (`"Akses unduh tidak diizinkan untuk kategori dokumen ini"`).
 - `404 NOT_FOUND`: One or more requested documents not found, soft-deleted, or lacking a stored file record.
+- `413 PAYLOAD_TOO_LARGE`: Total aggregate size of selected documents exceeds 250 MB (`"Total ukuran dokumen melebihi batas maksimum unduhan massal (250 MB)"`).
 
 ## Related Documents
 

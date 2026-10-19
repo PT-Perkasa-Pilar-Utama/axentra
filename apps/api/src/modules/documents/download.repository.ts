@@ -7,9 +7,6 @@ import {
   downloadAuditEvents,
 } from "@axentra/db";
 
-import { DOWNLOAD_ACCESS_DENIED_MESSAGE, type AuthUser } from "@axentra/shared";
-import { ForbiddenError, NotFoundError } from "../../http/errors";
-
 export type DownloadTargetRecord = {
   document: {
     id: string;
@@ -40,10 +37,11 @@ export type CreateDownloadAuditEventInput = {
   downloadedAt?: Date | undefined;
 };
 
-export type AtomicDownloadAuditInput = {
-  user: AuthUser;
-  documentIds: ReadonlyArray<string>;
-  events: ReadonlyArray<CreateDownloadAuditEventInput>;
+export type DocumentCategoryPermissionStatus = {
+  documentId: string;
+  categoryId: string | null;
+  deletedAt: Date | null;
+  downloadEnabled: boolean | null;
 };
 
 export type IDownloadRepository = {
@@ -51,11 +49,15 @@ export type IDownloadRepository = {
   findDownloadTargets: (
     documentIds: ReadonlyArray<string>,
   ) => Promise<ReadonlyArray<DownloadTargetRecord>>;
+  checkCategoryPermissions: (
+    documentIds: ReadonlyArray<string>,
+    options?: { lock?: "share" | "update" } | undefined,
+  ) => Promise<ReadonlyArray<DocumentCategoryPermissionStatus>>;
   recordDownloadAuditEvent: (event: CreateDownloadAuditEventInput) => Promise<void>;
   recordDownloadAuditEvents: (
     events: ReadonlyArray<CreateDownloadAuditEventInput>,
   ) => Promise<void>;
-  recordAuthorizedDownloadAuditEvents: (input: AtomicDownloadAuditInput) => Promise<void>;
+  transaction: <T>(callback: (txRepo: IDownloadRepository) => Promise<T>) => Promise<T>;
 };
 
 type DownloadTargetRow = {
@@ -174,14 +176,7 @@ export class DrizzleDownloadRepository implements IDownloadRepository {
   }
 
   public async recordDownloadAuditEvent(event: CreateDownloadAuditEventInput): Promise<void> {
-    await this.db.insert(downloadAuditEvents).values({
-      userId: event.userId ?? null,
-      userName: event.userName ?? null,
-      userEmail: event.userEmail ?? null,
-      documentId: event.documentId ?? null,
-      documentName: event.documentName,
-      downloadedAt: event.downloadedAt ?? new Date(),
-    });
+    await this.recordDownloadAuditEvents([event]);
   }
 
   public async recordDownloadAuditEvents(
@@ -200,48 +195,54 @@ export class DrizzleDownloadRepository implements IDownloadRepository {
     );
   }
 
-  public async recordAuthorizedDownloadAuditEvents(input: AtomicDownloadAuditInput): Promise<void> {
-    if (input.documentIds.length === 0) return;
+  public async checkCategoryPermissions(
+    documentIds: ReadonlyArray<string>,
+    options?: { lock?: "share" | "update" } | undefined,
+  ): Promise<ReadonlyArray<DocumentCategoryPermissionStatus>> {
+    if (documentIds.length === 0) return [];
 
-    await this.db.transaction(async (tx) => {
-      if (input.user.role === "member_team") {
-        const rows = await tx
-          .select({
-            docId: documents.id,
-            docCategoryId: documents.categoryId,
-            docDeletedAt: documents.deletedAt,
-            permDownloadEnabled: categoryDownloadPermissions.downloadEnabled,
-          })
-          .from(documents)
-          .leftJoin(
-            categoryDownloadPermissions,
-            eq(categoryDownloadPermissions.categoryId, documents.categoryId),
-          )
-          .where(inArray(documents.id, [...input.documentIds]));
+    const docQuery = this.db
+      .select({
+        id: documents.id,
+        categoryId: documents.categoryId,
+        deletedAt: documents.deletedAt,
+      })
+      .from(documents)
+      .where(inArray(documents.id, [...documentIds]));
 
-        const rowMap = new Map(rows.map((r) => [r.docId, r]));
+    const docRows = await (options?.lock ? docQuery.for(options.lock) : docQuery);
+    if (docRows.length === 0) return [];
 
-        for (const docId of input.documentIds) {
-          const row = rowMap.get(docId);
-          if (!row || row.docDeletedAt !== null) {
-            throw new NotFoundError("Dokumen tidak ditemukan");
-          }
-          if (!row.docCategoryId || row.permDownloadEnabled !== true) {
-            throw new ForbiddenError(DOWNLOAD_ACCESS_DENIED_MESSAGE);
-          }
-        }
-      }
+    const categoryIds = Array.from(
+      new Set(docRows.map((d) => d.categoryId).filter((id): id is string => id !== null)),
+    );
 
-      await tx.insert(downloadAuditEvents).values(
-        input.events.map((event) => ({
-          userId: event.userId ?? null,
-          userName: event.userName ?? null,
-          userEmail: event.userEmail ?? null,
-          documentId: event.documentId ?? null,
-          documentName: event.documentName,
-          downloadedAt: event.downloadedAt ?? new Date(),
-        })),
-      );
+    let permMap = new Map<string, boolean>();
+    if (categoryIds.length > 0) {
+      const permQuery = this.db
+        .select({
+          categoryId: categoryDownloadPermissions.categoryId,
+          downloadEnabled: categoryDownloadPermissions.downloadEnabled,
+        })
+        .from(categoryDownloadPermissions)
+        .where(inArray(categoryDownloadPermissions.categoryId, categoryIds));
+
+      const permRows = await (options?.lock ? permQuery.for(options.lock) : permQuery);
+      permMap = new Map(permRows.map((p) => [p.categoryId, p.downloadEnabled]));
+    }
+
+    return docRows.map((doc) => ({
+      documentId: doc.id,
+      categoryId: doc.categoryId,
+      deletedAt: doc.deletedAt,
+      downloadEnabled: doc.categoryId ? (permMap.get(doc.categoryId) ?? null) : null,
+    }));
+  }
+
+  public async transaction<T>(callback: (txRepo: IDownloadRepository) => Promise<T>): Promise<T> {
+    return await this.db.transaction(async (tx) => {
+      const txRepo = new DrizzleDownloadRepository(tx as unknown as PostgresJsDatabase);
+      return await callback(txRepo);
     });
   }
 }

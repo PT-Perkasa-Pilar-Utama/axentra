@@ -91,24 +91,41 @@ export async function executeBulkDownloadOperation(
   // 5. Assemble the ZIP archive (with path traversal sanitization and filename collision handling)
   const zipBytes = createZipArchive(entries);
 
-  // 6. Atomically recheck category permissions and record point-in-time audit events (F3)
+  // 6. Atomically recheck category permissions with row lock and record point-in-time audit events (F3, F6)
   try {
-    const now = new Date();
-    await dependencies.downloadRepository.recordAuthorizedDownloadAuditEvents({
-      user: input.user,
-      documentIds: uniqueIds,
-      events: uniqueIds.map((docId) => {
-        const target = targetMap.get(docId);
-        const fileName = target?.file?.originalName ?? "unknown";
-        return {
-          userId: input.user.id,
-          userName: input.user.name ?? input.user.email,
-          userEmail: input.user.email,
-          documentId: docId,
-          documentName: fileName,
-          downloadedAt: now,
-        };
-      }),
+    await dependencies.downloadRepository.transaction(async (txRepo) => {
+      if (input.user.role === "member_team") {
+        const permissionRows = await txRepo.checkCategoryPermissions(uniqueIds, {
+          lock: "share",
+        });
+        const permMap = new Map(permissionRows.map((r) => [r.documentId, r]));
+
+        for (const docId of uniqueIds) {
+          const perm = permMap.get(docId);
+          if (!perm || perm.deletedAt !== null) {
+            throw new NotFoundError("Dokumen tidak ditemukan");
+          }
+          if (!perm.categoryId || perm.downloadEnabled !== true) {
+            throw new ForbiddenError(DOWNLOAD_ACCESS_DENIED_MESSAGE);
+          }
+        }
+      }
+
+      const now = new Date();
+      await txRepo.recordDownloadAuditEvents(
+        uniqueIds.map((docId) => {
+          const target = targetMap.get(docId);
+          const fileName = target?.file?.originalName ?? "unknown";
+          return {
+            userId: input.user.id,
+            userName: input.user.name ?? input.user.email,
+            userEmail: input.user.email,
+            documentId: docId,
+            documentName: fileName,
+            downloadedAt: now,
+          };
+        }),
+      );
     });
   } catch (error) {
     dependencies.logger?.error(
