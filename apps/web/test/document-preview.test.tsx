@@ -100,10 +100,17 @@ describe("Document preview entry (FE-S3-01 / AC-08.01)", () => {
             tags: [],
             retry: () => {},
           },
+          isSelected: false,
         },
       ],
       refresh: async () => {},
       retry: async () => {},
+      selectedIds: new Set(),
+      isDownloading: false,
+      downloadError: null,
+      toggleSelect: () => {},
+      clearSelection: () => {},
+      downloadSelected: async () => {},
     };
     render(createElement(MemoryRouter, null, createElement(RecentDocumentsView, { presenter })));
 
