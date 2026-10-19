@@ -7,9 +7,11 @@ try {
 }
 if (typeof window !== "undefined" && window.document) {
   globalThis.document = window.document;
+  window.URL.createObjectURL = () => "blob:test-download";
+  window.URL.revokeObjectURL = () => undefined;
 }
 
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryRouter, RouterProvider } from "react-router";
@@ -71,6 +73,7 @@ function buildListResponse(data: RecentDocument[]): string {
 function createFetchMock(
   stage: { current: ListStage },
   documentsOverride?: RecentDocument[],
+  bulkDownloadHandler?: (init?: RequestInit) => Response,
 ): typeof fetch {
   const handler = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = String(input);
@@ -81,6 +84,12 @@ function createFetchMock(
 
     const authorization = new Headers(init?.headers).get("authorization");
     expect(authorization).toBe(`Bearer ${memberSession.token}`);
+
+    if (url.includes("/documents/bulk-download")) {
+      expect(init?.method).toBe("POST");
+      expect(new Headers(init?.headers).get("content-type")).toBe("application/json");
+      return bulkDownloadHandler?.(init) ?? new Response(new Blob(["zip"]), { status: 200 });
+    }
 
     if (url.includes("/documents/upload")) {
       const accepted: DocumentUploadAcceptedData = {
@@ -471,4 +480,125 @@ describe("Recent documents and Tags integration", () => {
 
     expect(await screen.findByRole("button", { name: "Finance" })).toBeTruthy();
   }, 10000);
+
+  test("AC-10.01 selects multiple documents and starts one ZIP download", async () => {
+    const firstId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const secondId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const documents: RecentDocument[] = [
+      {
+        id: firstId,
+        filename: "laporan.pdf",
+        processingStatus: "completed",
+        createdAt,
+        tags: [],
+      },
+      {
+        id: secondId,
+        filename: "kontrak.docx",
+        processingStatus: "completed",
+        createdAt,
+        tags: [],
+      },
+    ];
+    let requestBody = "";
+    const zipBlob = new Blob(["zip-content"], { type: "application/zip" });
+    const clickedDownload = { filename: "" };
+    const createObjectUrl = spyOn(URL, "createObjectURL").mockReturnValue("blob:test-download");
+    const anchorClick = spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(
+      function (this: HTMLAnchorElement): void {
+        clickedDownload.filename = this.download;
+      },
+    );
+    globalThis.fetch = createFetchMock({ current: "completed" }, documents, (init) => {
+      requestBody = typeof init?.body === "string" ? init.body : "";
+      return new Response(zipBlob, { status: 200 });
+    });
+    const queryClient = makeQueryClient();
+
+    try {
+      await act(async () => {
+        renderDashboard(queryClient);
+      });
+
+      const firstCheckbox = await screen.findByRole("checkbox", { name: "Pilih laporan.pdf" });
+      const secondCheckbox = screen.getByRole("checkbox", { name: "Pilih kontrak.docx" });
+      const downloadButton = screen.getByRole("button", { name: "Download Selected" });
+      expect(downloadButton instanceof HTMLButtonElement).toBe(true);
+      if (!(downloadButton instanceof HTMLButtonElement)) {
+        throw new Error("Tombol unduh tidak tersedia");
+      }
+      expect(downloadButton.disabled).toBe(true);
+
+      await act(async () => {
+        fireEvent.click(firstCheckbox);
+        fireEvent.click(secondCheckbox);
+      });
+      expect(downloadButton.disabled).toBe(false);
+
+      await act(async () => {
+        fireEvent.click(downloadButton);
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+
+      expect(requestBody).toBe(JSON.stringify({ documentIds: [firstId, secondId] }));
+      expect(createObjectUrl).toHaveBeenCalledWith(zipBlob);
+      expect(anchorClick).toHaveBeenCalled();
+      expect(clickedDownload.filename).toBe("documents.zip");
+
+      if (
+        !(firstCheckbox instanceof HTMLInputElement) ||
+        !(secondCheckbox instanceof HTMLInputElement)
+      ) {
+        throw new Error("Checkbox dokumen tidak valid");
+      }
+      expect(firstCheckbox.checked).toBe(false);
+      expect(secondCheckbox.checked).toBe(false);
+    } finally {
+      createObjectUrl.mockRestore();
+      anchorClick.mockRestore();
+    }
+  });
+
+  test("AC-10.01 keeps selected documents and shows an error when ZIP download fails", async () => {
+    const documents: RecentDocument[] = [
+      {
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        filename: "laporan.pdf",
+        processingStatus: "completed",
+        createdAt,
+        tags: [],
+      },
+    ];
+    globalThis.fetch = createFetchMock(
+      { current: "completed" },
+      documents,
+      () =>
+        new Response(
+          JSON.stringify({
+            success: false,
+            error: { code: "NOT_FOUND", message: "Dokumen tidak ditemukan" },
+          }),
+          { status: 404, headers: { "content-type": "application/json" } },
+        ),
+    );
+
+    await act(async () => {
+      renderDashboard(makeQueryClient());
+    });
+
+    const checkbox = await screen.findByRole("checkbox", { name: "Pilih laporan.pdf" });
+    const downloadButton = screen.getByRole("button", { name: "Download Selected" });
+    await act(async () => {
+      fireEvent.click(checkbox);
+      fireEvent.click(downloadButton);
+    });
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Dokumen tidak ditemukan");
+    if (!(checkbox instanceof HTMLInputElement) || !(downloadButton instanceof HTMLButtonElement)) {
+      throw new Error("Kontrol unduhan tidak valid");
+    }
+    expect(checkbox.checked).toBe(true);
+    expect(downloadButton.disabled).toBe(false);
+  });
 });
