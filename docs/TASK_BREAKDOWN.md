@@ -164,10 +164,10 @@ and related-document suggestions.
 | FE-S2-04 | Build search results experience | Search bar, Enter submission, filename/snippet result cards, under-3-second visible state, and no-result message. | AC-06.01, AC-06.02, AC-06.03, AC-06.04 | Azis  | 1.0d | business/textual-design-member-team.md                                         |
 | FE-S2-05 | Build related documents section | Detail page includes `Dokumen Terkait` with relevant tag-overlap suggestions.                                     | AC-07.01, AC-07.02                     | Aiman | 0.6d | business/textual-design-member-team.md                                         |
 
-### FE-S2-03 delivery status (updated 2026-10-16)
+### FE-S2-03 delivery status (updated 2026-10-19)
 
 - **Implementation complete in PR #42** ([FE-S2-03 category navigation and document integration](https://github.com/PT-Perkasa-Pilar-Utama/axentra/pull/42)); category listing, auto-assignment, and category-filtered document search are integrated with the real APIs.
-- **Acceptance walkthrough verified on the local real stack** (API, Worker, PostgreSQL, Redis, and MinIO): as `member_team`, uploading a synthetic PDF containing `Reporting` created the `Reporting` category and associated document. A second synthetic PDF containing `Contract` created a separate category and associated document. Selecting each category displayed only its matching document. See the manual evidence in the PR description and screenshots saved in the developer's Downloads folder.
+- **Acceptance walkthrough verified on the local real stack** at PR head `e1d94cccff62222f8614979194bfbefd3e9a4657` (application tree is identical to rebased code commit `8637f41`; API, Worker, PostgreSQL, Redis, MinIO, and Web): as `member_team`, uploaded synthetic `reporting.pdf` containing `Reporting` and `contract.pdf` containing `Contract`. The worker created separate categories and associated each document; selecting each category displayed only its matching document. Evidence screenshots are committed in [`docs/screenshots/FE-S2-03/`](screenshots/FE-S2-03/). `origin/dev` was unchanged at `1ba24d6` during this walkthrough.
 - `QA-S2-01` remains responsible for sprint-level acceptance coverage and Tech Lead sign-off. This entry records FE-S2-03 evidence and does not replace that verification.
 
 ### Acceptance Verification
