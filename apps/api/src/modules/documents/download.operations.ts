@@ -6,8 +6,12 @@ import {
   DOWNLOAD_ACCESS_DENIED_MESSAGE,
   type AuthUser,
 } from "@axentra/shared";
-import { ForbiddenError, NotFoundError } from "../../http/errors";
-import type { IDownloadRepository } from "./download.repository";
+import { AppError, ForbiddenError, NotFoundError } from "../../http/errors";
+import type {
+  DownloadTargetRecord,
+  DownloadWriteScope,
+  IDownloadRepository,
+} from "./download.repository";
 
 export type DownloadOperationDependencies = {
   downloadRepository: IDownloadRepository;
@@ -39,12 +43,15 @@ export type DownloadOperationResult =
       bytes: Uint8Array;
     };
 
-export async function executeDownloadOperation(
-  dependencies: DownloadOperationDependencies,
-  input: ExecuteDownloadInput,
-): Promise<DownloadOperationResult> {
-  const target = await dependencies.downloadRepository.findDownloadTarget(input.documentId);
+type DownloadableFile = NonNullable<DownloadTargetRecord["file"]>;
 
+type DownloadContent = { kind: "url"; downloadUrl: string } | { kind: "stream"; bytes: Uint8Array };
+
+// Used by the pre-check and by the re-check under lock, so both apply exactly the same rules.
+function assertDownloadAllowed(
+  target: DownloadTargetRecord | null,
+  user: AuthUser,
+): DownloadableFile {
   if (!target || target.document.deletedAt !== null) {
     throw new NotFoundError("Dokumen tidak ditemukan");
   }
@@ -53,60 +60,88 @@ export async function executeDownloadOperation(
     throw new NotFoundError("File dokumen tidak ditemukan");
   }
 
-  const file = target.file;
-
   // Enforce category download permission for member_team (AC-09.01, AC-13.01)
-  if (input.user.role === "member_team") {
+  if (user.role === "member_team") {
     if (!target.document.categoryId) {
       throw new ForbiddenError(DOWNLOAD_ACCESS_DENIED_MESSAGE);
     }
-    if (!target.categoryPermission || !target.categoryPermission.downloadEnabled) {
+    if (!target.categoryPermission?.downloadEnabled) {
       throw new ForbiddenError(DOWNLOAD_ACCESS_DENIED_MESSAGE);
     }
   }
 
-  const recordAudit = async (): Promise<void> => {
-    try {
-      await dependencies.downloadRepository.recordDownloadAuditEvent({
-        userId: input.user.id,
-        userName: input.user.name ?? input.user.email,
-        userEmail: input.user.email,
-        documentId: target.document.id,
-        documentName: file.originalName,
-        downloadedAt: new Date(),
-      });
-    } catch (error) {
-      dependencies.logger?.error(
-        {
-          documentId: target.document.id,
-          userId: input.user.id,
-          error: summarizeError(error),
-        },
-        "Gagal mencatat audit event download",
-      );
-      throw error;
-    }
-  };
+  return target.file;
+}
 
-  if (input.stream === true) {
-    const bytes = await dependencies.storage.getObject(file.storageKey);
-    await recordAudit();
+async function recordDownloadAudit(
+  scope: DownloadWriteScope,
+  logger: Logger | undefined,
+  input: ExecuteDownloadInput,
+  documentName: string,
+): Promise<void> {
+  try {
+    await scope.recordDownloadAuditEvent({
+      userId: input.user.id,
+      userName: input.user.name ?? input.user.email,
+      userEmail: input.user.email,
+      documentId: input.documentId,
+      documentName,
+      downloadedAt: new Date(),
+    });
+  } catch (error) {
+    logger?.error(
+      {
+        documentId: input.documentId,
+        userId: input.user.id,
+        error: summarizeError(error),
+      },
+      "Gagal mencatat audit event download",
+    );
+    // The database error carries the bound audit values (user, document, timestamp) in its params.
+    // Replace it with the generic server error so the global error logger never receives them.
+    throw new AppError("INTERNAL_ERROR", "Terjadi kesalahan pada server", 500);
+  }
+}
+
+export async function executeDownloadOperation(
+  dependencies: DownloadOperationDependencies,
+  input: ExecuteDownloadInput,
+): Promise<DownloadOperationResult> {
+  const target = await dependencies.downloadRepository.findDownloadTarget(input.documentId);
+  const file = assertDownloadAllowed(target, input.user);
+  const ttl = input.expiresInSeconds ?? DEFAULT_DOWNLOAD_TTL_SECONDS;
+
+  // Storage I/O stays outside the transaction, so no database connection is held while bytes are read.
+  const content: DownloadContent =
+    input.stream === true
+      ? { kind: "stream", bytes: await dependencies.storage.getObject(file.storageKey) }
+      : {
+          kind: "url",
+          downloadUrl: await dependencies.storage.createDownloadUrl(file.storageKey, ttl),
+        };
+
+  // Authorization is re-checked under row locks, and the audit row commits in the same transaction.
+  // If the permission was revoked while storage was prepared, or the audit insert fails, this throws
+  // and the content prepared above is discarded before any response is produced.
+  await dependencies.downloadRepository.runInDownloadTransaction(async (scope) => {
+    const locked = await scope.lockDownloadTarget(input.documentId);
+    assertDownloadAllowed(locked, input.user);
+    await recordDownloadAudit(scope, dependencies.logger, input, file.originalName);
+  });
+
+  if (content.kind === "stream") {
     return {
       kind: "stream",
       filename: file.originalName,
       mimeType: file.mimeType,
       fileSize: file.fileSize,
-      bytes,
+      bytes: content.bytes,
     };
   }
 
-  const ttl = input.expiresInSeconds ?? DEFAULT_DOWNLOAD_TTL_SECONDS;
-  const downloadUrl = await dependencies.storage.createDownloadUrl(file.storageKey, ttl);
-  await recordAudit();
-
   return {
     kind: "url",
-    downloadUrl,
+    downloadUrl: content.downloadUrl,
     filename: file.originalName,
     mimeType: file.mimeType,
     fileSize: file.fileSize,
