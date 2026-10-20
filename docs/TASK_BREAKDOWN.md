@@ -200,6 +200,12 @@ download selected documents as a `.zip`.
 | FE-S3-02 | Build single download action    | Download button starts original-format download when permission allows it; handles denied and expired states. | AC-09.01 | Azis  | 0.7d | business/textual-design-member-team.md |
 | FE-S3-03 | Build selected bulk download UI | Dashboard supports multi-select and `Download Selected`; starts one `.zip` download.                          | AC-10.01 | Aiman | 0.9d | business/textual-design-member-team.md |
 
+### FE-S3-01 delivery evidence (verified 2026-10-20)
+
+- **AC-08.01 manual walkthrough:** Environment: local Axentra stack (Web, Hono API, PostgreSQL, Redis, MinIO); Chrome on Windows 11; target branch `FE-S3-01-Build-document-preview-viewer` rebased on `origin/dev` `54fa15b`. Role: `member_team` (`member@axentra.local`) authenticated through the real login UI. Input: existing local-stack `sample-reporting.pdf`, whose rendered page contains “Dokumen ini merupakan laporan kinerja dan reporting keuangan tahunan perusahaan.” Expected: selecting the finance-content document from Dashboard displays the whole PDF inline without triggering file download. Observed: Dashboard row opened `/documents/71fb4ebd-e19d-4db0-bad3-87716681fa7e`; browser rendered the one-page PDF inline; no application download/navigation occurred; `Unduh` remained disabled and described as “Fitur unduh belum tersedia pada versi ini.” Screenshot: [`document-preview-round3-live.png`](screenshots/FE-S3-01/document-preview-round3-live.png). The API used an ephemeral local-only identity directory for this run; no credentials or bearer tokens were persisted.
+- **F8:** Disabled `Unduh` button now references the visible explanation via `aria-describedby`; focused tests verify the target exists and text is present.
+- This is manual acceptance evidence only; automated AC-08.01 E2E remains `Planned` in `docs/E2E_TESTING.md`; QA-S3-01 and Arya retain sprint acceptance sign-off.
+
 ### Acceptance Verification
 
 | Card ID  | Board Card Title               | Task Description                                                                       | AC                   | PIC   | Est  | Docs                                                                   |

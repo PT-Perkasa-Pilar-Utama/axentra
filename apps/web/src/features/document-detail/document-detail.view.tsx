@@ -92,7 +92,7 @@ export function DocumentDetailView({
           </h1>
         </div>
 
-        <div className="shrink-0">
+        <div className="shrink-0 flex flex-col items-end gap-1">
           <button
             id="document-preview-download"
             type="button"
@@ -103,6 +103,9 @@ export function DocumentDetailView({
             <span>Unduh</span>
             <DownloadIcon />
           </button>
+          <span id="download-note" className="text-xs text-gray-600">
+            Fitur unduh belum tersedia pada versi ini.
+          </span>
         </div>
       </header>
 

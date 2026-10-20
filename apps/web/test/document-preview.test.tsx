@@ -101,6 +101,12 @@ describe("Document preview entry (FE-S3-01 / AC-08.01)", () => {
             retry: () => {},
           },
           isSelected: false,
+          category: {
+            isLoading: false,
+            isError: false,
+            name: "Finance",
+            retry: () => {},
+          },
         },
       ],
       refresh: async () => {},
@@ -189,7 +195,13 @@ describe("Document preview entry (FE-S3-01 / AC-08.01)", () => {
     expect(await screen.findByTitle("Pratinjau laporan.pdf")).toBeTruthy();
     expect(screen.getByRole("complementary", { name: "Halaman dokumen" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Halaman 1" })).toBeNull();
-    expect(screen.getByRole("button", { name: /unduh/i }).hasAttribute("disabled")).toBe(true);
+    const downloadButton = screen.getByRole("button", { name: /unduh/i });
+    expect(downloadButton.hasAttribute("disabled")).toBe(true);
+    // F8 Round 3: the disabled reason must resolve for assistive technology.
+    const noteId = downloadButton.getAttribute("aria-describedby");
+    expect(noteId).toBe("download-note");
+    const note = noteId ? document.getElementById(noteId) : null;
+    expect(note?.textContent).toContain("Fitur unduh belum tersedia pada versi ini.");
     expect(screen.getByRole("complementary", { name: "Informasi Dokumen" })).toBeTruthy();
     expect(screen.queryByRole("link", { name: /download|unduh/i })).toBeNull();
   });
