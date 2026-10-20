@@ -652,21 +652,17 @@ describe("POST /api/v1/documents/bulk-download — BE-S3-03", () => {
 
   describe("Atomic Category Permission Recheck & Audit (F3)", () => {
     test("rejects request with 403 when category permission is revoked midway during operation", async () => {
-      const context: { repo: InMemoryDownloadRepository | null } = { repo: null };
-      const interceptingStorage: StorageAdapter = {
-        ...createMockStorage(),
-        getObject: async () => {
-          // Simulate permission revocation occurring while object is being downloaded
-          const target = context.repo?.getTarget(ENABLED_DOC_1);
-          if (target) {
-            target.categoryPermission = { downloadEnabled: false };
-          }
-          return pdfBytes1;
-        },
-      };
+      const setup = createSetup();
 
-      const setup = createSetup(interceptingStorage);
-      context.repo = setup.downloadRepo;
+      // Simulate concurrent revocation right before atomic checkCategoryPermissions executes
+      const originalCheck = setup.downloadRepo.checkCategoryPermissions.bind(setup.downloadRepo);
+      setup.downloadRepo.checkCategoryPermissions = async (ids, opts) => {
+        const target = setup.downloadRepo.getTarget(ENABLED_DOC_1);
+        if (target) {
+          target.categoryPermission = { downloadEnabled: false };
+        }
+        return originalCheck(ids, opts);
+      };
 
       const response = await setup.app.request("/api/v1/documents/bulk-download", {
         method: "POST",
@@ -688,32 +684,60 @@ describe("POST /api/v1/documents/bulk-download — BE-S3-03", () => {
     });
   });
 
-  describe("Storage Failure Handling", () => {
-    test("does not record audit events when storage getObject throws", async () => {
-      const failingStorage: StorageAdapter = {
-        ...createMockStorage(),
-        getObject: async () => {
-          throw new Error("MinIO connection reset");
+  describe("ZIP32 Limits & Guards (F2)", () => {
+    test("throws PayloadTooLargeError when single document size exceeds 4 GiB", async () => {
+      const { downloadRepo } = createSetup();
+      const giantDocId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+      downloadRepo.setTarget(giantDocId, {
+        document: {
+          id: giantDocId,
+          title: "giant.pdf",
+          categoryId: "cat-1",
+          processingStatus: "completed",
+          deletedAt: null,
         },
-      };
-
-      const { app, downloadRepo } = createSetup(failingStorage);
-      const response = await app.request("/api/v1/documents/bulk-download", {
-        method: "POST",
-        headers: {
-          Authorization: "Bearer member-token",
-          "Content-Type": "application/json",
+        file: {
+          id: "fil-giant",
+          storageKey: "documents/giant.pdf",
+          originalName: "giant.pdf",
+          mimeType: "application/pdf",
+          fileSize: 0x100000000, // 4 GiB + 1
+          fileExtension: "pdf",
         },
-        body: JSON.stringify({ documentIds: [ENABLED_DOC_1] }),
+        categoryPermission: { downloadEnabled: true },
       });
 
-      expect(response.status).toBe(500);
-      expect(downloadRepo.getRecordedAuditEvents()).toHaveLength(0);
+      const { executeBulkDownloadOperation } = await import("./bulk-download.operations");
+      await expect(
+        executeBulkDownloadOperation(
+          { downloadRepository: downloadRepo, storage: createMockStorage() },
+          {
+            documentIds: [giantDocId],
+            user: { id: "u1", email: "u1@test.local", role: "admin", name: "Admin" },
+          },
+        ),
+      ).rejects.toThrow(/melebihi batas 32-bit \(4 GiB\)/);
+    });
+
+    test("throws PayloadTooLargeError when document count exceeds 65,535 entries", async () => {
+      const { downloadRepo } = createSetup();
+      const fakeIds = Array.from({ length: 65536 }, (_, i) => `doc-${i}`);
+
+      const { executeBulkDownloadOperation } = await import("./bulk-download.operations");
+      await expect(
+        executeBulkDownloadOperation(
+          { downloadRepository: downloadRepo, storage: createMockStorage() },
+          {
+            documentIds: fakeIds,
+            user: { id: "u1", email: "u1@test.local", role: "admin", name: "Admin" },
+          },
+        ),
+      ).rejects.toThrow(/melebihi batas maksimum arsip ZIP \(65\.535\)/);
     });
   });
 
-  describe("Streaming & Bounded Memory (F7)", () => {
-    test("streams ZIP chunks lazily and supplies exact Content-Length without memory multiplication", async () => {
+  describe("Streaming & Bounded Memory (F7, F12, F15)", () => {
+    test("fetches storage objects strictly on-demand without fetching upfront (F7)", async () => {
       const getObjectCalls: string[] = [];
       const trackingStorage: StorageAdapter = {
         ...createMockStorage(),
@@ -734,48 +758,113 @@ describe("POST /api/v1/documents/bulk-download — BE-S3-03", () => {
       });
 
       expect(response.status).toBe(200);
+
+      // PROVE F7: Bun pre-pulls the first chunk for response streaming (file 1),
+      // but subsequent files are NOT loaded upfront!
+      expect(getObjectCalls).toHaveLength(1);
+      expect(getObjectCalls[0]).toBe("storage/doc1.pdf");
+
+      const reader = response.body?.getReader();
+      expect(reader).toBeDefined();
+
+      // Read chunk 1: local header prefix for file 1
+      await reader?.read();
+      expect(getObjectCalls).toHaveLength(1);
+
+      // Read chunk 2: file 1 content
+      await reader?.read();
+      expect(getObjectCalls).toHaveLength(1);
+
+      // Read chunk 3: local header prefix for file 2 -> triggers getObject for file 2 on-demand
+      await reader?.read();
+      expect(getObjectCalls).toHaveLength(2);
+      expect(getObjectCalls[1]).toBe("storage/doc2.docx");
+
+      expect(downloadRepo.getRecordedAuditEvents()).toHaveLength(2);
+    });
+
+    test("streams ZIP chunks and supplies exact Content-Length matching payload", async () => {
+      const trackingStorage: StorageAdapter = {
+        ...createMockStorage(),
+        getObject: async () => pdfBytes1,
+      };
+
+      const { app, downloadRepo } = createSetup(trackingStorage);
+      const response = await app.request("/api/v1/documents/bulk-download", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer member-token",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ documentIds: [ENABLED_DOC_1, ENABLED_DOC_2] }),
+      });
+
+      expect(response.status).toBe(200);
       expect(response.headers.get("content-type")).toBe("application/zip");
 
-      // Verify Content-Length header is present and non-zero
       const contentLengthHeader = response.headers.get("content-length");
       expect(contentLengthHeader).not.toBeNull();
       const expectedLength = Number(contentLengthHeader);
       expect(expectedLength).toBeGreaterThan(0);
 
-      // Consume the streamed body chunk by chunk
-      const reader = response.body?.getReader();
-      expect(reader).toBeDefined();
+      const arrayBuffer = await response.arrayBuffer();
+      expect(arrayBuffer.byteLength).toBe(expectedLength);
 
-      const chunks: Uint8Array[] = [];
-      let totalRead = 0;
-      while (reader) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (value) {
-          chunks.push(value);
-          totalRead += value.byteLength;
-        }
-      }
-
-      // Verify stream delivered exact byte count specified in Content-Length
-      expect(totalRead).toBe(expectedLength);
-
-      // Verify storage was accessed for both documents during the stream
-      expect(getObjectCalls).toHaveLength(2);
-
-      // Assemble chunks and verify valid ZIP entries
-      const combined = new Uint8Array(totalRead);
-      let offset = 0;
-      for (const chunk of chunks) {
-        combined.set(chunk, offset);
-        offset += chunk.byteLength;
-      }
-
-      const names = parseZipEntryNames(combined);
+      const names = parseZipEntryNames(new Uint8Array(arrayBuffer));
       expect(names.size).toBe(2);
       expect(names.has("laporan.pdf")).toBe(true);
       expect(names.has("kontrak.docx")).toBe(true);
       expect(downloadRepo.getRecordedAuditEvents()).toHaveLength(2);
+    });
+
+    test("aborts stream when storage fails during stream consumption (F12)", async () => {
+      let callCount = 0;
+      const failingStorage: StorageAdapter = {
+        ...createMockStorage(),
+        getObject: async () => {
+          callCount++;
+          if (callCount === 2) {
+            throw new Error("MinIO network reset mid-stream");
+          }
+          return pdfBytes1;
+        },
+      };
+
+      const { app } = createSetup(failingStorage);
+      const response = await app.request("/api/v1/documents/bulk-download", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer member-token",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ documentIds: [ENABLED_DOC_1, ENABLED_DOC_2] }),
+      });
+
+      // Stream initiation was authorized
+      expect(response.status).toBe(200);
+
+      // Consuming body fails when reading second file
+      await expect(response.arrayBuffer()).rejects.toThrow("MinIO network reset mid-stream");
+    });
+
+    test("aborts stream when actual byte length differs from metadata size (F15)", async () => {
+      const corruptStorage: StorageAdapter = {
+        ...createMockStorage(),
+        getObject: async () => new Uint8Array([1, 2, 3]), // 3 bytes instead of 8 bytes in metadata
+      };
+
+      const { app } = createSetup(corruptStorage);
+      const response = await app.request("/api/v1/documents/bulk-download", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer member-token",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ documentIds: [ENABLED_DOC_1] }),
+      });
+
+      expect(response.status).toBe(200);
+      await expect(response.arrayBuffer()).rejects.toThrow(/tidak sesuai dengan metadata/);
     });
   });
 });

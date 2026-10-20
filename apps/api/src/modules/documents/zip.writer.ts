@@ -1,8 +1,11 @@
 import { crc32 } from "node:zlib";
+import type { Logger } from "@axentra/observability";
+import { summarizeError } from "@axentra/observability";
 import {
   deduplicateEntryNames,
   toDosDateTime,
   ZIP32_MAX_ARCHIVE_SIZE,
+  ZIP32_MAX_ENTRY_COUNT,
   ZIP32_MAX_ENTRY_SIZE,
 } from "./zip.writer.helpers";
 
@@ -11,6 +14,7 @@ export {
   sanitizeZipEntryName,
   toDosDateTime,
   ZIP32_MAX_ARCHIVE_SIZE,
+  ZIP32_MAX_ENTRY_COUNT,
   ZIP32_MAX_ENTRY_SIZE,
 } from "./zip.writer.helpers";
 
@@ -22,6 +26,13 @@ export type ZipEntry = {
 export type ZipStreamEntry = {
   name: string;
   content: Uint8Array | (() => Promise<Uint8Array>);
+  expectedSize?: number | undefined;
+};
+
+export type CreateZipReadableStreamOptions = {
+  archiveDate?: Date | undefined;
+  logger?: Logger | undefined;
+  requestId?: string | undefined;
 };
 
 /**
@@ -132,13 +143,25 @@ export async function* createZipStream(
   archiveDate: Date = new Date(),
 ): AsyncGenerator<Uint8Array, void, unknown> {
   const uniqueEntries = deduplicateEntryNames(entries);
+  if (uniqueEntries.length > ZIP32_MAX_ENTRY_COUNT) {
+    throw new Error(`Jumlah entry ZIP (${uniqueEntries.length}) melebihi batas 16-bit (65.535)`);
+  }
+
   const { time: dosTime, date: dosDate } = toDosDateTime(archiveDate);
   const textEncoder = new TextEncoder();
   const centralRecords: CentralRecord[] = [];
   let currentOffset = 0;
 
   for (const entry of uniqueEntries) {
-    const content = typeof entry.content === "function" ? await entry.content() : entry.content;
+    let content: Uint8Array | undefined =
+      typeof entry.content === "function" ? await entry.content() : entry.content;
+
+    if (entry.expectedSize !== undefined && content.byteLength !== entry.expectedSize) {
+      throw new Error(
+        `Ukuran berkas "${entry.name}" (${content.byteLength} byte) tidak sesuai dengan metadata (${entry.expectedSize} byte)`,
+      );
+    }
+
     if (content.byteLength > ZIP32_MAX_ENTRY_SIZE) {
       throw new Error(`Ukuran entry ZIP "${entry.name}" melebihi batas 32-bit (4 GiB)`);
     }
@@ -155,11 +178,21 @@ export async function* createZipStream(
     });
     currentOffset += prefix.length + content.length;
 
+    if (currentOffset > ZIP32_MAX_ARCHIVE_SIZE) {
+      throw new Error("Ukuran total arsip ZIP melebihi batas 32-bit (4 GiB)");
+    }
+
     yield prefix;
     yield content;
+    // F7: Immediately dereference content to allow garbage collection before loading the next entry
+    content = undefined;
   }
 
   const centralDir = buildCentralDirectory(centralRecords, dosTime, dosDate);
+  if (currentOffset + centralDir.length + 22 > ZIP32_MAX_ARCHIVE_SIZE) {
+    throw new Error("Ukuran total arsip ZIP melebihi batas 32-bit (4 GiB)");
+  }
+
   const eocd = buildEocd(centralRecords.length, centralDir.length, currentOffset);
 
   yield centralDir;
@@ -171,8 +204,12 @@ export async function* createZipStream(
  */
 export function createZipReadableStream(
   entries: ReadonlyArray<ZipStreamEntry>,
-  archiveDate: Date = new Date(),
+  options?: CreateZipReadableStreamOptions | Date,
 ): ReadableStream<Uint8Array> {
+  const archiveDate = options instanceof Date ? options : (options?.archiveDate ?? new Date());
+  const logger = options && !(options instanceof Date) ? options.logger : undefined;
+  const requestId = options && !(options instanceof Date) ? options.requestId : undefined;
+
   const iterator = createZipStream(entries, archiveDate);
   return new ReadableStream<Uint8Array>({
     async pull(controller) {
@@ -184,6 +221,13 @@ export function createZipReadableStream(
           controller.enqueue(value);
         }
       } catch (error) {
+        logger?.error(
+          {
+            requestId,
+            error: summarizeError(error),
+          },
+          "Kegagalan saat streaming arsip ZIP",
+        );
         controller.error(error);
       }
     },
@@ -191,75 +235,4 @@ export function createZipReadableStream(
       await iterator.return();
     },
   });
-}
-
-/**
- * Builds a standard ZIP archive into a single Uint8Array without allocating
- * intermediate local header buffers or tripling memory.
- */
-export function createZipArchive(
-  entries: ReadonlyArray<ZipEntry>,
-  archiveDate: Date = new Date(),
-): Uint8Array {
-  const uniqueEntries = deduplicateEntryNames(entries);
-  const { time: dosTime, date: dosDate } = toDosDateTime(archiveDate);
-  const textEncoder = new TextEncoder();
-
-  type PreparedEntry = {
-    nameBytes: Uint8Array;
-    content: Uint8Array;
-    checksum: number;
-    size: number;
-    offset: number;
-  };
-
-  const prepared: PreparedEntry[] = [];
-  let currentOffset = 0;
-
-  for (const entry of uniqueEntries) {
-    if (entry.content.byteLength > ZIP32_MAX_ENTRY_SIZE) {
-      throw new Error(`Ukuran entry ZIP "${entry.name}" melebihi batas 32-bit (4 GiB)`);
-    }
-    const nameBytes = textEncoder.encode(entry.name);
-    const checksum = crc32(entry.content);
-    prepared.push({
-      nameBytes,
-      content: entry.content,
-      checksum,
-      size: entry.content.length,
-      offset: currentOffset,
-    });
-    currentOffset += 30 + nameBytes.length + entry.content.length;
-  }
-
-  const centralDir = buildCentralDirectory(prepared, dosTime, dosDate);
-  const eocd = buildEocd(prepared.length, centralDir.length, currentOffset);
-  const totalLength = currentOffset + centralDir.length + eocd.length;
-
-  if (totalLength > ZIP32_MAX_ARCHIVE_SIZE) {
-    throw new Error("Ukuran total arsip ZIP melebihi batas 32-bit (4 GiB)");
-  }
-
-  const result = new Uint8Array(totalLength);
-  let pos = 0;
-
-  for (const p of prepared) {
-    const prefix = buildLocalHeaderPrefix(
-      p.nameBytes,
-      p.checksum,
-      p.content.length,
-      dosTime,
-      dosDate,
-    );
-    result.set(prefix, pos);
-    pos += prefix.length;
-    result.set(p.content, pos);
-    pos += p.content.length;
-  }
-
-  result.set(centralDir, pos);
-  pos += centralDir.length;
-  result.set(eocd, pos);
-
-  return result;
 }

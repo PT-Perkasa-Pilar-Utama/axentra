@@ -11,6 +11,9 @@ import type { IDownloadRepository } from "./download.repository";
 import {
   calculateZipArchiveSize,
   createZipReadableStream,
+  ZIP32_MAX_ARCHIVE_SIZE,
+  ZIP32_MAX_ENTRY_COUNT,
+  ZIP32_MAX_ENTRY_SIZE,
   type ZipStreamEntry,
 } from "./zip.writer";
 
@@ -37,10 +40,16 @@ export async function executeBulkDownloadOperation(
   input: ExecuteBulkDownloadInput,
 ): Promise<BulkDownloadOperationResult> {
   const uniqueIds = Array.from(new Set(input.documentIds));
+
+  // 1. Enforce ZIP32 entry count limit before database operations (F2)
+  if (uniqueIds.length > ZIP32_MAX_ENTRY_COUNT) {
+    throw new PayloadTooLargeError("Jumlah dokumen melebihi batas maksimum arsip ZIP (65.535)");
+  }
+
   const targets = await dependencies.downloadRepository.findDownloadTargets(uniqueIds);
   const targetMap = new Map(targets.map((t) => [t.document.id, t]));
 
-  // 1. Verify all selected documents exist and are not soft-deleted
+  // 2. Verify all selected documents exist and are not soft-deleted
   for (const docId of uniqueIds) {
     const target = targetMap.get(docId);
     if (!target || target.document.deletedAt !== null) {
@@ -52,7 +61,7 @@ export async function executeBulkDownloadOperation(
     }
   }
 
-  // 2. Enforce category download permissions per item for member_team (AC-10.01, AC-13.01)
+  // 3. Enforce category download permissions per item for member_team (AC-10.01, AC-13.01)
   if (input.user.role === "member_team") {
     for (const docId of uniqueIds) {
       const target = targetMap.get(docId);
@@ -68,11 +77,18 @@ export async function executeBulkDownloadOperation(
     }
   }
 
-  // 3. Enforce aggregate file size limit before fetching objects into memory (F2)
-  const totalBytes = uniqueIds.reduce((sum, docId) => {
+  // 4. Enforce aggregate and individual file size limits before stream creation (F2)
+  let totalBytes = 0;
+  for (const docId of uniqueIds) {
     const target = targetMap.get(docId);
-    return sum + (target?.file?.fileSize ?? 0);
-  }, 0);
+    const size = target?.file?.fileSize ?? 0;
+    if (size > ZIP32_MAX_ENTRY_SIZE) {
+      throw new PayloadTooLargeError(
+        `Ukuran berkas "${target?.file?.originalName ?? docId}" melebihi batas 32-bit (4 GiB)`,
+      );
+    }
+    totalBytes += size;
+  }
 
   if (totalBytes > BULK_DOWNLOAD_MAX_TOTAL_BYTES) {
     throw new PayloadTooLargeError(
@@ -80,15 +96,21 @@ export async function executeBulkDownloadOperation(
     );
   }
 
-  // 4. Verify storage connectivity on the first file before committing audit or starting stream
-  // This ensures storage outages fail immediately with 500 without recording false audit events
-  const firstTarget = targetMap.get(uniqueIds[0] ?? "");
-  let firstFileBytes: Uint8Array | undefined;
-  if (firstTarget?.file) {
-    firstFileBytes = await dependencies.storage.getObject(firstTarget.file.storageKey);
+  // 5. Pre-compute exact archive size and enforce ZIP32 archive limit (F2)
+  const metaList = uniqueIds.map((docId) => {
+    const target = targetMap.get(docId);
+    return {
+      name: target?.file?.originalName ?? "document",
+      size: target?.file?.fileSize ?? 0,
+    };
+  });
+  const contentLength = calculateZipArchiveSize(metaList);
+
+  if (contentLength > ZIP32_MAX_ARCHIVE_SIZE) {
+    throw new PayloadTooLargeError("Ukuran total arsip ZIP melebihi batas 32-bit (4 GiB)");
   }
 
-  // 5. Atomically recheck category permissions with row lock and record point-in-time audit events (F3, F6)
+  // 6. Atomically recheck category permissions with row lock and record point-in-time audit events (F3, F6, F12)
   try {
     await dependencies.downloadRepository.transaction(async (txRepo) => {
       if (input.user.role === "member_team") {
@@ -136,40 +158,26 @@ export async function executeBulkDownloadOperation(
     throw error;
   }
 
-  // 6. Build lazy streaming items: each file is fetched on-demand and dereferenced immediately (F7)
+  // 7. Build lazy streaming items: each file is fetched on-demand and dereferenced immediately (F7, F15)
   const streamItems: Array<ZipStreamEntry> = [];
-  let isFirst = true;
   for (const docId of uniqueIds) {
     const target = targetMap.get(docId);
     if (!target?.file) continue;
 
     const storageKey = target.file.storageKey;
     const name = target.file.originalName;
-    if (isFirst && firstFileBytes) {
-      streamItems.push({
-        name,
-        content: firstFileBytes,
-      });
-      isFirst = false;
-    } else {
-      streamItems.push({
-        name,
-        content: () => dependencies.storage.getObject(storageKey),
-      });
-    }
+    const expectedSize = target.file.fileSize;
+
+    streamItems.push({
+      name,
+      expectedSize,
+      content: () => dependencies.storage.getObject(storageKey),
+    });
   }
 
-  // 7. Calculate exact total archive length and construct streaming response
-  const metaList = streamItems.map((item, index) => {
-    const docId = uniqueIds[index];
-    const target = docId ? targetMap.get(docId) : undefined;
-    return {
-      name: item.name,
-      size: target?.file?.fileSize ?? 0,
-    };
+  const stream = createZipReadableStream(streamItems, {
+    logger: dependencies.logger,
   });
-  const contentLength = calculateZipArchiveSize(metaList);
-  const stream = createZipReadableStream(streamItems);
 
   return {
     filename: "axentra-documents.zip",

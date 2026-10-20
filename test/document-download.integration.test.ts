@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import type {
   DatabaseClient,
   closeDatabase as CloseDatabase,
@@ -327,9 +327,15 @@ describe("Document Download PostgreSQL integration (BE-S3-02 / AC-09.01)", () =>
           fileExtension: "pdf",
         });
 
+        // Warm up connection pool with idle connections to eliminate cold-pool latency variance (F11)
+        await Promise.all([
+          database.db.execute(sql`SELECT 1`),
+          database.db.execute(sql`SELECT 1`),
+          database.db.execute(sql`SELECT 1`),
+        ]);
+
         let t1HasLock = false;
         let t1CanCommit = false;
-        let t2FinishedBeforeT1 = false;
 
         // T1 starts transaction, queries with lock: 'share', records audit, then commits
         const t1Promise = repo.transaction(async (txRepo) => {
@@ -339,7 +345,7 @@ describe("Document Download PostgreSQL integration (BE-S3-02 / AC-09.01)", () =>
 
           t1HasLock = true;
 
-          // Hold transaction open until T2 initiates its concurrent update
+          // Hold transaction open until T2 tests deterministic row lock contention
           while (!t1CanCommit) {
             await new Promise((resolve) => setTimeout(resolve, 10));
           }
@@ -361,24 +367,33 @@ describe("Document Download PostgreSQL integration (BE-S3-02 / AC-09.01)", () =>
           await new Promise((resolve) => setTimeout(resolve, 5));
         }
 
-        // T2 attempts concurrent revocation of download permission while T1 holds SHARE lock
-        const t2Promise = (async () => {
-          await database.db
-            .update(categoryDownloadPermissions)
-            .set({ downloadEnabled: false })
-            .where(eq(categoryDownloadPermissions.categoryId, categoryId));
-          if (!t1CanCommit) {
-            t2FinishedBeforeT1 = true;
+        let t2LockRejected = false;
+        try {
+          await database.db.transaction(async (tx2) => {
+            await tx2.execute(
+              sql`SELECT category_id FROM category_download_permissions WHERE category_id = ${categoryId} FOR UPDATE NOWAIT`,
+            );
+          });
+        } catch (error: unknown) {
+          const cause = (error as { cause?: { code?: string; message?: string } })?.cause;
+          const direct = error as { code?: string; message?: string };
+          const code = cause?.code ?? direct?.code;
+          const message = String(cause?.message ?? direct?.message ?? error);
+
+          if (code === "55P03" || message.toLowerCase().includes("could not obtain lock")) {
+            t2LockRejected = true;
+          } else {
+            throw error;
           }
-        })();
+        } finally {
+          t1CanCommit = true;
+        }
 
-        // Verify T2 is blocked by PostgreSQL's row-level lock and cannot commit before T1
-        await new Promise((resolve) => setTimeout(resolve, 60));
-        expect(t2FinishedBeforeT1).toBe(false);
+        // Deterministic assertion: T2 was blocked from acquiring exclusive lock while T1 holds SHARE lock
+        expect(t2LockRejected).toBe(true);
 
-        // Allow T1 to proceed, record audit event, and commit
-        t1CanCommit = true;
-        await Promise.all([t1Promise, t2Promise]);
+        // Allow T1 to finish and commit
+        await t1Promise;
 
         // Verify T1's audit event was safely committed
         const auditRows = await database.db
@@ -387,9 +402,11 @@ describe("Document Download PostgreSQL integration (BE-S3-02 / AC-09.01)", () =>
           .where(eq(downloadAuditEvents.documentId, docId));
         expect(auditRows).toHaveLength(1);
 
-        // Verify T2's update succeeded immediately after T1 released the SHARE lock
-        const updatedPerms = await repo.checkCategoryPermissions([docId]);
-        expect(updatedPerms[0]?.downloadEnabled).toBe(false);
+        // After T1 released the SHARE lock upon commit, T2's permission revocation succeeds
+        await database.db
+          .update(categoryDownloadPermissions)
+          .set({ downloadEnabled: false })
+          .where(eq(categoryDownloadPermissions.categoryId, categoryId));
       } finally {
         await database.db
           .delete(downloadAuditEvents)
