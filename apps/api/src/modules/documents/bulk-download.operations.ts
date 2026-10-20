@@ -8,7 +8,11 @@ import {
 } from "@axentra/shared";
 import { ForbiddenError, NotFoundError, PayloadTooLargeError } from "../../http/errors";
 import type { IDownloadRepository } from "./download.repository";
-import { createZipArchive, type ZipEntry } from "./zip.writer";
+import {
+  calculateZipArchiveSize,
+  createZipReadableStream,
+  type ZipStreamEntry,
+} from "./zip.writer";
 
 export type BulkDownloadOperationDependencies = {
   downloadRepository: IDownloadRepository;
@@ -23,7 +27,8 @@ export type ExecuteBulkDownloadInput = {
 
 export type BulkDownloadOperationResult = {
   filename: string;
-  bytes: Uint8Array;
+  stream: ReadableStream<Uint8Array>;
+  contentLength: number;
   fileCount: number;
 };
 
@@ -75,23 +80,15 @@ export async function executeBulkDownloadOperation(
     );
   }
 
-  // 4. Fetch file binaries from storage
-  const entries: Array<ZipEntry> = [];
-  for (const docId of uniqueIds) {
-    const target = targetMap.get(docId);
-    if (!target?.file) continue;
-
-    const fileBytes = await dependencies.storage.getObject(target.file.storageKey);
-    entries.push({
-      name: target.file.originalName,
-      content: fileBytes,
-    });
+  // 4. Verify storage connectivity on the first file before committing audit or starting stream
+  // This ensures storage outages fail immediately with 500 without recording false audit events
+  const firstTarget = targetMap.get(uniqueIds[0] ?? "");
+  let firstFileBytes: Uint8Array | undefined;
+  if (firstTarget?.file) {
+    firstFileBytes = await dependencies.storage.getObject(firstTarget.file.storageKey);
   }
 
-  // 5. Assemble the ZIP archive (with path traversal sanitization and filename collision handling)
-  const zipBytes = createZipArchive(entries);
-
-  // 6. Atomically recheck category permissions with row lock and record point-in-time audit events (F3, F6)
+  // 5. Atomically recheck category permissions with row lock and record point-in-time audit events (F3, F6)
   try {
     await dependencies.downloadRepository.transaction(async (txRepo) => {
       if (input.user.role === "member_team") {
@@ -139,9 +136,45 @@ export async function executeBulkDownloadOperation(
     throw error;
   }
 
+  // 6. Build lazy streaming items: each file is fetched on-demand and dereferenced immediately (F7)
+  const streamItems: Array<ZipStreamEntry> = [];
+  let isFirst = true;
+  for (const docId of uniqueIds) {
+    const target = targetMap.get(docId);
+    if (!target?.file) continue;
+
+    const storageKey = target.file.storageKey;
+    const name = target.file.originalName;
+    if (isFirst && firstFileBytes) {
+      streamItems.push({
+        name,
+        content: firstFileBytes,
+      });
+      isFirst = false;
+    } else {
+      streamItems.push({
+        name,
+        content: () => dependencies.storage.getObject(storageKey),
+      });
+    }
+  }
+
+  // 7. Calculate exact total archive length and construct streaming response
+  const metaList = streamItems.map((item, index) => {
+    const docId = uniqueIds[index];
+    const target = docId ? targetMap.get(docId) : undefined;
+    return {
+      name: item.name,
+      size: target?.file?.fileSize ?? 0,
+    };
+  });
+  const contentLength = calculateZipArchiveSize(metaList);
+  const stream = createZipReadableStream(streamItems);
+
   return {
     filename: "axentra-documents.zip",
-    bytes: zipBytes,
-    fileCount: entries.length,
+    stream,
+    contentLength,
+    fileCount: streamItems.length,
   };
 }

@@ -28,12 +28,12 @@ export function createBulkDownloadHandler(
     const asciiFallback = sanitizeFilename(result.filename);
     const utf8Filename = encodeURIComponent(result.filename);
 
-    return new Response(result.bytes, {
+    return new Response(result.stream, {
       status: 200,
       headers: {
         "Content-Type": "application/zip",
         "Content-Disposition": `attachment; filename="${asciiFallback}"; filename*=UTF-8''${utf8Filename}`,
-        "Content-Length": result.bytes.byteLength.toString(),
+        "Content-Length": result.contentLength.toString(),
       },
     });
   };

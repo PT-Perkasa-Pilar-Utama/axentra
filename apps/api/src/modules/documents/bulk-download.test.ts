@@ -711,4 +711,71 @@ describe("POST /api/v1/documents/bulk-download — BE-S3-03", () => {
       expect(downloadRepo.getRecordedAuditEvents()).toHaveLength(0);
     });
   });
+
+  describe("Streaming & Bounded Memory (F7)", () => {
+    test("streams ZIP chunks lazily and supplies exact Content-Length without memory multiplication", async () => {
+      const getObjectCalls: string[] = [];
+      const trackingStorage: StorageAdapter = {
+        ...createMockStorage(),
+        getObject: async (key: string) => {
+          getObjectCalls.push(key);
+          return pdfBytes1;
+        },
+      };
+
+      const { app, downloadRepo } = createSetup(trackingStorage);
+      const response = await app.request("/api/v1/documents/bulk-download", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer member-token",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ documentIds: [ENABLED_DOC_1, ENABLED_DOC_2] }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toBe("application/zip");
+
+      // Verify Content-Length header is present and non-zero
+      const contentLengthHeader = response.headers.get("content-length");
+      expect(contentLengthHeader).not.toBeNull();
+      const expectedLength = Number(contentLengthHeader);
+      expect(expectedLength).toBeGreaterThan(0);
+
+      // Consume the streamed body chunk by chunk
+      const reader = response.body?.getReader();
+      expect(reader).toBeDefined();
+
+      const chunks: Uint8Array[] = [];
+      let totalRead = 0;
+      while (reader) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          chunks.push(value);
+          totalRead += value.byteLength;
+        }
+      }
+
+      // Verify stream delivered exact byte count specified in Content-Length
+      expect(totalRead).toBe(expectedLength);
+
+      // Verify storage was accessed for both documents during the stream
+      expect(getObjectCalls).toHaveLength(2);
+
+      // Assemble chunks and verify valid ZIP entries
+      const combined = new Uint8Array(totalRead);
+      let offset = 0;
+      for (const chunk of chunks) {
+        combined.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+
+      const names = parseZipEntryNames(combined);
+      expect(names.size).toBe(2);
+      expect(names.has("laporan.pdf")).toBe(true);
+      expect(names.has("kontrak.docx")).toBe(true);
+      expect(downloadRepo.getRecordedAuditEvents()).toHaveLength(2);
+    });
+  });
 });

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import { crc32 } from "node:zlib";
 import {
+  calculateZipArchiveSize,
   createZipArchive,
+  createZipReadableStream,
   deduplicateEntryNames,
   sanitizeZipEntryName,
   toDosDateTime,
@@ -147,6 +149,73 @@ describe("zip.writer", () => {
       expect(names.size).toBe(3);
       expect(names.has("laporan.pdf")).toBe(true);
       expect(names.has("laporan (1).pdf")).toBe(true);
+      expect(names.has("kontrak.docx")).toBe(true);
+    });
+  });
+
+  describe("calculateZipArchiveSize", () => {
+    it("computes exact archive length matching createZipArchive without loading content buffers", () => {
+      const pdfBytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34]);
+      const docxBytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00]);
+
+      const entries = [
+        { name: "laporan.pdf", content: pdfBytes },
+        { name: "laporan.pdf", content: pdfBytes },
+        { name: "kontrak.docx", content: docxBytes },
+      ];
+
+      const fixedDate = new Date(2026, 9, 20, 10, 0, 0);
+      const archive = createZipArchive(entries, fixedDate);
+
+      const calculated = calculateZipArchiveSize([
+        { name: "laporan.pdf", size: pdfBytes.length },
+        { name: "laporan.pdf", size: pdfBytes.length },
+        { name: "kontrak.docx", size: docxBytes.length },
+      ]);
+
+      expect(calculated).toBe(archive.length);
+    });
+  });
+
+  describe("createZipStream & createZipReadableStream", () => {
+    it("streams ZIP chunks lazily and produces exact byte-for-byte archive", async () => {
+      const fixedDate = new Date(2026, 9, 20, 10, 0, 0);
+      const pdfBytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34]);
+      const docxBytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00]);
+
+      let docxLoaderCalled = false;
+      const streamEntries = [
+        { name: "laporan.pdf", content: pdfBytes },
+        {
+          name: "kontrak.docx",
+          content: async () => {
+            docxLoaderCalled = true;
+            return docxBytes;
+          },
+        },
+      ];
+
+      // Verify lazy evaluation: loader not called before consumption
+      expect(docxLoaderCalled).toBe(false);
+
+      const stream = createZipReadableStream(streamEntries, fixedDate);
+      const response = new Response(stream);
+      const streamedBytes = new Uint8Array(await response.arrayBuffer());
+
+      expect(docxLoaderCalled).toBe(true);
+
+      const standardBytes = createZipArchive(
+        [
+          { name: "laporan.pdf", content: pdfBytes },
+          { name: "kontrak.docx", content: docxBytes },
+        ],
+        fixedDate,
+      );
+
+      expect([...streamedBytes]).toEqual([...standardBytes]);
+
+      const names = parseZipEntryNames(streamedBytes);
+      expect(names.has("laporan.pdf")).toBe(true);
       expect(names.has("kontrak.docx")).toBe(true);
     });
   });

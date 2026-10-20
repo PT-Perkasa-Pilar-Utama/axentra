@@ -77,12 +77,12 @@ type DownloadTargetRow = {
 
 function mapRowToDownloadTarget(row: DownloadTargetRow): DownloadTargetRecord {
   const file =
-    row.fileId !== null &&
-    row.fileStorageKey !== null &&
-    row.fileOriginalName !== null &&
-    row.fileMimeType !== null &&
+    row.fileId &&
+    row.fileStorageKey &&
+    row.fileOriginalName &&
+    row.fileMimeType &&
     row.fileSize !== null &&
-    row.fileExtension !== null
+    row.fileExtension
       ? {
           id: row.fileId,
           storageKey: row.fileStorageKey,
@@ -111,8 +111,12 @@ function mapRowToDownloadTarget(row: DownloadTargetRow): DownloadTargetRecord {
   };
 }
 
+export type DrizzleDownloadClient =
+  | PostgresJsDatabase
+  | Parameters<Parameters<PostgresJsDatabase["transaction"]>[0]>[0];
+
 export class DrizzleDownloadRepository implements IDownloadRepository {
-  public constructor(private readonly db: PostgresJsDatabase) {}
+  public constructor(private readonly db: DrizzleDownloadClient) {}
 
   public async findDownloadTarget(documentId: string): Promise<DownloadTargetRecord | null> {
     const rows = await this.db
@@ -241,7 +245,7 @@ export class DrizzleDownloadRepository implements IDownloadRepository {
 
   public async transaction<T>(callback: (txRepo: IDownloadRepository) => Promise<T>): Promise<T> {
     return await this.db.transaction(async (tx) => {
-      const txRepo = new DrizzleDownloadRepository(tx as unknown as PostgresJsDatabase);
+      const txRepo = new DrizzleDownloadRepository(tx);
       return await callback(txRepo);
     });
   }
