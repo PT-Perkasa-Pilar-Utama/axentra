@@ -850,7 +850,12 @@ describe("POST /api/v1/documents/bulk-download — BE-S3-03", () => {
     test("aborts stream when actual byte length differs from metadata size (F15)", async () => {
       const corruptStorage: StorageAdapter = {
         ...createMockStorage(),
-        getObject: async () => new Uint8Array([1, 2, 3]), // 3 bytes instead of 8 bytes in metadata
+        getObject: async (key: string) => {
+          if (key === "storage/doc2.docx") {
+            return new Uint8Array([1, 2, 3]); // Corrupt 3 bytes instead of docxBytes2
+          }
+          return pdfBytes1;
+        },
       };
 
       const { app } = createSetup(corruptStorage);
@@ -860,7 +865,7 @@ describe("POST /api/v1/documents/bulk-download — BE-S3-03", () => {
           Authorization: "Bearer member-token",
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ documentIds: [ENABLED_DOC_1] }),
+        body: JSON.stringify({ documentIds: [ENABLED_DOC_1, ENABLED_DOC_2] }),
       });
 
       expect(response.status).toBe(200);
