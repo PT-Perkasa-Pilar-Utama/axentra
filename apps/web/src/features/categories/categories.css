@@ -69,24 +69,58 @@
 }
 
 .category-navigation h2 {
-  margin: 0 0 16px;
+  margin: 0 0 12px;
   font-size: 0.875rem;
   font-weight: 600;
 }
 
-.category-navigation-status {
-  margin: 0 0 6px;
-  font-size: 0.8125rem;
-  font-weight: 500;
-}
-
-.category-navigation-description {
-  max-width: 38ch;
+.category-navigation p {
   margin: 0;
   color: var(--sidebar-muted);
   font-size: 0.75rem;
   line-height: 1.65;
-  overflow-wrap: anywhere;
+}
+
+.category-navigation ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.category-navigation button {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--sidebar-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.category-navigation button[aria-pressed="true"] {
+  background: #394039;
+  color: #b2e295;
+}
+
+.category-navigation button:focus-visible {
+  outline: 3px solid #b2e295;
+  outline-offset: 2px;
+}
+
+.category-navigation button:hover {
+  background: #394039;
+}
+
+.category-navigation > button:last-child {
+  margin-top: 8px;
+  color: var(--sidebar-muted);
+  font-size: 0.75rem;
+  text-decoration: underline;
 }
 
 @media (min-width: 768px) {

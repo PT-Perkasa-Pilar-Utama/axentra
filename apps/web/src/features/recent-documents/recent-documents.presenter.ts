@@ -3,16 +3,21 @@ import { useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
 
 import {
   bulkDownloadDocuments,
+  getDocumentCategory,
   getDocumentSmartTags,
   listRecentDocuments,
   triggerBlobDownload,
 } from "./recent-documents.api";
 import type { RecentDocument } from "./recent-documents.api";
 import { TOP_TAGS_QUERY_KEY } from "../top-tags/top-tags.presenter";
+import { CATEGORIES_QUERY_KEY } from "../categories/categories.presenter";
 import { ApiClientError } from "../../lib/api-client";
 
 export const RECENT_DOCUMENTS_QUERY_KEY = ["recent-documents"] as const;
 const recentDocumentsPollIntervalMs = 2000;
+
+export const DOCUMENT_SMART_TAGS_QUERY_KEY = ["document-smart-tags"] as const;
+export const DOCUMENT_CATEGORY_QUERY_KEY = ["document-category"] as const;
 
 export type DocumentSmartTagItem = {
   id: string;
@@ -35,6 +40,12 @@ export type RecentDocumentItem = {
   processingStatus: RecentDocument["processingStatus"];
   smartTags: DocumentSmartTagsState;
   isSelected: boolean;
+  category: {
+    isLoading: boolean;
+    isError: boolean;
+    name: string | null;
+    retry: () => void;
+  };
 };
 
 export type RecentDocumentsPresenter = {
@@ -82,8 +93,6 @@ function hasPendingDocument(documents: readonly RecentDocument[]): boolean {
   );
 }
 
-export const DOCUMENT_SMART_TAGS_QUERY_KEY = ["document-smart-tags"] as const;
-
 export function useRecentDocumentsPresenter(
   limit = 20,
   activeTagNames?: ReadonlySet<string>,
@@ -127,6 +136,8 @@ export function useRecentDocumentsPresenter(
     } else if (isPollingRef.current && !isPending) {
       void queryClient.invalidateQueries({ queryKey: TOP_TAGS_QUERY_KEY });
       void queryClient.invalidateQueries({ queryKey: [...DOCUMENT_SMART_TAGS_QUERY_KEY] });
+      void queryClient.invalidateQueries({ queryKey: [...DOCUMENT_CATEGORY_QUERY_KEY] });
+      void queryClient.invalidateQueries({ queryKey: CATEGORIES_QUERY_KEY });
       if (isFilterActive) {
         void queryClient.invalidateQueries({ queryKey: [...RECENT_DOCUMENTS_QUERY_KEY] });
       }
@@ -134,11 +145,18 @@ export function useRecentDocumentsPresenter(
     }
   }, [isPending, isFilterActive, queryClient]);
 
-  // Resolusi F9: Orkestrasi fetching tag dilakukan terpusat di Presenter utama menggunakan useQueries
   const smartTagsQueries = useQueries({
     queries: documents.map((doc) => ({
       queryKey: [...DOCUMENT_SMART_TAGS_QUERY_KEY, doc.id],
       queryFn: () => getDocumentSmartTags(doc.id),
+      staleTime: 5 * 60 * 1000,
+      enabled: doc.processingStatus === "completed",
+    })),
+  });
+  const categoryQueries = useQueries({
+    queries: documents.map((doc) => ({
+      queryKey: [...DOCUMENT_CATEGORY_QUERY_KEY, doc.id],
+      queryFn: () => getDocumentCategory(doc.id),
       staleTime: 5 * 60 * 1000,
       enabled: doc.processingStatus === "completed",
     })),
@@ -190,6 +208,7 @@ export function useRecentDocumentsPresenter(
 
   const items: RecentDocumentItem[] = documents.map((doc, index) => {
     const tagQuery = smartTagsQueries[index];
+    const categoryQuery = categoryQueries[index];
     return {
       id: doc.id,
       filename: doc.filename,
@@ -206,6 +225,14 @@ export function useRecentDocumentsPresenter(
         },
       },
       isSelected: visibleSelectedIds.has(doc.id),
+      category: {
+        isLoading: categoryQuery?.isFetching ?? false,
+        isError: categoryQuery?.isError ?? false,
+        name: categoryQuery?.data?.name ?? null,
+        retry: () => {
+          void categoryQuery?.refetch();
+        },
+      },
     };
   });
 

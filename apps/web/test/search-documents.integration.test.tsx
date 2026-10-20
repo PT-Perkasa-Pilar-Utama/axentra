@@ -87,7 +87,7 @@ function createFetchMock(): typeof fetch {
       );
     }
 
-    if (url.includes("/tags/top") || url.includes("/documents?")) {
+    if (url.includes("/categories?") || url.includes("/tags/top") || url.includes("/documents?")) {
       return new Response(JSON.stringify({ success: true, data: [] }), { status: 200 });
     }
 

@@ -164,17 +164,11 @@ and related-document suggestions.
 | FE-S2-04 | Build search results experience | Search bar, Enter submission, filename/snippet result cards, under-3-second visible state, and no-result message. | AC-06.01, AC-06.02, AC-06.03, AC-06.04 | Azis  | 1.0d | business/textual-design-member-team.md                                         |
 | FE-S2-05 | Build related documents section | Detail page includes `Dokumen Terkait` with relevant tag-overlap suggestions.                                     | AC-07.01, AC-07.02                     | Aiman | 0.6d | business/textual-design-member-team.md                                         |
 
-### FE-S2-03 delivery status (2026-09-29)
+### FE-S2-03 delivery status (updated 2026-10-19)
 
-- **Blocked**: [PR #27](https://github.com/PT-Perkasa-Pilar-Utama/axentra/pull/27) contains a UI
-  scaffold only. Round 1/Round 2 finding F1 and AC-05.01/AC-05.02 remain open and blocked; the card is not complete.
-- At `dev` revision `1ab15c9`, the [category and search APIs](api-specs/05-search-tags-categories.md)
-  remain planned. Integration needs category assignment (BE-S2-04), category listing, and a
-  documented category-filtered document endpoint (planned in BE-S2-05).
-- Arya must approve any scaffold-only delivery scope. The card's functional scope remains unchanged.
-- Before acceptance, verify Reporting/Contract category creation and document membership with the
-  real backend. Record role, input, expected result, and observed result; mocked UI tests do not
-  establish acceptance.
+- **Implementation complete in PR #42** ([FE-S2-03 category navigation and document integration](https://github.com/PT-Perkasa-Pilar-Utama/axentra/pull/42)); category listing, auto-assignment, and category-filtered document search are integrated with the real APIs.
+- **Acceptance walkthrough verified on the local real stack** at PR head `e1d94cccff62222f8614979194bfbefd3e9a4657` (application tree is identical to rebased code commit `8637f41`; API, Worker, PostgreSQL, Redis, MinIO, and Web): as `member_team`, uploaded synthetic `reporting.pdf` containing `Reporting` and `contract.pdf` containing `Contract`. The worker created separate categories and associated each document; selecting each category displayed only its matching document. Evidence screenshots are committed in [`docs/screenshots/FE-S2-03/`](screenshots/FE-S2-03/). `origin/dev` was unchanged at `1ba24d6` during this walkthrough.
+- `QA-S2-01` remains responsible for sprint-level acceptance coverage and Tech Lead sign-off. This entry records FE-S2-03 evidence and does not replace that verification.
 
 ### Acceptance Verification
 
