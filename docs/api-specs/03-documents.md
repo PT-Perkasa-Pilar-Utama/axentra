@@ -256,6 +256,7 @@ Downloads original file format when the current user has permission. Supports is
 - `401 UNAUTHORIZED`: Missing, forged, or expired token.
 - `403 FORBIDDEN`: Category permission disabled or document uncategorized for `member_team` (`"Akses unduh tidak diizinkan untuk kategori dokumen ini"`).
 - `404 NOT_FOUND`: Document not found, soft-deleted, or stored file record not found.
+- `500 INTERNAL_ERROR`: Storage failure, file size mismatch with metadata (stream mode only), the audit write failing, or unexpected server error (`"Terjadi kesalahan pada server"`). Such requests write no audit record, and neither the signed URL nor the file bytes are returned.
 
 ### `POST /api/v1/documents/bulk-download`
 
@@ -307,7 +308,7 @@ Accepts selected document IDs, validates existence, enforces category download p
 - `404 NOT_FOUND`: One or more requested documents not found, soft-deleted, or lacking a stored file record.
 - `413 PAYLOAD_TOO_LARGE`: Total aggregate size of selected documents exceeds 250 MB (`"Total ukuran dokumen melebihi batas maksimum unduhan massal (250 MB)"`).
 - `429 TOO_MANY_REQUESTS`: Concurrency queue capacity exceeded (`"Terlalu banyak permintaan unduhan massal secara bersamaan, antrean penuh"`).
-- `500 INTERNAL_ERROR`: Storage retrieval failure, file size mismatch with metadata, or unexpected server error (`"Terjadi kesalahan pada server"`). Requests encountering storage failures do not write audit records.
+- `500 INTERNAL_ERROR`: Storage retrieval failure, file size mismatch with metadata, the audit write failing, or unexpected server error (`"Terjadi kesalahan pada server"`). Requests encountering storage or audit failures do not write audit records, and no archive is returned.
 
 > **Approver Architectural Decision (Arya Isnaidi, Tech Lead — 21 Oktober 2026 / Disempurnakan 22 Oktober 2026):**
 >
