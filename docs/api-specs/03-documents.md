@@ -270,7 +270,7 @@ Accepts selected document IDs, validates existence, enforces category download p
 - **Category Permission Recheck per Document:**
   - `member_team`: Every requested document must belong to a category with `download_enabled = true`. Returns `403 FORBIDDEN` (`"Akses unduh tidak diizinkan untuk kategori dokumen ini"`) if any document is uncategorized or its category download permission is disabled.
   - `head_of_team` & `admin`: Download is permitted.
-- **Audit Logging:** Every authorized bulk download request records a point-in-time fact in `download_audit_events` for each authorized document (`userId`, `userName`, `userEmail`, `documentId`, `documentName`, `downloadedAt`) when the download stream is initiated. Requests denied by authorization or validation (400, 401, 403, 404, 413) do not write audit records; storage or network failures after authorization are logged to system error logs.
+- **Audit Logging:** Every successful bulk download records a point-in-time fact in `download_audit_events` for each document (`userId`, `userName`, `userEmail`, `documentId`, `documentName`, `downloadedAt`). Denied or failed requests do not write audit records.
 
 **Request (`application/json`):**
 

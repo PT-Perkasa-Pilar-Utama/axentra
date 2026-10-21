@@ -9,7 +9,7 @@ import {
 import { createApp } from "../../app";
 import type { TokenVerifier } from "../../middleware/auth";
 import { createDocumentService } from "./documents.service";
-import { InMemoryDownloadRepository } from "./download.repository";
+import { InMemoryDownloadRepository, type IDownloadRepository } from "./download.repository";
 import { parseZipEntryNames } from "./documents.schema";
 
 const ENABLED_DOC_1 = "11111111-1111-4111-8111-111111111111";
@@ -736,57 +736,15 @@ describe("POST /api/v1/documents/bulk-download — BE-S3-03", () => {
     });
   });
 
-  describe("Streaming & Bounded Memory (F7, F12, F15)", () => {
-    test("fetches storage objects strictly on-demand without fetching upfront (F7)", async () => {
+  describe("Prefetch & Failure Semantics (Opsi A: F7, F12, F15, F17, F18, F20)", () => {
+    test("prefetches all storage objects before response creation and audit recording (F7, F17)", async () => {
       const getObjectCalls: string[] = [];
       const trackingStorage: StorageAdapter = {
         ...createMockStorage(),
         getObject: async (key: string) => {
           getObjectCalls.push(key);
-          return pdfBytes1;
+          return key.endsWith(".pdf") ? pdfBytes1 : docxBytes2;
         },
-      };
-
-      const { app, downloadRepo } = createSetup(trackingStorage);
-      const response = await app.request("/api/v1/documents/bulk-download", {
-        method: "POST",
-        headers: {
-          Authorization: "Bearer member-token",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ documentIds: [ENABLED_DOC_1, ENABLED_DOC_2] }),
-      });
-
-      expect(response.status).toBe(200);
-
-      // PROVE F7: Bun pre-pulls the first chunk for response streaming (file 1),
-      // but subsequent files are NOT loaded upfront!
-      expect(getObjectCalls).toHaveLength(1);
-      expect(getObjectCalls[0]).toBe("storage/doc1.pdf");
-
-      const reader = response.body?.getReader();
-      expect(reader).toBeDefined();
-
-      // Read chunk 1: local header prefix for file 1
-      await reader?.read();
-      expect(getObjectCalls).toHaveLength(1);
-
-      // Read chunk 2: file 1 content
-      await reader?.read();
-      expect(getObjectCalls).toHaveLength(1);
-
-      // Read chunk 3: local header prefix for file 2 -> triggers getObject for file 2 on-demand
-      await reader?.read();
-      expect(getObjectCalls).toHaveLength(2);
-      expect(getObjectCalls[1]).toBe("storage/doc2.docx");
-
-      expect(downloadRepo.getRecordedAuditEvents()).toHaveLength(2);
-    });
-
-    test("streams ZIP chunks and supplies exact Content-Length matching payload", async () => {
-      const trackingStorage: StorageAdapter = {
-        ...createMockStorage(),
-        getObject: async () => pdfBytes1,
       };
 
       const { app, downloadRepo } = createSetup(trackingStorage);
@@ -801,6 +759,11 @@ describe("POST /api/v1/documents/bulk-download — BE-S3-03", () => {
 
       expect(response.status).toBe(200);
       expect(response.headers.get("content-type")).toBe("application/zip");
+
+      // Verify all requested files were prefetched upfront before Response returned
+      expect(getObjectCalls).toHaveLength(2);
+      expect(getObjectCalls[0]).toBe("storage/doc1.pdf");
+      expect(getObjectCalls[1]).toBe("storage/doc2.docx");
 
       const contentLengthHeader = response.headers.get("content-length");
       expect(contentLengthHeader).not.toBeNull();
@@ -817,20 +780,53 @@ describe("POST /api/v1/documents/bulk-download — BE-S3-03", () => {
       expect(downloadRepo.getRecordedAuditEvents()).toHaveLength(2);
     });
 
-    test("aborts stream when storage fails during stream consumption (F12)", async () => {
+    test("returns 500 JSON and records zero audit when storage getObject fails on first file (F12, F17, F20)", async () => {
+      const failingStorage: StorageAdapter = {
+        ...createMockStorage(),
+        getObject: async () => {
+          throw new Error("MinIO storage unavailable on file 1");
+        },
+      };
+
+      const { app, downloadRepo } = createSetup(failingStorage);
+      const response = await app.request("/api/v1/documents/bulk-download", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer member-token",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ documentIds: [ENABLED_DOC_1, ENABLED_DOC_2] }),
+      });
+
+      expect(response.status).toBe(500);
+      expect(response.headers.get("content-type")).toContain("application/json");
+
+      const body = await response.json();
+      const parsed = apiErrorSchema.safeParse(body);
+      expect(parsed.success).toBe(true);
+      if (parsed.success) {
+        expect(parsed.data.success).toBe(false);
+        expect(parsed.data.error.code).toBe("INTERNAL_ERROR");
+      }
+
+      // Proves F12 & F17: Failed storage download records ZERO audit events
+      expect(downloadRepo.getRecordedAuditEvents()).toHaveLength(0);
+    });
+
+    test("returns 500 JSON and records zero audit when storage getObject fails on second file (F12, F17, F20)", async () => {
       let callCount = 0;
       const failingStorage: StorageAdapter = {
         ...createMockStorage(),
         getObject: async () => {
           callCount++;
           if (callCount === 2) {
-            throw new Error("MinIO network reset mid-stream");
+            throw new Error("MinIO network reset on file 2");
           }
           return pdfBytes1;
         },
       };
 
-      const { app } = createSetup(failingStorage);
+      const { app, downloadRepo } = createSetup(failingStorage);
       const response = await app.request("/api/v1/documents/bulk-download", {
         method: "POST",
         headers: {
@@ -840,25 +836,33 @@ describe("POST /api/v1/documents/bulk-download — BE-S3-03", () => {
         body: JSON.stringify({ documentIds: [ENABLED_DOC_1, ENABLED_DOC_2] }),
       });
 
-      // Stream initiation was authorized
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(500);
+      expect(response.headers.get("content-type")).toContain("application/json");
 
-      // Consuming body fails when reading second file
-      await expect(response.arrayBuffer()).rejects.toThrow("MinIO network reset mid-stream");
+      const body = await response.json();
+      const parsed = apiErrorSchema.safeParse(body);
+      expect(parsed.success).toBe(true);
+      if (parsed.success) {
+        expect(parsed.data.success).toBe(false);
+        expect(parsed.data.error.code).toBe("INTERNAL_ERROR");
+      }
+
+      // Proves F12 & F17: Failed storage download records ZERO audit events
+      expect(downloadRepo.getRecordedAuditEvents()).toHaveLength(0);
     });
 
-    test("aborts stream when actual byte length differs from metadata size (F15)", async () => {
+    test("returns 500 JSON and records zero audit when actual byte length differs from metadata size (F15, F17)", async () => {
       const corruptStorage: StorageAdapter = {
         ...createMockStorage(),
         getObject: async (key: string) => {
           if (key === "storage/doc2.docx") {
-            return new Uint8Array([1, 2, 3]); // Corrupt 3 bytes instead of docxBytes2
+            return new Uint8Array([1, 2, 3]); // Corrupt 3 bytes instead of docxBytes2 (6 bytes)
           }
           return pdfBytes1;
         },
       };
 
-      const { app } = createSetup(corruptStorage);
+      const { app, downloadRepo } = createSetup(corruptStorage);
       const response = await app.request("/api/v1/documents/bulk-download", {
         method: "POST",
         headers: {
@@ -868,8 +872,97 @@ describe("POST /api/v1/documents/bulk-download — BE-S3-03", () => {
         body: JSON.stringify({ documentIds: [ENABLED_DOC_1, ENABLED_DOC_2] }),
       });
 
-      expect(response.status).toBe(200);
-      await expect(response.arrayBuffer()).rejects.toThrow(/tidak sesuai dengan metadata/);
+      expect(response.status).toBe(500);
+      const body = await response.json();
+      const parsed = apiErrorSchema.safeParse(body);
+      expect(parsed.success).toBe(true);
+      if (parsed.success) {
+        expect(parsed.data.success).toBe(false);
+        expect(parsed.data.error.code).toBe("INTERNAL_ERROR");
+      }
+
+      // Proves F15 & F17: Size mismatch records ZERO audit events
+      expect(downloadRepo.getRecordedAuditEvents()).toHaveLength(0);
+    });
+
+    test("forwards request-scoped logger and requestId when audit recording fails (F18)", async () => {
+      const logCalls: Array<Record<string, unknown>> = [];
+      const isRecord = (val: unknown): val is Record<string, unknown> =>
+        typeof val === "object" && val !== null;
+
+      const customLogger = createLogger({
+        service: "axentra-api",
+        environment: "test",
+        version: "0.1.0",
+        level: "error",
+        destination: {
+          write(str: string): void {
+            try {
+              const parsed: unknown = JSON.parse(str);
+              if (isRecord(parsed)) {
+                logCalls.push(parsed);
+              }
+            } catch {
+              // ignore
+            }
+          },
+        },
+      });
+
+      const { downloadRepo } = createSetup();
+      const fakeTx: IDownloadRepository = {
+        findDownloadTarget: (id) => downloadRepo.findDownloadTarget(id),
+        findDownloadTargets: (ids) => downloadRepo.findDownloadTargets(ids),
+        recordDownloadAuditEvent: (event) => downloadRepo.recordDownloadAuditEvent(event),
+        transaction: (fn) => downloadRepo.transaction(fn),
+        checkCategoryPermissions: async () => [
+          {
+            documentId: ENABLED_DOC_1,
+            categoryId: "cat-reporting-1",
+            deletedAt: null,
+            downloadEnabled: true,
+          },
+        ],
+        recordDownloadAuditEvents: async () => {
+          throw new Error("Database transaction disk full");
+        },
+      };
+      downloadRepo.transaction = async <T>(
+        fn: (txRepo: IDownloadRepository) => Promise<T>,
+      ): Promise<T> => fn(fakeTx);
+
+      const service = createDocumentService({
+        downloadRepository: downloadRepo,
+        storage: createMockStorage(),
+        logger: customLogger,
+      });
+
+      const app = createApp({
+        documentService: service,
+        tokenVerifier,
+        logger: customLogger,
+        version: "0.1.0",
+        readinessChecks: [],
+      });
+
+      const response = await app.request("/api/v1/documents/bulk-download", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer member-token",
+          "Content-Type": "application/json",
+          "x-request-id": "req-bulk-audit-failure-123",
+        },
+        body: JSON.stringify({ documentIds: [ENABLED_DOC_1] }),
+      });
+
+      expect(response.status).toBe(500);
+
+      // Verify that the operation-level error log captured the requestId passed through context
+      const operationLog = logCalls.find((call) => call.requestId === "req-bulk-audit-failure-123");
+      expect(operationLog).toBeDefined();
+      expect(operationLog?.requestId).toBe("req-bulk-audit-failure-123");
+      expect(operationLog?.userId).toBe("usr-member-1");
+      expect(operationLog?.documentCount).toBe(1);
     });
   });
 });

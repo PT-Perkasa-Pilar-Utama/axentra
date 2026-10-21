@@ -10,11 +10,11 @@ import { ForbiddenError, NotFoundError, PayloadTooLargeError } from "../../http/
 import type { IDownloadRepository } from "./download.repository";
 import {
   calculateZipArchiveSize,
-  createZipReadableStream,
+  createZipArchive,
   ZIP32_MAX_ARCHIVE_SIZE,
   ZIP32_MAX_ENTRY_COUNT,
   ZIP32_MAX_ENTRY_SIZE,
-  type ZipStreamEntry,
+  type ZipEntry,
 } from "./zip.writer";
 
 export type BulkDownloadOperationDependencies = {
@@ -26,11 +26,13 @@ export type BulkDownloadOperationDependencies = {
 export type ExecuteBulkDownloadInput = {
   documentIds: ReadonlyArray<string>;
   user: AuthUser;
+  logger?: Logger | undefined;
+  requestId?: string | undefined;
 };
 
 export type BulkDownloadOperationResult = {
   filename: string;
-  stream: ReadableStream<Uint8Array>;
+  bytes: Uint8Array;
   contentLength: number;
   fileCount: number;
 };
@@ -77,7 +79,7 @@ export async function executeBulkDownloadOperation(
     }
   }
 
-  // 4. Enforce aggregate and individual file size limits before stream creation (F2)
+  // 4. Enforce aggregate and individual file size limits before storage retrieval (F2)
   let totalBytes = 0;
   for (const docId of uniqueIds) {
     const target = targetMap.get(docId);
@@ -110,7 +112,29 @@ export async function executeBulkDownloadOperation(
     throw new PayloadTooLargeError("Ukuran total arsip ZIP melebihi batas 32-bit (4 GiB)");
   }
 
-  // 6. Atomically recheck category permissions with row lock and record point-in-time audit events (F3, F6, F12)
+  // 6. Prefetch all storage objects before audit recording and response generation (F7, F12, F15, F17)
+  const entries: Array<ZipEntry> = [];
+  for (const docId of uniqueIds) {
+    const target = targetMap.get(docId);
+    if (!target?.file) continue;
+
+    const fileBytes = await dependencies.storage.getObject(target.file.storageKey);
+    if (fileBytes.byteLength !== target.file.fileSize) {
+      throw new Error(
+        `Ukuran berkas "${target.file.originalName}" (${fileBytes.byteLength} byte) tidak sesuai dengan metadata (${target.file.fileSize} byte)`,
+      );
+    }
+
+    entries.push({
+      name: target.file.originalName,
+      content: fileBytes,
+    });
+  }
+
+  // 7. Assemble the ZIP archive using single-pass continuous buffer allocation (F2, F7)
+  const bytes = createZipArchive(entries);
+
+  // 8. Atomically recheck category permissions with row lock and record point-in-time audit events (F3, F6, F12)
   try {
     await dependencies.downloadRepository.transaction(async (txRepo) => {
       if (input.user.role === "member_team") {
@@ -147,8 +171,10 @@ export async function executeBulkDownloadOperation(
       );
     });
   } catch (error) {
-    dependencies.logger?.error(
+    const effectiveLogger = input.logger ?? dependencies.logger;
+    effectiveLogger?.error(
       {
+        requestId: input.requestId,
         userId: input.user.id,
         documentCount: uniqueIds.length,
         error: summarizeError(error),
@@ -158,31 +184,10 @@ export async function executeBulkDownloadOperation(
     throw error;
   }
 
-  // 7. Build lazy streaming items: each file is fetched on-demand and dereferenced immediately (F7, F15)
-  const streamItems: Array<ZipStreamEntry> = [];
-  for (const docId of uniqueIds) {
-    const target = targetMap.get(docId);
-    if (!target?.file) continue;
-
-    const storageKey = target.file.storageKey;
-    const name = target.file.originalName;
-    const expectedSize = target.file.fileSize;
-
-    streamItems.push({
-      name,
-      expectedSize,
-      content: () => dependencies.storage.getObject(storageKey),
-    });
-  }
-
-  const stream = createZipReadableStream(streamItems, {
-    logger: dependencies.logger,
-  });
-
   return {
     filename: "axentra-documents.zip",
-    stream,
-    contentLength,
-    fileCount: streamItems.length,
+    bytes,
+    contentLength: bytes.byteLength,
+    fileCount: entries.length,
   };
 }

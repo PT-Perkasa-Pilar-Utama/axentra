@@ -1,9 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import { crc32 } from "node:zlib";
-import type { Logger } from "@axentra/observability";
 import {
   calculateZipArchiveSize,
-  createZipReadableStream,
+  createZipArchive,
   deduplicateEntryNames,
   sanitizeZipEntryName,
   toDosDateTime,
@@ -13,7 +12,7 @@ import { parseZipEntryNames } from "./documents.schema";
 
 /**
  * Reference ZIP archive builder used strictly within test fixtures
- * to verify byte-for-byte correctness of createZipStream.
+ * to verify byte-for-byte correctness of createZipArchive.
  */
 function createReferenceZipArchive(
   entries: ReadonlyArray<ZipEntry>,
@@ -242,111 +241,51 @@ describe("zip.writer", () => {
     });
   });
 
-  describe("createZipStream & createZipReadableStream", () => {
-    it("streams ZIP chunks lazily and produces exact byte-for-byte archive", async () => {
+  describe("createZipArchive", () => {
+    it("produces exact byte-for-byte archive matching reference archive", () => {
       const fixedDate = new Date(2026, 9, 20, 10, 0, 0);
       const pdfBytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34]);
       const docxBytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00]);
 
-      let docxLoaderCalled = false;
-      const streamEntries = [
+      const entries: Array<ZipEntry> = [
         { name: "laporan.pdf", content: pdfBytes },
-        {
-          name: "kontrak.docx",
-          content: async () => {
-            docxLoaderCalled = true;
-            return docxBytes;
-          },
-        },
+        { name: "kontrak.docx", content: docxBytes },
       ];
 
-      // Stream creation must NOT invoke loader upfront
-      const stream = createZipReadableStream(streamEntries, fixedDate);
-      expect(docxLoaderCalled).toBe(false);
+      const archive = createZipArchive(entries, fixedDate);
+      const reference = createReferenceZipArchive(entries, fixedDate);
 
-      const reader = stream.getReader();
-      // Read first chunk (local header for laporan.pdf)
-      await reader.read();
-      expect(docxLoaderCalled).toBe(false);
+      expect([...archive]).toEqual([...reference]);
 
-      // Read second chunk (content for laporan.pdf)
-      await reader.read();
-      expect(docxLoaderCalled).toBe(false);
-
-      // Read third chunk (pulls loader for kontrak.docx)
-      await reader.read();
-      expect(docxLoaderCalled).toBe(true);
-
-      // Read remaining chunks
-      const chunks: Uint8Array[] = [];
-      let done = false;
-      while (!done) {
-        const result = await reader.read();
-        done = result.done;
-        if (result.value) {
-          chunks.push(result.value);
-        }
-      }
-
-      const standardBytes = createReferenceZipArchive(
-        [
-          { name: "laporan.pdf", content: pdfBytes },
-          { name: "kontrak.docx", content: docxBytes },
-        ],
-        fixedDate,
-      );
-
-      // Total stream length must match standard archive
-      const response = new Response(createZipReadableStream(streamEntries, fixedDate));
-      const fullStreamBytes = new Uint8Array(await response.arrayBuffer());
-      expect([...fullStreamBytes]).toEqual([...standardBytes]);
-
-      const names = parseZipEntryNames(fullStreamBytes);
+      const names = parseZipEntryNames(archive);
+      expect(names.size).toBe(2);
       expect(names.has("laporan.pdf")).toBe(true);
       expect(names.has("kontrak.docx")).toBe(true);
     });
 
-    it("throws error when actual byte length does not match expectedSize (F15)", async () => {
-      const stream = createZipReadableStream([
-        {
-          name: "corrupt.pdf",
-          expectedSize: 100, // Metadata claims 100 bytes
-          content: new Uint8Array([1, 2, 3]), // Actual is 3 bytes
-        },
-      ]);
+    it("deduplicates entry names and preserves content", () => {
+      const fixedDate = new Date(2026, 9, 20, 10, 0, 0);
+      const pdfBytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34]);
+      const entries: Array<ZipEntry> = [
+        { name: "laporan.pdf", content: pdfBytes },
+        { name: "laporan.pdf", content: pdfBytes },
+      ];
 
-      const response = new Response(stream);
-      await expect(response.arrayBuffer()).rejects.toThrow(
-        'Ukuran berkas "corrupt.pdf" (3 byte) tidak sesuai dengan metadata (100 byte)',
-      );
+      const archive = createZipArchive(entries, fixedDate);
+      const names = parseZipEntryNames(archive);
+      expect(names.size).toBe(2);
+      expect(names.has("laporan.pdf")).toBe(true);
+      expect(names.has("laporan (1).pdf")).toBe(true);
     });
 
-    it("logs error without sensitive payload when stream pull fails (F12)", async () => {
-      let loggedRecord: Record<string, unknown> | undefined;
-      const mockLogger = {
-        error: (data: unknown) => {
-          if (data && typeof data === "object") {
-            loggedRecord = data as Record<string, unknown>;
-          }
-        },
-      } as unknown as Logger;
+    it("throws error when entry count exceeds ZIP32 limit (65,535) (F21)", () => {
+      const dummyContent = new Uint8Array([1]);
+      const entries = Array.from({ length: 65536 }, (_, i) => ({
+        name: `doc_${i}.txt`,
+        content: dummyContent,
+      }));
 
-      const stream = createZipReadableStream(
-        [
-          {
-            name: "fail.pdf",
-            content: async () => {
-              throw new Error("Storage unavailable");
-            },
-          },
-        ],
-        { logger: mockLogger, requestId: "req-test-123" },
-      );
-
-      const response = new Response(stream);
-      await expect(response.arrayBuffer()).rejects.toThrow("Storage unavailable");
-      expect(loggedRecord).toBeDefined();
-      expect(loggedRecord?.requestId).toBe("req-test-123");
+      expect(() => createZipArchive(entries)).toThrow(/melebihi batas 16-bit \(65\.535\)/);
     });
   });
 });

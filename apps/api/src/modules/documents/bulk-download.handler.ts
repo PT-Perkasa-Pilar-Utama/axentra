@@ -11,6 +11,8 @@ export function createBulkDownloadHandler(
 ): Handler<ApiEnvironment> {
   return async (context) => {
     const user = getAuthenticatedUser(context);
+    const requestId = context.get("requestId");
+    const logger = context.get("logger");
 
     const body = await context.req.json().catch(() => null);
     const parsed = bulkDownloadRequestSchema.safeParse(body);
@@ -23,12 +25,14 @@ export function createBulkDownloadHandler(
     const result = await dependencies.documentService.bulkDownloadDocuments({
       documentIds: parsed.data.documentIds,
       user,
+      logger,
+      requestId,
     });
 
     const asciiFallback = sanitizeFilename(result.filename);
     const utf8Filename = encodeURIComponent(result.filename);
 
-    return new Response(result.stream, {
+    return new Response(result.bytes, {
       status: 200,
       headers: {
         "Content-Type": "application/zip",
