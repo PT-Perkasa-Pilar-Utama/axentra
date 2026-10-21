@@ -306,6 +306,13 @@ Accepts selected document IDs, validates existence, enforces category download p
 - `403 FORBIDDEN`: Category download permission disabled or document uncategorized for `member_team` (`"Akses unduh tidak diizinkan untuk kategori dokumen ini"`).
 - `404 NOT_FOUND`: One or more requested documents not found, soft-deleted, or lacking a stored file record.
 - `413 PAYLOAD_TOO_LARGE`: Total aggregate size of selected documents exceeds 250 MB (`"Total ukuran dokumen melebihi batas maksimum unduhan massal (250 MB)"`).
+- `429 TOO_MANY_REQUESTS`: Concurrency queue capacity exceeded (`"Terlalu banyak permintaan unduhan massal secara bersamaan, antrean penuh"`).
+- `500 INTERNAL_ERROR`: Storage retrieval failure, file size mismatch with metadata, or unexpected server error (`"Terjadi kesalahan pada server"`). Requests encountering storage failures do not write audit records.
+
+> **Approver Architectural Decision (Arya Isnaidi, Tech Lead — 21 Oktober 2026):**
+>
+> 1. **Prefetch Storage & Zero-Audit on Failure (F12, F17):** Endpoint melakukan prefetch seluruh objek dokumen dari storage dan memverifikasi integritas ukuran sebelum membuat ZIP archive, menulis audit event, atau mengirim response. Jika storage gagal atau ukuran tidak sesuai, endpoint mengembalikan `500 INTERNAL_ERROR` tanpa catatan audit. Follow-up untuk menyelaraskan urutan audit pada single download (`download.operations.ts`) dialokasikan ke pemilik kartu BE-S3-04.
+> 2. **Pengendalian Memori Konkurensi (F7, F10):** Batas payload 250 MB dipertahankan dengan penerapan global async semaphore (`BulkDownloadSemaphore`, `maxConcurrency: 2`) untuk membatasi eksekusi prefetch simultan dan menjaga puncak alokasi memori RSS proses tetap terkendali (~1 GB maksimum).
 
 ## Related Documents
 

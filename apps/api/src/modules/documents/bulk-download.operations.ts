@@ -9,18 +9,18 @@ import {
 import { ForbiddenError, NotFoundError, PayloadTooLargeError } from "../../http/errors";
 import type { IDownloadRepository } from "./download.repository";
 import {
-  calculateZipArchiveSize,
   createZipArchive,
-  ZIP32_MAX_ARCHIVE_SIZE,
   ZIP32_MAX_ENTRY_COUNT,
   ZIP32_MAX_ENTRY_SIZE,
   type ZipEntry,
 } from "./zip.writer";
+import { type BulkDownloadSemaphore, globalBulkDownloadSemaphore } from "./bulk-download.semaphore";
 
 export type BulkDownloadOperationDependencies = {
   downloadRepository: IDownloadRepository;
   storage: StorageAdapter;
   logger?: Logger | undefined;
+  bulkDownloadSemaphore?: BulkDownloadSemaphore | undefined;
 };
 
 export type ExecuteBulkDownloadInput = {
@@ -98,96 +98,92 @@ export async function executeBulkDownloadOperation(
     );
   }
 
-  // 5. Pre-compute exact archive size and enforce ZIP32 archive limit (F2)
-  const metaList = uniqueIds.map((docId) => {
-    const target = targetMap.get(docId);
-    return {
-      name: target?.file?.originalName ?? "document",
-      size: target?.file?.fileSize ?? 0,
-    };
-  });
-  const contentLength = calculateZipArchiveSize(metaList);
+  // 5. Acquire concurrency slot to protect peak RSS during storage prefetch and archive assembly (F7, F10)
+  // Note (F21): Total aggregate size is checked against 250 MB (BULK_DOWNLOAD_MAX_TOTAL_BYTES) in step 4,
+  // which strictly guarantees total archive size never approaches the ZIP32 4 GiB limit.
+  const semaphore = dependencies.bulkDownloadSemaphore ?? globalBulkDownloadSemaphore;
+  const release = await semaphore.acquire();
 
-  if (contentLength > ZIP32_MAX_ARCHIVE_SIZE) {
-    throw new PayloadTooLargeError("Ukuran total arsip ZIP melebihi batas 32-bit (4 GiB)");
-  }
-
-  // 6. Prefetch all storage objects before audit recording and response generation (F7, F12, F15, F17)
-  const entries: Array<ZipEntry> = [];
-  for (const docId of uniqueIds) {
-    const target = targetMap.get(docId);
-    if (!target?.file) continue;
-
-    const fileBytes = await dependencies.storage.getObject(target.file.storageKey);
-    if (fileBytes.byteLength !== target.file.fileSize) {
-      throw new Error(
-        `Ukuran berkas "${target.file.originalName}" (${fileBytes.byteLength} byte) tidak sesuai dengan metadata (${target.file.fileSize} byte)`,
-      );
-    }
-
-    entries.push({
-      name: target.file.originalName,
-      content: fileBytes,
-    });
-  }
-
-  // 7. Assemble the ZIP archive using single-pass continuous buffer allocation (F2, F7)
-  const bytes = createZipArchive(entries);
-
-  // 8. Atomically recheck category permissions with row lock and record point-in-time audit events (F3, F6, F12)
   try {
-    await dependencies.downloadRepository.transaction(async (txRepo) => {
-      if (input.user.role === "member_team") {
-        const permissionRows = await txRepo.checkCategoryPermissions(uniqueIds, {
-          lock: "share",
-        });
-        const permMap = new Map(permissionRows.map((r) => [r.documentId, r]));
+    // 7. Prefetch all storage objects before audit recording and response generation (F7, F12, F15, F17)
+    const entries: Array<ZipEntry> = [];
+    for (const docId of uniqueIds) {
+      const target = targetMap.get(docId);
+      if (!target?.file) continue;
 
-        for (const docId of uniqueIds) {
-          const perm = permMap.get(docId);
-          if (!perm || perm.deletedAt !== null) {
-            throw new NotFoundError("Dokumen tidak ditemukan");
-          }
-          if (!perm.categoryId || perm.downloadEnabled !== true) {
-            throw new ForbiddenError(DOWNLOAD_ACCESS_DENIED_MESSAGE);
-          }
-        }
+      const fileBytes = await dependencies.storage.getObject(target.file.storageKey);
+      if (fileBytes.byteLength !== target.file.fileSize) {
+        throw new Error(
+          `Ukuran berkas "${target.file.originalName}" (${fileBytes.byteLength} byte) tidak sesuai dengan metadata (${target.file.fileSize} byte)`,
+        );
       }
 
-      const now = new Date();
-      await txRepo.recordDownloadAuditEvents(
-        uniqueIds.map((docId) => {
-          const target = targetMap.get(docId);
-          const fileName = target?.file?.originalName ?? "unknown";
-          return {
-            userId: input.user.id,
-            userName: input.user.name ?? input.user.email,
-            userEmail: input.user.email,
-            documentId: docId,
-            documentName: fileName,
-            downloadedAt: now,
-          };
-        }),
-      );
-    });
-  } catch (error) {
-    const effectiveLogger = input.logger ?? dependencies.logger;
-    effectiveLogger?.error(
-      {
-        requestId: input.requestId,
-        userId: input.user.id,
-        documentCount: uniqueIds.length,
-        error: summarizeError(error),
-      },
-      "Gagal mencatat audit event bulk download",
-    );
-    throw error;
-  }
+      entries.push({
+        name: target.file.originalName,
+        content: fileBytes,
+      });
+    }
 
-  return {
-    filename: "axentra-documents.zip",
-    bytes,
-    contentLength: bytes.byteLength,
-    fileCount: entries.length,
-  };
+    // 8. Assemble the ZIP archive using single-pass continuous buffer allocation (F2, F7)
+    const bytes = createZipArchive(entries);
+
+    // 9. Atomically recheck category permissions with row lock and record point-in-time audit events (F3, F6, F12)
+    try {
+      await dependencies.downloadRepository.transaction(async (txRepo) => {
+        if (input.user.role === "member_team") {
+          const permissionRows = await txRepo.checkCategoryPermissions(uniqueIds, {
+            lock: "share",
+          });
+          const permMap = new Map(permissionRows.map((r) => [r.documentId, r]));
+
+          for (const docId of uniqueIds) {
+            const perm = permMap.get(docId);
+            if (!perm || perm.deletedAt !== null) {
+              throw new NotFoundError("Dokumen tidak ditemukan");
+            }
+            if (!perm.categoryId || perm.downloadEnabled !== true) {
+              throw new ForbiddenError(DOWNLOAD_ACCESS_DENIED_MESSAGE);
+            }
+          }
+        }
+
+        const now = new Date();
+        await txRepo.recordDownloadAuditEvents(
+          uniqueIds.map((docId) => {
+            const target = targetMap.get(docId);
+            const fileName = target?.file?.originalName ?? "unknown";
+            return {
+              userId: input.user.id,
+              userName: input.user.name ?? input.user.email,
+              userEmail: input.user.email,
+              documentId: docId,
+              documentName: fileName,
+              downloadedAt: now,
+            };
+          }),
+        );
+      });
+    } catch (error) {
+      const effectiveLogger = input.logger ?? dependencies.logger;
+      effectiveLogger?.error(
+        {
+          requestId: input.requestId,
+          userId: input.user.id,
+          documentCount: uniqueIds.length,
+          error: summarizeError(error),
+        },
+        "Gagal mencatat audit event bulk download",
+      );
+      throw error;
+    }
+
+    return {
+      filename: "axentra-documents.zip",
+      bytes,
+      contentLength: bytes.byteLength,
+      fileCount: entries.length,
+    };
+  } finally {
+    release();
+  }
 }

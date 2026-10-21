@@ -886,7 +886,7 @@ describe("POST /api/v1/documents/bulk-download — BE-S3-03", () => {
     });
 
     test("forwards request-scoped logger and requestId when audit recording fails (F18)", async () => {
-      const logCalls: Array<Record<string, unknown>> = [];
+      const rawLogStrings: string[] = [];
       const isRecord = (val: unknown): val is Record<string, unknown> =>
         typeof val === "object" && val !== null;
 
@@ -897,14 +897,7 @@ describe("POST /api/v1/documents/bulk-download — BE-S3-03", () => {
         level: "error",
         destination: {
           write(str: string): void {
-            try {
-              const parsed: unknown = JSON.parse(str);
-              if (isRecord(parsed)) {
-                logCalls.push(parsed);
-              }
-            } catch {
-              // ignore
-            }
+            rawLogStrings.push(str);
           },
         },
       });
@@ -958,11 +951,39 @@ describe("POST /api/v1/documents/bulk-download — BE-S3-03", () => {
       expect(response.status).toBe(500);
 
       // Verify that the operation-level error log captured the requestId passed through context
+      const logCalls = rawLogStrings.map((str) => JSON.parse(str) as unknown).filter(isRecord);
       const operationLog = logCalls.find((call) => call.requestId === "req-bulk-audit-failure-123");
       expect(operationLog).toBeDefined();
       expect(operationLog?.requestId).toBe("req-bulk-audit-failure-123");
       expect(operationLog?.userId).toBe("usr-member-1");
       expect(operationLog?.documentCount).toBe(1);
+    });
+
+    test("returns 429 TOO_MANY_REQUESTS when bulk download concurrency queue is exceeded (F7, F10)", async () => {
+      const { BulkDownloadSemaphore } = await import("./bulk-download.semaphore");
+      const { executeBulkDownloadOperation } = await import("./bulk-download.operations");
+      const { downloadRepo } = createSetup();
+
+      const saturatedSemaphore = new BulkDownloadSemaphore({
+        maxConcurrency: 1,
+        maxQueueLength: 0,
+      });
+      // Occupy the only slot
+      await saturatedSemaphore.acquire();
+
+      await expect(
+        executeBulkDownloadOperation(
+          {
+            downloadRepository: downloadRepo,
+            storage: createMockStorage(),
+            bulkDownloadSemaphore: saturatedSemaphore,
+          },
+          {
+            documentIds: [ENABLED_DOC_1],
+            user: { id: "usr-member-1", email: "member@axentra.local", role: "member_team" },
+          },
+        ),
+      ).rejects.toThrow("Terlalu banyak permintaan unduhan massal secara bersamaan, antrean penuh");
     });
   });
 });
