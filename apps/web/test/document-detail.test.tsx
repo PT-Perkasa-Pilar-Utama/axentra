@@ -114,11 +114,14 @@ describe("Document Detail Feature (FE-S1-03 / AC-03.01)", () => {
     expect(html).toContain("Metadata");
     expect(html).toContain("Tanggal unggah");
     expect(html).toContain("Belum tersedia");
-    expect(html).toContain("Pratinjau belum tersedia");
+    expect(html).toContain("Memuat pratinjau dokumen...");
     expect(html).toContain("Dokumen Terkait");
     expect(html).toContain("Unduh");
     expect(html).toContain('disabled=""');
     expect(html).toContain('aria-describedby="download-note"');
+    // F8 Round 3: the described-by target must exist and explain the disabled state.
+    expect(html).toContain('id="download-note"');
+    expect(html).toContain("Fitur unduh belum tersedia pada versi ini.");
     expect(html).not.toContain("10/12/2025");
     expect(html).not.toContain("16/12/2025");
     expect(html).not.toContain("Halaman 1");

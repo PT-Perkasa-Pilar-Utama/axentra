@@ -20,10 +20,7 @@ export function DocumentMetadataSidebar({
   const related = useRelatedDocumentsPresenter(documentId);
 
   return (
-    <aside
-      aria-label="Informasi Dokumen"
-      className="min-w-0 order-first lg:order-none bg-white border-l border-gray-200 p-5 sm:p-6 space-y-7"
-    >
+    <aside aria-label="Informasi Dokumen" className="document-detail-page__sidebar space-y-7">
       {/* Section: Meta Data */}
       <section className="space-y-3.5">
         <h2 className="text-sm font-semibold text-gray-600">Metadata</h2>

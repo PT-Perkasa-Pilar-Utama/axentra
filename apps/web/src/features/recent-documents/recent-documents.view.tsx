@@ -1,4 +1,5 @@
 import type React from "react";
+import { Link } from "react-router";
 import type {
   RecentDocumentsPresenter,
   DocumentSmartTagsState,
@@ -139,7 +140,14 @@ export function RecentDocumentsView({ presenter }: RecentDocumentsViewProps): Re
               />
 
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-[#535a63]">{item.filename}</p>
+                <Link
+                  id={`recent-document-open-${item.id}`}
+                  to={`/documents/${item.id}`}
+                  aria-label={`Buka ${item.filename}`}
+                  className="block truncate rounded text-sm font-medium text-[#535a63] hover:text-[#477532] hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#477532]"
+                >
+                  {item.filename}
+                </Link>
                 <p className="mt-1 text-xs text-gray-500 md:hidden">
                   {item.statusLabel} · {item.dateLabel}
                 </p>
