@@ -10,10 +10,15 @@ if (typeof window !== "undefined" && window.document) {
   globalThis.document = window.document;
 }
 
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryRouter, RouterProvider } from "react-router";
+import {
+  derivePreviewView,
+  formatMimeLabel,
+  isSafeDownloadUrl,
+} from "../src/features/document-detail/document-detail.presenter";
 import { DocumentDetailView } from "../src/features/document-detail/document-detail.view";
 import { AuthSessionProvider } from "../src/features/auth/auth-session.context";
 import type { AuthSession } from "../src/features/auth/session.storage";
@@ -29,6 +34,23 @@ const memberSession: AuthSession = {
   rememberMe: false,
 };
 
+const DOWNLOAD_URL = "http://localhost/files/laporan-rahasia.pdf";
+
+type ClickedAnchor = { href: string; download: string | null };
+
+function spyOnAnchorClick(): { clicks: ClickedAnchor[]; restore: () => void } {
+  const clicks: ClickedAnchor[] = [];
+  // Ambil prototype dari elemen nyata: tidak bergantung pada window.HTMLAnchorElement
+  // yang tidak tersedia di semua konfigurasi Happy DOM.
+  const anchorPrototype: HTMLAnchorElement = Object.getPrototypeOf(document.createElement("a"));
+  const spy = spyOn(anchorPrototype, "click").mockImplementation(
+    function (this: HTMLAnchorElement) {
+      clicks.push({ href: this.href, download: this.getAttribute("download") });
+    },
+  );
+  return { clicks, restore: () => spy.mockRestore() };
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function makeQueryClient(): QueryClient {
@@ -41,9 +63,11 @@ function makeQueryClient(): QueryClient {
   });
 }
 
-function createFetchMock(
-  _downloadScenario: "success" | "denied" | "expired" | "error" = "success",
-): typeof fetch {
+type DownloadScenario = "success" | "denied" | "error" | "unsafe_url";
+
+// Catatan: seluruh HTTP di file ini di-mock (globalThis.fetch). Ini tes presenter/view
+// dengan API palsu, bukan tes integrasi nyata. Bukti stack nyata ada di docs/audits/e2e-*.
+function createFetchMock(scenario: DownloadScenario = "success"): typeof fetch {
   const handler = async (input: RequestInfo | URL, _init?: RequestInit): Promise<Response> => {
     const url = String(input);
 
@@ -77,7 +101,7 @@ function createFetchMock(
           data: {
             filename: "laporan-rahasia.pdf",
             mimeType: "application/pdf",
-            previewUrl: "blob:http://localhost/xyz",
+            previewUrl: "about:blank#preview-fixture",
             fileSize: 1024,
             expiresInSeconds: 300,
           },
@@ -89,21 +113,21 @@ function createFetchMock(
     if (url.includes("/download")) {
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      if (_downloadScenario === "denied") {
+      if (scenario === "denied") {
         return new Response(
-          JSON.stringify({ success: false, error: { message: "Access denied" } }),
+          JSON.stringify({
+            success: false,
+            error: { code: "FORBIDDEN", message: "Access denied" },
+          }),
           { status: 403, headers: { "content-type": "application/json" } },
         );
       }
-      if (_downloadScenario === "expired") {
+      if (scenario === "error") {
         return new Response(
-          JSON.stringify({ success: false, error: { message: "Link expired" } }),
-          { status: 410, headers: { "content-type": "application/json" } },
-        );
-      }
-      if (_downloadScenario === "error") {
-        return new Response(
-          JSON.stringify({ success: false, error: { message: "Internal Error" } }),
+          JSON.stringify({
+            success: false,
+            error: { code: "INTERNAL_ERROR", message: "Internal Error" },
+          }),
           { status: 500, headers: { "content-type": "application/json" } },
         );
       }
@@ -111,7 +135,13 @@ function createFetchMock(
       return new Response(
         JSON.stringify({
           success: true,
-          data: { downloadUrl: "http://localhost/files/laporan-rahasia.pdf" },
+          data: {
+            downloadUrl: scenario === "unsafe_url" ? "javascript:alert(1)" : DOWNLOAD_URL,
+            filename: "laporan-rahasia.pdf",
+            mimeType: "application/pdf",
+            fileSize: 1024,
+            expiresInSeconds: 300,
+          },
         }),
         { status: 200, headers: { "content-type": "application/json" } },
       );
@@ -146,7 +176,7 @@ function renderDocumentDetail() {
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 
-describe("Document Detail Download Action (FE-S3-02)", () => {
+describe("Document Detail Download Action (FE-S3-02, mocked HTTP)", () => {
   const originalFetch = globalThis.fetch;
 
   afterEach(() => {
@@ -167,11 +197,18 @@ describe("Document Detail Download Action (FE-S3-02)", () => {
     const downloadButton = await screen.findByRole("button", { name: /unduh/i });
     expect(downloadButton.hasAttribute("disabled")).toBe(false);
 
-    await act(async () => {
-      fireEvent.click(downloadButton);
-    });
+    const anchor = spyOnAnchorClick();
+    try {
+      await act(async () => {
+        fireEvent.click(downloadButton);
+      });
 
-    expect(await screen.findByText("Unduhan dimulai...")).toBeTruthy();
+      expect(await screen.findByText("Unduhan dimulai...")).toBeTruthy();
+      expect(anchor.clicks).toEqual([{ href: DOWNLOAD_URL, download: "" }]);
+      expect(document.querySelector("a[download]")).toBeNull();
+    } finally {
+      anchor.restore();
+    }
   });
 
   test("Handles 'denied' permission gracefully (HTTP 403)", async () => {
@@ -186,31 +223,20 @@ describe("Document Detail Download Action (FE-S3-02)", () => {
     ).toBeTruthy();
     const downloadButton = await screen.findByRole("button", { name: /unduh/i });
 
-    await act(async () => {
-      fireEvent.click(downloadButton);
-    });
+    const anchor = spyOnAnchorClick();
+    try {
+      await act(async () => {
+        fireEvent.click(downloadButton);
+      });
 
-    expect(await screen.findByText("Anda tidak memiliki izin mengunduh dokumen ini.")).toBeTruthy();
-    expect(downloadButton.hasAttribute("disabled")).toBe(true);
-  });
-
-  test("Handles 'expired' download links (HTTP 410)", async () => {
-    globalThis.fetch = createFetchMock("expired");
-
-    await act(async () => {
-      renderDocumentDetail();
-    });
-
-    expect(
-      await screen.findByRole("heading", { level: 1, name: "laporan-rahasia.pdf" }),
-    ).toBeTruthy();
-    const downloadButton = await screen.findByRole("button", { name: /unduh/i });
-
-    await act(async () => {
-      fireEvent.click(downloadButton);
-    });
-
-    expect(await screen.findByText("Sesi kedaluwarsa. Muat ulang halaman.")).toBeTruthy();
+      expect(
+        await screen.findByText("Anda tidak memiliki izin mengunduh dokumen ini."),
+      ).toBeTruthy();
+      expect(downloadButton.hasAttribute("disabled")).toBe(true);
+      expect(anchor.clicks).toHaveLength(0);
+    } finally {
+      anchor.restore();
+    }
   });
 
   test("Handles general server errors during download (HTTP 500)", async () => {
@@ -225,10 +251,76 @@ describe("Document Detail Download Action (FE-S3-02)", () => {
     ).toBeTruthy();
     const downloadButton = await screen.findByRole("button", { name: /unduh/i });
 
+    const anchor = spyOnAnchorClick();
+    try {
+      await act(async () => {
+        fireEvent.click(downloadButton);
+      });
+
+      expect(await screen.findByText("Gagal mengunduh dokumen. Coba lagi.")).toBeTruthy();
+      expect(anchor.clicks).toHaveLength(0);
+      expect(downloadButton.hasAttribute("disabled")).toBe(false);
+    } finally {
+      anchor.restore();
+    }
+  });
+
+  test("Rejects non-http(s) download URLs without triggering a download", async () => {
+    globalThis.fetch = createFetchMock("unsafe_url");
+
     await act(async () => {
-      fireEvent.click(downloadButton);
+      renderDocumentDetail();
     });
 
-    expect(await screen.findByText("Gagal mengunduh dokumen. Coba lagi.")).toBeTruthy();
+    const downloadButton = await screen.findByRole("button", { name: /unduh/i });
+    const anchor = spyOnAnchorClick();
+    try {
+      await act(async () => {
+        fireEvent.click(downloadButton);
+      });
+
+      expect(await screen.findByText("Gagal mengunduh dokumen. Coba lagi.")).toBeTruthy();
+      expect(anchor.clicks).toHaveLength(0);
+    } finally {
+      anchor.restore();
+    }
+  });
+
+  test("Announces download status to assistive technology", async () => {
+    globalThis.fetch = createFetchMock("success");
+
+    await act(async () => {
+      renderDocumentDetail();
+    });
+
+    const downloadButton = await screen.findByRole("button", { name: /unduh/i });
+    const note = document.getElementById(downloadButton.getAttribute("aria-describedby") ?? "");
+    expect(note?.getAttribute("role")).toBe("status");
+    expect(note?.getAttribute("aria-live")).toBe("polite");
+  });
+});
+
+describe("Document detail presenter helpers", () => {
+  test("derivePreviewView picks the PDF view only for application/pdf", () => {
+    expect(derivePreviewView("application/pdf")).toBe("pdf");
+    expect(
+      derivePreviewView("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+    ).toBe("unsupported");
+  });
+
+  test("formatMimeLabel returns readable labels", () => {
+    expect(formatMimeLabel("application/pdf")).toBe("PDF");
+    expect(
+      formatMimeLabel("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+    ).toBe("DOCX");
+    expect(formatMimeLabel("application/x-unknown")).toBe("tidak dikenal");
+  });
+
+  test("isSafeDownloadUrl only accepts http and https", () => {
+    expect(isSafeDownloadUrl("https://storage.example/file.pdf")).toBe(true);
+    expect(isSafeDownloadUrl("http://localhost/file.pdf")).toBe(true);
+    expect(isSafeDownloadUrl("javascript:alert(1)")).toBe(false);
+    expect(isSafeDownloadUrl("data:text/html,x")).toBe(false);
+    expect(isSafeDownloadUrl("not a url")).toBe(false);
   });
 });

@@ -10,7 +10,7 @@ import {
 import type { S3ClientConfig } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import type { StorageConfig } from "@axentra/config";
-import type { ObjectMetadata, PutObjectInput, StorageAdapter } from "./storage";
+import type { DownloadUrlOptions, ObjectMetadata, PutObjectInput, StorageAdapter } from "./storage";
 import { validateObjectKey } from "./storage";
 
 const defaultDownloadTtlSeconds = 300;
@@ -25,6 +25,15 @@ function isMissingBucket(error: unknown): boolean {
     candidate.name === "NoSuchBucket" ||
     candidate.$metadata?.httpStatusCode === 404
   );
+}
+
+export function buildAttachmentDisposition(filename: string): string {
+  const asciiFallback = filename.replace(/[^\x20-\x7e]|["\\;%]/g, "_");
+  const utf8Filename = encodeURIComponent(filename).replace(
+    /['()*]/g,
+    (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+  return `attachment; filename="${asciiFallback}"; filename*=UTF-8''${utf8Filename}`;
 }
 
 export function createS3StorageAdapter(configuration: StorageConfig): StorageAdapter {
@@ -109,6 +118,7 @@ export function createS3StorageAdapter(configuration: StorageConfig): StorageAda
   async function createDownloadUrl(
     key: string,
     expiresInSeconds = defaultDownloadTtlSeconds,
+    options?: DownloadUrlOptions,
   ): Promise<string> {
     if (
       expiresInSeconds < minimumDownloadTtlSeconds ||
@@ -120,7 +130,13 @@ export function createS3StorageAdapter(configuration: StorageConfig): StorageAda
     }
     return getSignedUrl(
       client,
-      new GetObjectCommand({ Bucket: bucket, Key: validateObjectKey(key) }),
+      new GetObjectCommand({
+        Bucket: bucket,
+        Key: validateObjectKey(key),
+        ...(options?.downloadFilename !== undefined
+          ? { ResponseContentDisposition: buildAttachmentDisposition(options.downloadFilename) }
+          : {}),
+      }),
       { expiresIn: expiresInSeconds },
     );
   }

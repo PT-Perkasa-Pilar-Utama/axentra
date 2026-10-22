@@ -53,19 +53,6 @@
   background: var(--preview-canvas);
 }
 
-.document-detail-page__empty {
-  display: grid;
-  justify-items: center;
-  align-content: center;
-  width: min(100%, 23rem);
-  min-height: 19rem;
-  padding: 2rem 1.5rem;
-  border: 1px solid #d6dade;
-  background: white;
-  box-shadow: 0 3px 16px rgb(29 35 40 / 8%);
-  text-align: center;
-}
-
 .document-detail-page__empty-icon {
   display: grid;
   place-items: center;
@@ -75,22 +62,6 @@
   border-radius: 50%;
   background: #edf3e9;
   color: #477532;
-}
-
-.document-detail-page__empty h2 {
-  margin: 0;
-  color: #252b30;
-  font-size: 1.125rem;
-  font-weight: 600;
-  line-height: 1.35;
-}
-
-.document-detail-page__empty p {
-  max-width: 30ch;
-  margin: 0.75rem 0 0;
-  color: #4b5563;
-  font-size: 0.875rem;
-  line-height: 1.6;
 }
 
 .document-detail-page__sidebar {

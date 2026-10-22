@@ -85,8 +85,6 @@ export function DocumentDetailView({
   let downloadNoteClass = "text-gray-500";
   if (presenter.downloadStatus === "error" || presenter.downloadStatus === "denied") {
     downloadNoteClass = "text-rose-600";
-  } else if (presenter.downloadStatus === "expired") {
-    downloadNoteClass = "text-amber-600";
   }
 
   return (
@@ -122,14 +120,18 @@ export function DocumentDetailView({
             <DownloadIcon />
           </button>
 
-          <span id="download-note" className={`text-xs ${downloadNoteClass}`}>
+          <span
+            id="download-note"
+            role="status"
+            aria-live="polite"
+            className={`text-xs ${downloadNoteClass}`}
+          >
             {presenter.downloadStatus === "idle" && "Unduh dalam format asli"}
             {presenter.downloadStatus === "loading" && "Menyiapkan tautan unduhan..."}
             {presenter.downloadStatus === "success" && "Unduhan dimulai..."}
             {presenter.downloadStatus === "error" && "Gagal mengunduh dokumen. Coba lagi."}
             {presenter.downloadStatus === "denied" &&
               "Anda tidak memiliki izin mengunduh dokumen ini."}
-            {presenter.downloadStatus === "expired" && "Sesi kedaluwarsa. Muat ulang halaman."}
           </span>
         </div>
       </header>
@@ -161,18 +163,20 @@ export function DocumentDetailView({
           )}
 
           {presenter.previewStatus === "ready" &&
-            presenter.preview?.mimeType === "application/pdf" && (
+            presenter.previewView === "pdf" &&
+            presenter.preview &&
+            presenter.previewFrameSrc !== null && (
               <iframe
                 className="document-preview-frame"
-                src={presenter.preview.previewUrl}
+                src={presenter.previewFrameSrc}
                 title={`Pratinjau ${presenter.preview.filename}`}
                 referrerPolicy="no-referrer"
               />
             )}
 
           {presenter.previewStatus === "ready" &&
-            presenter.preview !== undefined &&
-            presenter.preview.mimeType !== "application/pdf" && (
+            presenter.previewView === "unsupported" &&
+            presenter.preview && (
               <section className="document-preview-state" aria-labelledby="preview-format-heading">
                 <span className="document-detail-page__empty-icon" aria-hidden="true">
                   <FileIcon />
@@ -180,7 +184,7 @@ export function DocumentDetailView({
                 <h2 id="preview-format-heading">Pratinjau belum tersedia untuk format ini</h2>
                 <p>
                   Berkas {presenter.preview.filename} sudah ditemukan, tetapi format{" "}
-                  {presenter.preview.mimeType} belum didukung untuk tampilan inline.
+                  {presenter.previewFormatLabel} belum didukung untuk tampilan inline.
                 </p>
               </section>
             )}

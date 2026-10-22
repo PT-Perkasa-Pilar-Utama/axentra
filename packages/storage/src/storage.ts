@@ -5,6 +5,10 @@ export type PutObjectInput = {
   checksumSha256?: string;
 };
 
+export type DownloadUrlOptions = {
+  downloadFilename?: string | undefined;
+};
+
 export type ObjectMetadata = {
   key: string;
   contentLength: number | undefined;
@@ -19,7 +23,11 @@ export type StorageAdapter = {
   getObject: (key: string) => Promise<Uint8Array>;
   deleteObject: (key: string) => Promise<void>;
   headObject: (key: string) => Promise<ObjectMetadata>;
-  createDownloadUrl: (key: string, expiresInSeconds?: number) => Promise<string>;
+  createDownloadUrl(
+    key: string,
+    expiresInSeconds?: number,
+    options?: DownloadUrlOptions,
+  ): Promise<string>;
   close: () => Promise<void>;
 };
 

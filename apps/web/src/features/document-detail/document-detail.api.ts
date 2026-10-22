@@ -1,12 +1,14 @@
-import { z } from "zod";
-import type { DocumentMetadataResult, PreviewDocumentResponse } from "@axentra/shared";
-import { documentMetadataResultSchema, previewDocumentResponseSchema } from "@axentra/shared";
+import type {
+  DocumentMetadataResult,
+  DownloadDocumentResponse,
+  PreviewDocumentResponse,
+} from "@axentra/shared";
+import {
+  documentMetadataResultSchema,
+  downloadDocumentResponseSchema,
+  previewDocumentResponseSchema,
+} from "@axentra/shared";
 import { apiRequest } from "../../lib/api-client";
-
-export const downloadDocumentResponseSchema = z.object({
-  downloadUrl: z.string().url(),
-});
-export type DownloadDocumentResponse = z.infer<typeof downloadDocumentResponseSchema>;
 
 export function getDocumentMetadata(documentId: string): Promise<DocumentMetadataResult> {
   return apiRequest(`/documents/${documentId}/metadata`, documentMetadataResultSchema);
