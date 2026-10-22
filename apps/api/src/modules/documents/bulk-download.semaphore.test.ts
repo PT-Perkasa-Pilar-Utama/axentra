@@ -88,4 +88,34 @@ describe("BulkDownloadSemaphore (F7, F10)", () => {
     expect(semaphore.activeCount).toBe(0);
     expect(semaphore.queueLength).toBe(0);
   });
+
+  test("rejects with TooManyRequestsError when queue wait timeout expires (F25)", async () => {
+    const semaphore = new BulkDownloadSemaphore({
+      maxConcurrency: 1,
+      maxQueueLength: 2,
+      queueTimeoutMs: 20,
+    });
+
+    const release1 = await semaphore.acquire();
+    const queuedPromise = semaphore.acquire({ timeoutMs: 20 });
+    expect(semaphore.queueLength).toBe(1);
+
+    await expect(queuedPromise).rejects.toThrow(TooManyRequestsError);
+    expect(semaphore.queueLength).toBe(0);
+    release1();
+  });
+
+  test("cancels queue waiter when signal aborts (F27)", async () => {
+    const semaphore = new BulkDownloadSemaphore({ maxConcurrency: 1, maxQueueLength: 2 });
+    const release1 = await semaphore.acquire();
+
+    const controller = new AbortController();
+    const queuedPromise = semaphore.acquire({ signal: controller.signal });
+    expect(semaphore.queueLength).toBe(1);
+
+    controller.abort();
+    await expect(queuedPromise).rejects.toThrow(/dibatalkan/);
+    expect(semaphore.queueLength).toBe(0);
+    release1();
+  });
 });

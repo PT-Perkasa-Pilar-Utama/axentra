@@ -27,12 +27,13 @@ export function createBulkDownloadHandler(
       user,
       logger,
       requestId,
+      signal: context.req.raw.signal,
     });
 
     const asciiFallback = sanitizeFilename(result.filename);
     const utf8Filename = encodeURIComponent(result.filename);
 
-    return new Response(result.bytes, {
+    return new Response(result.stream, {
       status: 200,
       headers: {
         "Content-Type": "application/zip",

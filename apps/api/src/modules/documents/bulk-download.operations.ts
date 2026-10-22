@@ -15,12 +15,14 @@ import {
   type ZipEntry,
 } from "./zip.writer";
 import { type BulkDownloadSemaphore, globalBulkDownloadSemaphore } from "./bulk-download.semaphore";
+import { createMonitoredZipStream, getObjectWithTimeout } from "./bulk-download.stream";
 
 export type BulkDownloadOperationDependencies = {
   downloadRepository: IDownloadRepository;
   storage: StorageAdapter;
   logger?: Logger | undefined;
   bulkDownloadSemaphore?: BulkDownloadSemaphore | undefined;
+  streamChunkSize?: number | undefined;
 };
 
 export type ExecuteBulkDownloadInput = {
@@ -28,13 +30,16 @@ export type ExecuteBulkDownloadInput = {
   user: AuthUser;
   logger?: Logger | undefined;
   requestId?: string | undefined;
+  signal?: AbortSignal | undefined;
 };
 
 export type BulkDownloadOperationResult = {
   filename: string;
   bytes: Uint8Array;
+  stream: ReadableStream<Uint8Array>;
   contentLength: number;
   fileCount: number;
+  release: () => void;
 };
 
 export async function executeBulkDownloadOperation(
@@ -98,20 +103,21 @@ export async function executeBulkDownloadOperation(
     );
   }
 
-  // 5. Acquire concurrency slot to protect peak RSS during storage prefetch and archive assembly (F7, F10)
+  // 5. Acquire concurrency slot to protect peak RSS during storage prefetch, archive assembly, and streaming (F7, F10, F24, F25)
   // Note (F21): Total aggregate size is checked against 250 MB (BULK_DOWNLOAD_MAX_TOTAL_BYTES) in step 4,
   // which strictly guarantees total archive size never approaches the ZIP32 4 GiB limit.
   const semaphore = dependencies.bulkDownloadSemaphore ?? globalBulkDownloadSemaphore;
-  const release = await semaphore.acquire();
+  const releaseSlot = await semaphore.acquire({ signal: input.signal });
+  let slotClaimedByStream = false;
 
   try {
-    // 7. Prefetch all storage objects before audit recording and response generation (F7, F12, F15, F17)
+    // 6. Prefetch all storage objects before audit recording and response generation (F7, F12, F15, F17, F25)
     const entries: Array<ZipEntry> = [];
     for (const docId of uniqueIds) {
       const target = targetMap.get(docId);
       if (!target?.file) continue;
 
-      const fileBytes = await dependencies.storage.getObject(target.file.storageKey);
+      const fileBytes = await getObjectWithTimeout(dependencies.storage, target.file.storageKey);
       if (fileBytes.byteLength !== target.file.fileSize) {
         throw new Error(
           `Ukuran berkas "${target.file.originalName}" (${fileBytes.byteLength} byte) tidak sesuai dengan metadata (${target.file.fileSize} byte)`,
@@ -124,10 +130,10 @@ export async function executeBulkDownloadOperation(
       });
     }
 
-    // 8. Assemble the ZIP archive using single-pass continuous buffer allocation (F2, F7)
+    // 7. Assemble the ZIP archive using single-pass continuous buffer allocation (F2, F7)
     const bytes = createZipArchive(entries);
 
-    // 9. Atomically recheck category permissions with row lock and record point-in-time audit events (F3, F6, F12)
+    // 8. Atomically recheck category permissions with row lock and record point-in-time audit events (F3, F6, F12)
     try {
       await dependencies.downloadRepository.transaction(async (txRepo) => {
         if (input.user.role === "member_team") {
@@ -177,13 +183,24 @@ export async function executeBulkDownloadOperation(
       throw error;
     }
 
+    // 9. Wrap archive buffer in a monitored stream that holds the semaphore slot until fully transmitted (F24)
+    const stream = createMonitoredZipStream(bytes, releaseSlot, {
+      signal: input.signal,
+      chunkSize: dependencies.streamChunkSize,
+    });
+    slotClaimedByStream = true;
+
     return {
       filename: "axentra-documents.zip",
       bytes,
+      stream,
       contentLength: bytes.byteLength,
       fileCount: entries.length,
+      release: releaseSlot,
     };
   } finally {
-    release();
+    if (!slotClaimedByStream) {
+      releaseSlot();
+    }
   }
 }

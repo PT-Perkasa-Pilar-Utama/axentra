@@ -6,7 +6,6 @@ import {
   deduplicateEntryNames,
   sanitizeZipEntryName,
   toDosDateTime,
-  ZIP32_MAX_ARCHIVE_SIZE,
   type ZipEntry,
 } from "./zip.writer";
 import { parseZipEntryNames } from "./documents.schema";
@@ -287,12 +286,6 @@ describe("zip.writer", () => {
       }));
 
       expect(() => createZipArchive(entries)).toThrow(/melebihi batas 16-bit \(65\.535\)/);
-    });
-
-    it("calculates archive size exceeding ZIP32 4 GiB limit for large meta entries (F21)", () => {
-      const metaList = [{ name: "huge.bin", size: 0x100000000 }];
-      const totalSize = calculateZipArchiveSize(metaList);
-      expect(totalSize).toBeGreaterThan(ZIP32_MAX_ARCHIVE_SIZE);
     });
   });
 });

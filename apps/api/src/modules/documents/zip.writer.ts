@@ -2,7 +2,6 @@ import { crc32 } from "node:zlib";
 import {
   deduplicateEntryNames,
   toDosDateTime,
-  ZIP32_MAX_ARCHIVE_SIZE,
   ZIP32_MAX_ENTRY_COUNT,
   ZIP32_MAX_ENTRY_SIZE,
 } from "./zip.writer.helpers";
@@ -11,7 +10,6 @@ export {
   deduplicateEntryNames,
   sanitizeZipEntryName,
   toDosDateTime,
-  ZIP32_MAX_ARCHIVE_SIZE,
   ZIP32_MAX_ENTRY_COUNT,
   ZIP32_MAX_ENTRY_SIZE,
 } from "./zip.writer.helpers";
@@ -65,11 +63,6 @@ export function createZipArchive(
     size: e.content.byteLength,
   }));
   const totalArchiveSize = calculateZipArchiveSize(metaList);
-
-  if (totalArchiveSize > ZIP32_MAX_ARCHIVE_SIZE) {
-    throw new Error("Ukuran total arsip ZIP melebihi batas 32-bit (4 GiB)");
-  }
-
   const archive = new Uint8Array(totalArchiveSize);
   const view = new DataView(archive.buffer, archive.byteOffset, archive.byteLength);
 
