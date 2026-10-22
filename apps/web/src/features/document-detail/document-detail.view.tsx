@@ -74,6 +74,21 @@ export function DocumentDetailView({
 
   const { filename, author, uploadDate } = presenter;
 
+  // Ekstraksi logika styling untuk menghindari nested ternary (linter fix)
+  let downloadBtnClass = "bg-[#477532] text-white hover:bg-[#365b26] focus-visible:ring-green-800";
+  if (presenter.downloadStatus === "loading") {
+    downloadBtnClass = "bg-[#e8f0e4] text-[#477532] cursor-wait";
+  } else if (presenter.downloadStatus === "denied") {
+    downloadBtnClass = "bg-gray-200 text-gray-500 cursor-not-allowed";
+  }
+
+  let downloadNoteClass = "text-gray-500";
+  if (presenter.downloadStatus === "error" || presenter.downloadStatus === "denied") {
+    downloadNoteClass = "text-rose-600";
+  } else if (presenter.downloadStatus === "expired") {
+    downloadNoteClass = "text-amber-600";
+  }
+
   return (
     <div className="document-detail-page min-h-dvh flex flex-col text-gray-900 font-sans">
       {/* Top Header Bar */}
@@ -96,15 +111,25 @@ export function DocumentDetailView({
           <button
             id="document-preview-download"
             type="button"
-            disabled
-            className="flex min-h-11 items-center gap-2 bg-gray-200 text-gray-600 text-sm font-medium px-4 py-2 rounded-lg cursor-not-allowed"
+            onClick={presenter.handleDownload}
+            disabled={
+              presenter.downloadStatus === "loading" || presenter.downloadStatus === "denied"
+            }
+            className={`flex min-h-11 items-center gap-2 text-sm font-medium px-4 py-2 rounded-lg transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 ${downloadBtnClass}`}
             aria-describedby="download-note"
           >
-            <span>Unduh</span>
+            <span>{presenter.downloadStatus === "loading" ? "Menyiapkan..." : "Unduh"}</span>
             <DownloadIcon />
           </button>
-          <span id="download-note" className="text-xs text-gray-600">
-            Fitur unduh belum tersedia pada versi ini.
+
+          <span id="download-note" className={`text-xs ${downloadNoteClass}`}>
+            {presenter.downloadStatus === "idle" && "Unduh dalam format asli"}
+            {presenter.downloadStatus === "loading" && "Menyiapkan tautan unduhan..."}
+            {presenter.downloadStatus === "success" && "Unduhan dimulai..."}
+            {presenter.downloadStatus === "error" && "Gagal mengunduh dokumen. Coba lagi."}
+            {presenter.downloadStatus === "denied" &&
+              "Anda tidak memiliki izin mengunduh dokumen ini."}
+            {presenter.downloadStatus === "expired" && "Sesi kedaluwarsa. Muat ulang halaman."}
           </span>
         </div>
       </header>

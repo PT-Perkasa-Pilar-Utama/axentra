@@ -136,7 +136,7 @@ describe("Document preview entry (FE-S3-01 / AC-08.01)", () => {
     expect(
       screen.getByRole("main", { name: "Area Pratinjau Dokumen" }).querySelector("a"),
     ).toBeNull();
-    expect(screen.getByRole("button", { name: /unduh/i }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: /unduh/i }).hasAttribute("disabled")).toBe(false);
   });
 
   test("shows an explicit DOCX fallback without exposing a download URL", async () => {
@@ -196,12 +196,11 @@ describe("Document preview entry (FE-S3-01 / AC-08.01)", () => {
     expect(screen.getByRole("complementary", { name: "Halaman dokumen" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Halaman 1" })).toBeNull();
     const downloadButton = screen.getByRole("button", { name: /unduh/i });
-    expect(downloadButton.hasAttribute("disabled")).toBe(true);
-    // F8 Round 3: the disabled reason must resolve for assistive technology.
+    expect(downloadButton.hasAttribute("disabled")).toBe(false);
     const noteId = downloadButton.getAttribute("aria-describedby");
     expect(noteId).toBe("download-note");
     const note = noteId ? document.getElementById(noteId) : null;
-    expect(note?.textContent).toContain("Fitur unduh belum tersedia pada versi ini.");
+    expect(note?.textContent).toContain("Unduh dalam format asli");
     expect(screen.getByRole("complementary", { name: "Informasi Dokumen" })).toBeTruthy();
     expect(screen.queryByRole("link", { name: /download|unduh/i })).toBeNull();
   });

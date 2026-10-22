@@ -1,10 +1,14 @@
+import { useCallback, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { DocumentMetadataResult, PreviewDocumentResponse } from "@axentra/shared";
-import { getDocumentDetail, getDocumentPreview } from "./document-detail.api";
+import { getDocumentDetail, getDocumentPreview, getDocumentDownload } from "./document-detail.api";
+
+export type DownloadStatus = "idle" | "loading" | "success" | "denied" | "expired" | "error";
 
 export type DocumentDetailPresenter = {
   status: "loading" | "ready" | "error";
   previewStatus: "loading" | "ready" | "error";
+  downloadStatus: DownloadStatus;
   document: DocumentMetadataResult | undefined;
   preview: PreviewDocumentResponse | undefined;
   author: string | null;
@@ -12,6 +16,7 @@ export type DocumentDetailPresenter = {
   uploadDate: string;
   retry: () => void;
   retryPreview: () => void;
+  handleDownload: () => Promise<void>;
 };
 
 export type DocumentDetailPresenterOptions = {
@@ -26,6 +31,8 @@ export function useDocumentDetailPresenter(
   const fetchFn = options?.fetchFn ?? getDocumentDetail;
   const previewFetchFn = options?.previewFetchFn ?? getDocumentPreview;
 
+  const [downloadStatus, setDownloadStatus] = useState<DownloadStatus>("idle");
+
   const docQuery = useQuery({
     queryKey: ["document-detail", documentId],
     queryFn: () => fetchFn(documentId),
@@ -39,6 +46,50 @@ export function useDocumentDetailPresenter(
     enabled: Boolean(documentId),
     retry: false,
   });
+
+  const handleDownload = useCallback(async () => {
+    if (!documentId) return;
+    setDownloadStatus("loading");
+
+    try {
+      const { downloadUrl } = await getDocumentDownload(documentId);
+      setDownloadStatus("success");
+
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.setAttribute("download", "");
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      setTimeout(() => setDownloadStatus("idle"), 3000);
+    } catch (error: unknown) {
+      const err = error as {
+        message?: string;
+        code?: string;
+        status?: number;
+        response?: { status?: number };
+      };
+      const errorMessage = String(err.message || err.code || "").toLowerCase();
+      const statusCode = err.response?.status || err.status;
+      if (
+        statusCode === 403 ||
+        errorMessage.includes("denied") ||
+        errorMessage.includes("forbidden") ||
+        errorMessage.includes("dilarang")
+      ) {
+        setDownloadStatus("denied");
+      } else if (
+        statusCode === 410 ||
+        errorMessage.includes("expired") ||
+        errorMessage.includes("kadaluarsa")
+      ) {
+        setDownloadStatus("expired");
+      } else {
+        setDownloadStatus("error");
+      }
+    }
+  }, [documentId]);
 
   let status: DocumentDetailPresenter["status"] = "ready";
   if (!documentId) {
@@ -62,6 +113,7 @@ export function useDocumentDetailPresenter(
   return {
     status,
     previewStatus,
+    downloadStatus,
     document: doc,
     preview,
     author: doc?.author?.trim() || null,
@@ -73,5 +125,6 @@ export function useDocumentDetailPresenter(
     retryPreview: () => {
       void previewQuery.refetch();
     },
+    handleDownload,
   };
 }
