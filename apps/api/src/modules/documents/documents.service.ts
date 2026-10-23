@@ -44,6 +44,12 @@ import {
   type DownloadOperationResult,
   type ExecuteDownloadInput,
 } from "./download.operations";
+import {
+  executeBulkDownloadOperation,
+  type BulkDownloadOperationResult,
+  type ExecuteBulkDownloadInput,
+} from "./bulk-download.operations";
+import type { BulkDownloadSemaphore } from "./bulk-download.semaphore";
 import type { IPreviewRepository } from "./preview.repository";
 import { InMemoryPreviewRepository } from "./preview.repository";
 import {
@@ -53,8 +59,10 @@ import {
 } from "./preview.operations";
 
 export type {
+  BulkDownloadOperationResult,
   CheckDuplicateInput,
   DownloadOperationResult,
+  ExecuteBulkDownloadInput,
   ExecuteDownloadInput,
   ExecutePreviewInput,
   ExtractMetadataOptions,
@@ -74,6 +82,7 @@ export type DocumentServiceDependencies = {
   categoryRepository?: IDocumentCategoryRepository | undefined;
   downloadRepository?: IDownloadRepository | undefined;
   previewRepository?: IPreviewRepository | undefined;
+  bulkDownloadSemaphore?: BulkDownloadSemaphore | undefined;
 };
 
 export type RecentDocumentList = {
@@ -102,6 +111,7 @@ export type IDocumentService = {
   storeMetadata(data: SaveMetadataInput): Promise<DocumentMetadataResult>;
   enqueueProcessingJob(documentId: string): Promise<string>;
   downloadDocument(input: ExecuteDownloadInput): Promise<DownloadOperationResult>;
+  bulkDownloadDocuments(input: ExecuteBulkDownloadInput): Promise<BulkDownloadOperationResult>;
   previewDocument(input: ExecutePreviewInput): Promise<PreviewOperationResult>;
 };
 
@@ -118,6 +128,7 @@ export class DocumentService implements IDocumentService {
   private readonly categoryRepository: IDocumentCategoryRepository;
   private readonly downloadRepository: IDownloadRepository;
   private readonly previewRepository: IPreviewRepository;
+  private readonly bulkDownloadSemaphore?: BulkDownloadSemaphore | undefined;
 
   public constructor(dependencies: DocumentServiceDependencies = {}) {
     this.repository = dependencies.repository ?? createInMemoryRepository();
@@ -142,6 +153,7 @@ export class DocumentService implements IDocumentService {
       dependencies.categoryRepository ?? new InMemoryDocumentCategoryRepository();
     this.downloadRepository = dependencies.downloadRepository ?? new InMemoryDownloadRepository();
     this.previewRepository = dependencies.previewRepository ?? new InMemoryPreviewRepository();
+    this.bulkDownloadSemaphore = dependencies.bulkDownloadSemaphore;
   }
 
   public async validateUpload(
@@ -247,6 +259,20 @@ export class DocumentService implements IDocumentService {
         downloadRepository: this.downloadRepository,
         storage: this.storage,
         logger: this.logger,
+      },
+      input,
+    );
+  }
+
+  public async bulkDownloadDocuments(
+    input: ExecuteBulkDownloadInput,
+  ): Promise<BulkDownloadOperationResult> {
+    return executeBulkDownloadOperation(
+      {
+        downloadRepository: this.downloadRepository,
+        storage: this.storage,
+        logger: this.logger,
+        bulkDownloadSemaphore: this.bulkDownloadSemaphore,
       },
       input,
     );

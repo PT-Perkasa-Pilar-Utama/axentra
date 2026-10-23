@@ -259,7 +259,63 @@ Downloads original file format when the current user has permission. Supports is
 
 ### `POST /api/v1/documents/bulk-download`
 
-Accepts selected document IDs and returns or starts one `.zip` download.
+Status: Implemented (BE-S3-03).
+
+Accepts selected document IDs, validates existence, enforces category download permissions per item, combines files into a single `.zip` archive, and records download audit events for each document.
+
+**Authorization:**
+
+- Requires authenticated session (`Bearer <token>`).
+- Allowed roles: `member_team`, `head_of_team`, `admin`.
+- **Category Permission Recheck per Document:**
+  - `member_team`: Every requested document must belong to a category with `download_enabled = true`. Returns `403 FORBIDDEN` (`"Akses unduh tidak diizinkan untuk kategori dokumen ini"`) if any document is uncategorized or its category download permission is disabled.
+  - `head_of_team` & `admin`: Download is permitted.
+- **Audit Logging:** Every successful bulk download records a point-in-time fact in `download_audit_events` for each document (`userId`, `userName`, `userEmail`, `documentId`, `documentName`, `downloadedAt`). Denied or failed requests do not write audit records.
+
+**Request (`application/json`):**
+
+```json
+{
+  "documentIds": ["11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"]
+}
+```
+
+**Constraints:**
+
+- `documentIds` — array of valid UUID strings.
+- Minimum 1 document (`400 VALIDATION_ERROR`: `"Minimal satu dokumen harus dipilih"`).
+- Maximum 100 documents (`400 VALIDATION_ERROR`: `"Maksimal 100 dokumen per unduhan massal"`).
+- Maximum total aggregate size: 250 MB (`262,144,000` bytes) across all requested documents (`413 PAYLOAD_TOO_LARGE`: `"Total ukuran dokumen melebihi batas maksimum unduhan massal (250 MB)"`).
+- Duplicate document IDs in the request are automatically deduplicated.
+- If multiple documents share the same original filename, entry filenames inside the `.zip` archive are disambiguated (e.g. `laporan.pdf`, `laporan (1).pdf`).
+- Entry filenames inside the archive are sanitized to prevent directory traversal (`../`, `..\`, absolute paths).
+
+**Success Response (`200 OK`):**
+
+- Status: `200 OK`
+- Headers:
+  - `Content-Type: application/zip`
+  - `Content-Disposition: attachment; filename="axentra-documents.zip"; filename*=UTF-8''axentra-documents.zip`
+  - `Content-Length: <fileSize>` (atau `Transfer-Encoding: chunked` saat ditransmisikan secara streaming via Web ReadableStream)
+- Body: Binary ZIP archive bytes containing all requested files.
+
+**Error Responses:**
+
+- `400 VALIDATION_ERROR`: Missing/invalid JSON body, invalid UUIDs, empty `documentIds`, or exceeding 100 documents.
+- `401 UNAUTHORIZED`: Missing, forged, or expired token.
+- `403 FORBIDDEN`: Category download permission disabled or document uncategorized for `member_team` (`"Akses unduh tidak diizinkan untuk kategori dokumen ini"`).
+- `404 NOT_FOUND`: One or more requested documents not found, soft-deleted, or lacking a stored file record.
+- `413 PAYLOAD_TOO_LARGE`: Total aggregate size of selected documents exceeds 250 MB (`"Total ukuran dokumen melebihi batas maksimum unduhan massal (250 MB)"`).
+- `429 TOO_MANY_REQUESTS`: Concurrency queue capacity exceeded (`"Terlalu banyak permintaan unduhan massal secara bersamaan, antrean penuh"`).
+- `500 INTERNAL_ERROR`: Storage retrieval failure, file size mismatch with metadata, or unexpected server error (`"Terjadi kesalahan pada server"`). Requests encountering storage failures do not write audit records.
+
+> **Approver Architectural Decision (Arya Isnaidi, Tech Lead — 21 Oktober 2026 / Disempurnakan 23 Oktober 2026):**
+>
+> 1. **Prefetch Storage & Zero-Audit on Failure:** Endpoint melakukan prefetch seluruh objek dokumen dari storage dan memverifikasi integritas ukuran sebelum membuat ZIP archive, menulis audit event, atau mengirim response. Jika storage gagal atau ukuran tidak sesuai, endpoint mengembalikan `500 INTERNAL_ERROR` tanpa catatan audit. Follow-up untuk menyelaraskan urutan audit pada single download (`download.operations.ts`) dialokasikan ke pemilik kartu BE-S3-04.
+> 2. **Pengendalian Memori Konkurensi & Siklus Hidup Respons:** Batas payload 250 MB dipertahankan dengan penerapan global async semaphore (`BulkDownloadSemaphore`, `maxConcurrency: 2`, `maxQueueLength: 10`) yang berlaku per instans proses API. Slot semaphore di-acquire sebelum prefetch dan dipertahankan sepanjang transmisi chunked `ReadableStream` sampai klien selesai membaca body, koneksi dibatalkan (`cancel`/`abort`), atau batas waktu transfer (60 detik) tercapai, mencegah akumulasi buffer arsip di memori proses saat terjadi lonjakan permintaan paralel.
+> 3. **Kontrak Header Transmisi Streaming:** Endpoint menyertakan header `Content-Length` dengan nilai ukuran total arsip byte. Pada level runtime HTTP server (`Bun.serve`), body respons berbasis `ReadableStream` ditransmisikan menggunakan `Transfer-Encoding: chunked` sesuai RFC 7230 §3.3.2 untuk efisiensi streaming bertahap. Klien web Axentra menerima kedua mekanisme tersebut secara transparan melalui `response.blob()`.
+> 4. **Resolusi Dependensi:** Seluruh pembaruan dependensi keamanan (`hono` dan `vite`) telah dikonsolidasikan langsung pada cabang `dev`, sehingga cabang `BE-S3-03` tetap berfokus tunggal pada implementasi fitur unduhan massal dokumen tanpa perubahan berkas kunci dependensi.
+> 5. **Urutan Penggabungan Cabang (Merge Order):** Cabang `BE-S3-03` digabungkan terlebih dahulu ke `dev`. Pemilik kartu `BE-S3-04` akan melakukan rebase setelahnya untuk menyelesaikan konflik teks pada `download.repository.ts` dan berkas tes integrasi terkait.
 
 ## Related Documents
 
