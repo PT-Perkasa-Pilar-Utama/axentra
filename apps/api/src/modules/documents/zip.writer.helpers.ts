@@ -1,5 +1,4 @@
 export const ZIP32_MAX_ENTRY_SIZE = 0xffffffff; // 4 GiB
-export const ZIP32_MAX_ARCHIVE_SIZE = 0xffffffff; // 4 GiB
 export const ZIP32_MAX_ENTRY_COUNT = 0xffff; // 65,535 entries
 
 /**

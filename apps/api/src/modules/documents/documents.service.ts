@@ -49,6 +49,7 @@ import {
   type BulkDownloadOperationResult,
   type ExecuteBulkDownloadInput,
 } from "./bulk-download.operations";
+import type { BulkDownloadSemaphore } from "./bulk-download.semaphore";
 import type { IPreviewRepository } from "./preview.repository";
 import { InMemoryPreviewRepository } from "./preview.repository";
 import {
@@ -81,6 +82,7 @@ export type DocumentServiceDependencies = {
   categoryRepository?: IDocumentCategoryRepository | undefined;
   downloadRepository?: IDownloadRepository | undefined;
   previewRepository?: IPreviewRepository | undefined;
+  bulkDownloadSemaphore?: BulkDownloadSemaphore | undefined;
 };
 
 export type RecentDocumentList = {
@@ -126,6 +128,7 @@ export class DocumentService implements IDocumentService {
   private readonly categoryRepository: IDocumentCategoryRepository;
   private readonly downloadRepository: IDownloadRepository;
   private readonly previewRepository: IPreviewRepository;
+  private readonly bulkDownloadSemaphore?: BulkDownloadSemaphore | undefined;
 
   public constructor(dependencies: DocumentServiceDependencies = {}) {
     this.repository = dependencies.repository ?? createInMemoryRepository();
@@ -150,6 +153,7 @@ export class DocumentService implements IDocumentService {
       dependencies.categoryRepository ?? new InMemoryDocumentCategoryRepository();
     this.downloadRepository = dependencies.downloadRepository ?? new InMemoryDownloadRepository();
     this.previewRepository = dependencies.previewRepository ?? new InMemoryPreviewRepository();
+    this.bulkDownloadSemaphore = dependencies.bulkDownloadSemaphore;
   }
 
   public async validateUpload(
@@ -268,6 +272,7 @@ export class DocumentService implements IDocumentService {
         downloadRepository: this.downloadRepository,
         storage: this.storage,
         logger: this.logger,
+        bulkDownloadSemaphore: this.bulkDownloadSemaphore,
       },
       input,
     );

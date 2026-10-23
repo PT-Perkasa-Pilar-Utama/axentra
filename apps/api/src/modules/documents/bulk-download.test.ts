@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createLogger } from "@axentra/observability";
 import type { StorageAdapter } from "@axentra/storage";
 import {
@@ -11,6 +11,8 @@ import type { TokenVerifier } from "../../middleware/auth";
 import { createDocumentService } from "./documents.service";
 import { InMemoryDownloadRepository, type IDownloadRepository } from "./download.repository";
 import { parseZipEntryNames } from "./documents.schema";
+import { BulkDownloadSemaphore, globalBulkDownloadSemaphore } from "./bulk-download.semaphore";
+import { executeBulkDownloadOperation } from "./bulk-download.operations";
 
 const ENABLED_DOC_1 = "11111111-1111-4111-8111-111111111111";
 const ENABLED_DOC_2 = "22222222-2222-4222-8222-222222222222";
@@ -283,6 +285,14 @@ function createSetup(storage?: StorageAdapter) {
 }
 
 describe("POST /api/v1/documents/bulk-download — BE-S3-03", () => {
+  beforeEach(() => {
+    globalBulkDownloadSemaphore.reset();
+  });
+
+  afterEach(() => {
+    globalBulkDownloadSemaphore.reset();
+  });
+
   describe("Authentication and Route Gating", () => {
     test("rejects unauthenticated request with 401", async () => {
       const { app } = createSetup();
@@ -540,6 +550,8 @@ describe("POST /api/v1/documents/bulk-download — BE-S3-03", () => {
       });
 
       expect(response.status).toBe(200);
+      const buffer = await response.arrayBuffer();
+      expect(buffer.byteLength).toBeGreaterThan(0);
       const auditEvents = downloadRepo.getRecordedAuditEvents();
       expect(auditEvents).toHaveLength(1);
       expect(auditEvents[0]?.userEmail).toBe("admin@axentra.local");
@@ -991,9 +1003,7 @@ describe("POST /api/v1/documents/bulk-download — BE-S3-03", () => {
       ).rejects.toThrow("Terlalu banyak permintaan unduhan massal secara bersamaan, antrean penuh");
     });
 
-    test("retains semaphore slot while response body stream is unread and releases on reader cancel (F24)", async () => {
-      const { BulkDownloadSemaphore } = await import("./bulk-download.semaphore");
-      const { executeBulkDownloadOperation } = await import("./bulk-download.operations");
+    test("retains semaphore slot while response body stream is unread and releases on reader cancel", async () => {
       const { downloadRepo } = createSetup();
 
       const semaphore = new BulkDownloadSemaphore({ maxConcurrency: 1 });
@@ -1023,9 +1033,7 @@ describe("POST /api/v1/documents/bulk-download — BE-S3-03", () => {
       expect(semaphore.activeCount).toBe(0);
     });
 
-    test("retains semaphore slot and releases automatically when stream is read to completion (F24)", async () => {
-      const { BulkDownloadSemaphore } = await import("./bulk-download.semaphore");
-      const { executeBulkDownloadOperation } = await import("./bulk-download.operations");
+    test("retains semaphore slot and releases automatically when stream is read to completion", async () => {
       const { downloadRepo } = createSetup();
 
       const semaphore = new BulkDownloadSemaphore({ maxConcurrency: 1 });
@@ -1048,6 +1056,33 @@ describe("POST /api/v1/documents/bulk-download — BE-S3-03", () => {
         const { done } = await reader.read();
         if (done) break;
       }
+
+      expect(semaphore.activeCount).toBe(0);
+    });
+
+    test("releases semaphore slot when storage retrieval times out in operation", async () => {
+      const { downloadRepo } = createSetup();
+      const semaphore = new BulkDownloadSemaphore({ maxConcurrency: 1 });
+
+      const hangingStorage: StorageAdapter = {
+        ...createMockStorage(),
+        getObject: async () => new Promise<Uint8Array>(() => {}),
+      };
+
+      await expect(
+        executeBulkDownloadOperation(
+          {
+            downloadRepository: downloadRepo,
+            storage: hangingStorage,
+            bulkDownloadSemaphore: semaphore,
+            storageTimeoutMs: 25,
+          },
+          {
+            documentIds: [ENABLED_DOC_1],
+            user: { id: "usr-member-1", email: "member@axentra.local", role: "member_team" },
+          },
+        ),
+      ).rejects.toThrow(/Storage retrieval timed out after 25ms/);
 
       expect(semaphore.activeCount).toBe(0);
     });

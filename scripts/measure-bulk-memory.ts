@@ -1,5 +1,5 @@
 /**
- * Memory measurement script for Bulk Download ZIP operations (F7, F10, F24, F25).
+ * Memory measurement script for Bulk Download ZIP operations.
  * Simulates 250 MB payload (5 x 50 MB files) across single, concurrent, and unread flood runs
  * under executeBulkDownloadOperation and BulkDownloadSemaphore.
  * Measures RSS across multiple iterations and reports min, median, and max ranges.
@@ -307,21 +307,27 @@ async function main(): Promise<void> {
     `| 3 Requests (Semaphore limit: 2) | Maks 2 | ${concurrentStats.min} MB | ${concurrentStats.median} MB | ${concurrentStats.max} MB | +${Math.round(concurrentStats.median - baselineStats.median)} MB |`,
   );
   console.log(
-    `| 20 Unread Flood (Unread Sockets) | Maks 2 (10 queue, 8 x 429) | ${floodStats.min} MB | ${floodStats.median} MB | ${floodStats.max} MB | +${Math.round(floodStats.median - baselineStats.median)} MB |`,
+    `| 20 Unread Flood (Unread Sockets) | Maks 2 (10 queue, ${lastRejected} x 429) | ${floodStats.min} MB | ${floodStats.median} MB | ${floodStats.max} MB | +${Math.round(floodStats.median - baselineStats.median)} MB |`,
   );
   console.log("\nCatatan Penting:");
   console.log(
     `1. Status banjir 20 request: ${lastActive} aktif di-stream, ${lastQueue} mengantre di semaphore, ${lastRejected} langsung ditolak HTTP 429 TOO_MANY_REQUESTS.`,
   );
   console.log(
-    "2. Baseline CLI Bun ~22–42 MB. Pada proses server penuh (Hono, Drizzle, DB connection pool, Pino), baseline adalah ~108–110 MB.",
+    "2. Baseline CLI Bun ~22–42 MB. Pada proses server penuh (Hono, Drizzle, DB connection pool, Pino), baseline awal adalah ~108–110 MB.",
   );
   console.log(
-    "3. Dengan baseline server 108 MB, estimasi RSS puncak terburuk (Max RSS + ~80 MB baseline offset) adalah:",
+    "3. Hasil pengukuran RSS puncak proses aktual (Min / Median / Max) dari 3 iterasi eksekusi riil:",
   );
-  console.log(`   - 1 Request (250 MB payload): ~${Math.round(singleStats.max + 80)} MB`);
-  console.log(`   - 3 Concurrent Requests: ~${Math.round(concurrentStats.max + 80)} MB`);
-  console.log(`   - 20 Unread Sockets Flood: ~${Math.round(floodStats.max + 80)} MB`);
+  console.log(
+    `   - 1 Request (250 MB payload): ${singleStats.min} MB / ${singleStats.median} MB / ${singleStats.max} MB`,
+  );
+  console.log(
+    `   - 3 Concurrent Requests: ${concurrentStats.min} MB / ${concurrentStats.median} MB / ${concurrentStats.max} MB`,
+  );
+  console.log(
+    `   - 20 Unread Sockets Flood: ${floodStats.min} MB / ${floodStats.median} MB / ${floodStats.max} MB`,
+  );
   console.log(
     "4. Batas semaphore berlaku PER PROSES (instance API). Jika N instance dijalankan di balik load balancer, batas konkurensi cluster adalah N x 2.",
   );

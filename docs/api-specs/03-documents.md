@@ -296,7 +296,7 @@ Accepts selected document IDs, validates existence, enforces category download p
 - Headers:
   - `Content-Type: application/zip`
   - `Content-Disposition: attachment; filename="axentra-documents.zip"; filename*=UTF-8''axentra-documents.zip`
-  - `Content-Length: <fileSize>`
+  - `Content-Length: <fileSize>` (atau `Transfer-Encoding: chunked` saat ditransmisikan secara streaming via Web ReadableStream)
 - Body: Binary ZIP archive bytes containing all requested files.
 
 **Error Responses:**
@@ -309,12 +309,13 @@ Accepts selected document IDs, validates existence, enforces category download p
 - `429 TOO_MANY_REQUESTS`: Concurrency queue capacity exceeded (`"Terlalu banyak permintaan unduhan massal secara bersamaan, antrean penuh"`).
 - `500 INTERNAL_ERROR`: Storage retrieval failure, file size mismatch with metadata, or unexpected server error (`"Terjadi kesalahan pada server"`). Requests encountering storage failures do not write audit records.
 
-> **Approver Architectural Decision (Arya Isnaidi, Tech Lead — 21 Oktober 2026 / Disempurnakan 22 Oktober 2026):**
+> **Approver Architectural Decision (Arya Isnaidi, Tech Lead — 21 Oktober 2026 / Disempurnakan 23 Oktober 2026):**
 >
-> 1. **Prefetch Storage & Zero-Audit on Failure (F12, F17):** Endpoint melakukan prefetch seluruh objek dokumen dari storage dan memverifikasi integritas ukuran sebelum membuat ZIP archive, menulis audit event, atau mengirim response. Jika storage gagal atau ukuran tidak sesuai, endpoint mengembalikan `500 INTERNAL_ERROR` tanpa catatan audit. Follow-up untuk menyelaraskan urutan audit pada single download (`download.operations.ts`) dialokasikan ke pemilik kartu BE-S3-04.
-> 2. **Pengendalian Memori Konkurensi & Siklus Hidup Respons (F7, F10, F24, F25, F27):** Batas payload 250 MB dipertahankan dengan penerapan global async semaphore (`BulkDownloadSemaphore`, `maxConcurrency: 2`, `maxQueueLength: 10`) yang berlaku per instans proses API. Slot semaphore di-acquire sebelum prefetch dan dipertahankan sepanjang transmisi chunked `ReadableStream` sampai klien selesai membaca body, koneksi dibatalkan (`cancel`/`abort`), atau batas waktu transfer (60 detik) tercapai, mencegah akumulasi buffer arsip di memori proses saat terjadi lonjakan permintaan paralel.
-> 3. **Pengecualian Ruang Lingkup Dependensi (F23):** Pembaruan dependensi `hono` (4.13.11) dan `vite` (7.3.7) pada commit `e7455aa` disetujui sebagai pengecualian ruang lingkup (scope exception) yang sah dalam PR ini demi resolusi peringatan keamanan audit tanpa menunggu siklus maintenance terpisah.
-> 4. **Urutan Penggabungan Cabang (Merge Order):** Cabang `BE-S3-03` digabungkan terlebih dahulu ke `dev`. Pemilik kartu `BE-S3-04` akan melakukan rebase setelahnya untuk menyelesaikan konflik teks pada `download.repository.ts` dan berkas tes integrasi terkait.
+> 1. **Prefetch Storage & Zero-Audit on Failure:** Endpoint melakukan prefetch seluruh objek dokumen dari storage dan memverifikasi integritas ukuran sebelum membuat ZIP archive, menulis audit event, atau mengirim response. Jika storage gagal atau ukuran tidak sesuai, endpoint mengembalikan `500 INTERNAL_ERROR` tanpa catatan audit. Follow-up untuk menyelaraskan urutan audit pada single download (`download.operations.ts`) dialokasikan ke pemilik kartu BE-S3-04.
+> 2. **Pengendalian Memori Konkurensi & Siklus Hidup Respons:** Batas payload 250 MB dipertahankan dengan penerapan global async semaphore (`BulkDownloadSemaphore`, `maxConcurrency: 2`, `maxQueueLength: 10`) yang berlaku per instans proses API. Slot semaphore di-acquire sebelum prefetch dan dipertahankan sepanjang transmisi chunked `ReadableStream` sampai klien selesai membaca body, koneksi dibatalkan (`cancel`/`abort`), atau batas waktu transfer (60 detik) tercapai, mencegah akumulasi buffer arsip di memori proses saat terjadi lonjakan permintaan paralel.
+> 3. **Kontrak Header Transmisi Streaming:** Endpoint menyertakan header `Content-Length` dengan nilai ukuran total arsip byte. Pada level runtime HTTP server (`Bun.serve`), body respons berbasis `ReadableStream` ditransmisikan menggunakan `Transfer-Encoding: chunked` sesuai RFC 7230 §3.3.2 untuk efisiensi streaming bertahap. Klien web Axentra menerima kedua mekanisme tersebut secara transparan melalui `response.blob()`.
+> 4. **Resolusi Dependensi:** Seluruh pembaruan dependensi keamanan (`hono` dan `vite`) telah dikonsolidasikan langsung pada cabang `dev`, sehingga cabang `BE-S3-03` tetap berfokus tunggal pada implementasi fitur unduhan massal dokumen tanpa perubahan berkas kunci dependensi.
+> 5. **Urutan Penggabungan Cabang (Merge Order):** Cabang `BE-S3-03` digabungkan terlebih dahulu ke `dev`. Pemilik kartu `BE-S3-04` akan melakukan rebase setelahnya untuk menyelesaikan konflik teks pada `download.repository.ts` dan berkas tes integrasi terkait.
 
 ## Related Documents
 

@@ -1,5 +1,9 @@
 import { TooManyRequestsError } from "../../http/errors";
 
+export const DEFAULT_BULK_DOWNLOAD_MAX_CONCURRENCY = 2;
+export const DEFAULT_BULK_DOWNLOAD_MAX_QUEUE_LENGTH = 10;
+export const DEFAULT_BULK_DOWNLOAD_QUEUE_TIMEOUT_MS = 30_000;
+
 export type BulkDownloadSemaphoreOptions = {
   readonly maxConcurrency?: number;
   readonly maxQueueLength?: number;
@@ -13,13 +17,12 @@ export type SemaphoreAcquireOptions = {
 
 type QueueWaiter = {
   readonly resolve: (release: () => void) => void;
-  readonly reject: (reason: Error) => void;
   timer: ReturnType<typeof setTimeout> | undefined;
   cleanup: () => void;
 };
 
 /**
- * In-process async semaphore to bound concurrency and active memory for bulk ZIP downloads (F7, F10, F24, F25).
+ * In-process async semaphore to bound concurrency and active memory for bulk ZIP downloads.
  * Restricts active memory-intensive prefetch, archive assembly, and streaming transmission
  * to `maxConcurrency` (default 2 per process instance, queue capacity 10).
  * Retains slot throughout the response stream until fully read or aborted, preventing unbounded accumulation.
@@ -33,9 +36,9 @@ export class BulkDownloadSemaphore {
   private readonly queue: Array<QueueWaiter> = [];
 
   public constructor(options?: BulkDownloadSemaphoreOptions) {
-    this.maxConcurrency = options?.maxConcurrency ?? 2;
-    this.maxQueueLength = options?.maxQueueLength ?? 10;
-    this.queueTimeoutMs = options?.queueTimeoutMs ?? 30_000;
+    this.maxConcurrency = options?.maxConcurrency ?? DEFAULT_BULK_DOWNLOAD_MAX_CONCURRENCY;
+    this.maxQueueLength = options?.maxQueueLength ?? DEFAULT_BULK_DOWNLOAD_MAX_QUEUE_LENGTH;
+    this.queueTimeoutMs = options?.queueTimeoutMs ?? DEFAULT_BULK_DOWNLOAD_QUEUE_TIMEOUT_MS;
   }
 
   /**
@@ -101,10 +104,6 @@ export class BulkDownloadSemaphore {
           cleanup();
           resolve(releaseFn);
         },
-        reject: (err) => {
-          cleanup();
-          reject(err);
-        },
         timer,
         cleanup,
       };
@@ -161,7 +160,7 @@ export class BulkDownloadSemaphore {
  * Applied per API instance.
  */
 export const globalBulkDownloadSemaphore = new BulkDownloadSemaphore({
-  maxConcurrency: 2,
-  maxQueueLength: 10,
-  queueTimeoutMs: 30_000,
+  maxConcurrency: DEFAULT_BULK_DOWNLOAD_MAX_CONCURRENCY,
+  maxQueueLength: DEFAULT_BULK_DOWNLOAD_MAX_QUEUE_LENGTH,
+  queueTimeoutMs: DEFAULT_BULK_DOWNLOAD_QUEUE_TIMEOUT_MS,
 });

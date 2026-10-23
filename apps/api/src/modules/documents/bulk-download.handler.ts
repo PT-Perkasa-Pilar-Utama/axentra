@@ -14,8 +14,8 @@ export function createBulkDownloadHandler(
     const requestId = context.get("requestId");
     const logger = context.get("logger");
 
-    const body = await context.req.json().catch(() => null);
-    const parsed = bulkDownloadRequestSchema.safeParse(body);
+    const rawBody: unknown = await context.req.json().catch(() => null);
+    const parsed = bulkDownloadRequestSchema.safeParse(rawBody);
     if (!parsed.success) {
       throw new ValidationError(
         parsed.error.issues[0]?.message ?? "Payload unduhan massal tidak valid",

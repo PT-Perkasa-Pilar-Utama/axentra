@@ -1,4 +1,5 @@
 import { crc32 } from "node:zlib";
+import { PayloadTooLargeError } from "../../http/errors";
 import {
   deduplicateEntryNames,
   toDosDateTime,
@@ -52,7 +53,17 @@ export function createZipArchive(
 ): Uint8Array {
   const uniqueEntries = deduplicateEntryNames(entries);
   if (uniqueEntries.length > ZIP32_MAX_ENTRY_COUNT) {
-    throw new Error(`Jumlah entry ZIP (${uniqueEntries.length}) melebihi batas 16-bit (65.535)`);
+    throw new PayloadTooLargeError(
+      `Jumlah entry ZIP (${uniqueEntries.length}) melebihi batas 16-bit (65.535)`,
+    );
+  }
+
+  for (const entry of uniqueEntries) {
+    if (entry.content.byteLength > ZIP32_MAX_ENTRY_SIZE) {
+      throw new PayloadTooLargeError(
+        `Ukuran entry ZIP "${entry.name}" melebihi batas 32-bit (4 GiB)`,
+      );
+    }
   }
 
   const { time: dosTime, date: dosDate } = toDosDateTime(archiveDate);
@@ -71,10 +82,6 @@ export function createZipArchive(
 
   for (const entry of uniqueEntries) {
     const content = entry.content;
-    if (content.byteLength > ZIP32_MAX_ENTRY_SIZE) {
-      throw new Error(`Ukuran entry ZIP "${entry.name}" melebihi batas 32-bit (4 GiB)`);
-    }
-
     const nameBytes = textEncoder.encode(entry.name);
     const checksum = crc32(content);
     const localHeaderOffset = currentOffset;

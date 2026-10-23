@@ -9,6 +9,7 @@ import {
   type ZipEntry,
 } from "./zip.writer";
 import { parseZipEntryNames } from "./documents.schema";
+import { PayloadTooLargeError } from "../../http/errors";
 
 /**
  * Reference ZIP archive builder used strictly within test fixtures
@@ -278,14 +279,22 @@ describe("zip.writer", () => {
       expect(names.has("laporan (1).pdf")).toBe(true);
     });
 
-    it("throws error when entry count exceeds ZIP32 limit (65,535) (F21)", () => {
+    it("throws PayloadTooLargeError when entry count exceeds ZIP32 limit (65,535)", () => {
       const dummyContent = new Uint8Array([1]);
       const entries = Array.from({ length: 65536 }, (_, i) => ({
         name: `doc_${i}.txt`,
         content: dummyContent,
       }));
 
-      expect(() => createZipArchive(entries)).toThrow(/melebihi batas 16-bit \(65\.535\)/);
+      expect(() => createZipArchive(entries)).toThrow(PayloadTooLargeError);
+    });
+
+    it("throws PayloadTooLargeError when entry size exceeds ZIP32 limit (4 GiB)", () => {
+      const largeContent = new Uint8Array(0);
+      Object.defineProperty(largeContent, "byteLength", { value: 0x100000000 });
+      const entries = [{ name: "oversized.bin", content: largeContent }];
+
+      expect(() => createZipArchive(entries)).toThrow(PayloadTooLargeError);
     });
   });
 });

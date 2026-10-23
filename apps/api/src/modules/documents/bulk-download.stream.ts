@@ -1,5 +1,9 @@
 import type { StorageAdapter } from "@axentra/storage";
 
+export const DEFAULT_STREAM_CHUNK_BYTES = 64 * 1024; // 64 KB
+export const DEFAULT_STREAM_TRANSFER_TIMEOUT_MS = 60_000; // 60s
+export const DEFAULT_STORAGE_RETRIEVAL_TIMEOUT_MS = 30_000; // 30s
+
 export type MonitoredZipStreamOptions = {
   readonly chunkSize?: number | undefined;
   readonly transferTimeoutMs?: number | undefined;
@@ -10,20 +14,21 @@ export type MonitoredZipStreamOptions = {
 /**
  * Creates a standard Web ReadableStream that streams pre-assembled ZIP bytes in chunks
  * while retaining the semaphore concurrency slot until the client finishes reading,
- * aborts, disconnects, or hits the transfer timeout (F24, F25).
+ * aborts, disconnects, or hits the transfer timeout.
  */
 export function createMonitoredZipStream(
   bytes: Uint8Array,
   releaseSlot: () => void,
   options?: MonitoredZipStreamOptions,
 ): ReadableStream<Uint8Array> {
-  const chunkSize = options?.chunkSize ?? 64 * 1024; // 64 KB chunks
+  const chunkSize = options?.chunkSize ?? DEFAULT_STREAM_CHUNK_BYTES;
   const totalSize = bytes.byteLength;
-  const transferTimeoutMs = options?.transferTimeoutMs ?? 60_000;
+  const transferTimeoutMs = options?.transferTimeoutMs ?? DEFAULT_STREAM_TRANSFER_TIMEOUT_MS;
   const signal = options?.signal;
 
   let offset = 0;
   let released = false;
+  let streamController: ReadableStreamDefaultController<Uint8Array> | undefined;
 
   let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -52,10 +57,18 @@ export function createMonitoredZipStream(
   if (transferTimeoutMs > 0) {
     timer = setTimeout(() => {
       safeRelease();
+      try {
+        streamController?.error(new Error("Batas waktu transfer unduhan massal terlampaui"));
+      } catch {
+        // Stream may already be closed
+      }
     }, transferTimeoutMs);
   }
 
   return new ReadableStream<Uint8Array>({
+    start(controller) {
+      streamController = controller;
+    },
     pull(controller) {
       if (offset < totalSize) {
         const nextOffset = Math.min(offset + chunkSize, totalSize);
@@ -74,12 +87,12 @@ export function createMonitoredZipStream(
 
 /**
  * Retrieves a storage object with an explicit timeout (default 30 seconds)
- * to prevent deadlocks from hung network/storage requests (F25).
+ * to prevent deadlocks from hung network/storage requests.
  */
 export async function getObjectWithTimeout(
   storage: StorageAdapter,
   key: string,
-  timeoutMs = 30_000,
+  timeoutMs = DEFAULT_STORAGE_RETRIEVAL_TIMEOUT_MS,
 ): Promise<Uint8Array> {
   let timer: ReturnType<typeof setTimeout> | undefined;
 
