@@ -8,6 +8,7 @@ import {
   DocumentDetailView,
   type DocumentDetailViewProps,
 } from "../src/features/document-detail/document-detail.view";
+import { buildPdfPreviewSrc } from "../src/features/document-detail/document-detail.presenter";
 import { RecentDocumentsView } from "../src/features/recent-documents/recent-documents.view";
 import type { RecentDocumentsPresenter } from "../src/features/recent-documents/recent-documents.presenter";
 
@@ -131,12 +132,13 @@ describe("Document preview entry (FE-S3-01 / AC-08.01)", () => {
 
     const frame = await screen.findByTitle("Pratinjau laporan.pdf");
     expect(frame.tagName).toBe("IFRAME");
-    expect(frame.getAttribute("src")).toBe(pdfPreview.previewUrl);
+    expect(frame.getAttribute("src")).toBe(buildPdfPreviewSrc(pdfPreview.previewUrl));
+    expect(frame.getAttribute("src")).toContain("toolbar=0");
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("laporan.pdf");
     expect(
       screen.getByRole("main", { name: "Area Pratinjau Dokumen" }).querySelector("a"),
     ).toBeNull();
-    expect(screen.getByRole("button", { name: /unduh/i }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: /unduh/i }).hasAttribute("disabled")).toBe(false);
   });
 
   test("shows an explicit DOCX fallback without exposing a download URL", async () => {
@@ -152,9 +154,8 @@ describe("Document preview entry (FE-S3-01 / AC-08.01)", () => {
     ).toBeTruthy();
     const canvas = screen.getByRole("main", { name: "Area Pratinjau Dokumen" });
     expect(canvas.textContent).toContain("kontrak.docx");
-    expect(canvas.textContent).toContain(
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    );
+    expect(canvas.textContent).toContain("format DOCX belum didukung");
+    expect(canvas.textContent).not.toContain("application/vnd.openxmlformats");
 
     expect(canvas.querySelector("iframe")).toBeNull();
     expect(canvas.querySelector("a")).toBeNull();
@@ -196,13 +197,28 @@ describe("Document preview entry (FE-S3-01 / AC-08.01)", () => {
     expect(screen.getByRole("complementary", { name: "Halaman dokumen" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Halaman 1" })).toBeNull();
     const downloadButton = screen.getByRole("button", { name: /unduh/i });
-    expect(downloadButton.hasAttribute("disabled")).toBe(true);
-    // F8 Round 3: the disabled reason must resolve for assistive technology.
+    expect(downloadButton.hasAttribute("disabled")).toBe(false);
     const noteId = downloadButton.getAttribute("aria-describedby");
     expect(noteId).toBe("download-note");
     const note = noteId ? document.getElementById(noteId) : null;
-    expect(note?.textContent).toContain("Fitur unduh belum tersedia pada versi ini.");
+    expect(note?.textContent).toContain("Unduh dalam format asli");
     expect(screen.getByRole("complementary", { name: "Informasi Dokumen" })).toBeTruthy();
     expect(screen.queryByRole("link", { name: /download|unduh/i })).toBeNull();
+  });
+});
+
+describe("buildPdfPreviewSrc (F1)", () => {
+  test("hides the native PDF toolbar and keeps the signed query intact", () => {
+    const signed = "https://storage.example/axentra/doc.pdf?X-Amz-Signature=abc&X-Amz-Expires=300";
+    const result = new URL(buildPdfPreviewSrc(signed));
+    expect(result.hash).toBe("#toolbar=0&navpanes=0");
+    expect(result.searchParams.get("X-Amz-Signature")).toBe("abc");
+    expect(result.searchParams.get("X-Amz-Expires")).toBe("300");
+  });
+
+  test("replaces an existing fragment instead of appending to it", () => {
+    expect(buildPdfPreviewSrc("https://storage.example/doc.pdf#page=2")).toBe(
+      "https://storage.example/doc.pdf#toolbar=0&navpanes=0",
+    );
   });
 });

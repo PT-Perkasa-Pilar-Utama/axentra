@@ -101,7 +101,9 @@ export async function executeDownloadOperation(
   }
 
   const ttl = input.expiresInSeconds ?? DEFAULT_DOWNLOAD_TTL_SECONDS;
-  const downloadUrl = await dependencies.storage.createDownloadUrl(file.storageKey, ttl);
+  const downloadUrl = await dependencies.storage.createDownloadUrl(file.storageKey, ttl, {
+    downloadFilename: file.originalName,
+  });
   await recordAudit();
 
   return {
