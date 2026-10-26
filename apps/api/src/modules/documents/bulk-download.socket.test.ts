@@ -145,12 +145,15 @@ describe("POST /api/v1/documents/bulk-download — Socket Concurrency & Backpres
       });
 
       let responseBuffer = "";
+      let countedAs429 = false;
       client.on("data", (chunk) => {
         responseBuffer += chunk.toString();
         if (
-          responseBuffer.includes("429 Too Many Requests") ||
-          responseBuffer.includes("TOO_MANY_REQUESTS")
+          !countedAs429 &&
+          (responseBuffer.includes("429 Too Many Requests") ||
+            responseBuffer.includes("TOO_MANY_REQUESTS"))
         ) {
+          countedAs429 = true;
           responses429Count++;
         }
       });

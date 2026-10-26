@@ -245,9 +245,7 @@ async function runSingleIteration(_iteration: number): Promise<{
 
 async function main(): Promise<void> {
   console.log("=== Axentra Bulk Download Memory Benchmark (Bun 1.3.12) ===");
-  console.log(
-    "Measuring executeBulkDownloadOperation with Response Stream Lifecycle (F7, F10, F24, F25)\n",
-  );
+  console.log("Measuring executeBulkDownloadOperation with Response Stream Lifecycle\n");
 
   const iterations = 3;
   const baselines: number[] = [];
