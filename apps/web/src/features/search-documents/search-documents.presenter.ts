@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { searchDocuments, type SearchResultItem } from "./search-documents.api";
 
@@ -13,21 +13,29 @@ export type SearchDocumentsPresenter = {
   isEmpty: boolean;
   hasResults: boolean;
   results: SearchResultItem[];
+  resultIds: string[];
   handleInputChange: (value: string) => void;
-  handleSubmit: (e: React.FormEvent) => void;
+  handleSubmit: (e: { preventDefault: () => void }) => void;
   clearSearch: () => void;
   setCategoryFilter: (id: string | undefined) => void;
   retry: () => Promise<void>;
 };
 
-export function useSearchDocumentsPresenter(): SearchDocumentsPresenter {
+// activeTagNames berasal dari filter Top Tags bersama; hasil pencarian ikut difilter (AC-04.03).
+export function useSearchDocumentsPresenter(
+  activeTagNames: readonly string[] = [],
+): SearchDocumentsPresenter {
   const [inputValue, setInputValue] = useState("");
   const [keyword, setKeyword] = useState("");
   const [categoryId, setCategoryId] = useState<string | undefined>();
+  const tags = useMemo(
+    () => [...activeTagNames].sort((a, b) => a.localeCompare(b)),
+    [activeTagNames],
+  );
 
   const query = useQuery({
-    queryKey: [...SEARCH_DOCUMENTS_QUERY_KEY, keyword, categoryId],
-    queryFn: () => searchDocuments(keyword, categoryId),
+    queryKey: [...SEARCH_DOCUMENTS_QUERY_KEY, keyword, categoryId, tags],
+    queryFn: () => searchDocuments(keyword, categoryId, tags),
     enabled: keyword.trim().length > 0 || categoryId !== undefined,
     staleTime: 60 * 1000,
     retry: 1,
@@ -38,7 +46,7 @@ export function useSearchDocumentsPresenter(): SearchDocumentsPresenter {
   }, []);
 
   const handleSubmit = useCallback(
-    (e: React.FormEvent) => {
+    (e: { preventDefault: () => void }) => {
       e.preventDefault();
       setKeyword(inputValue.trim());
     },
@@ -75,6 +83,7 @@ export function useSearchDocumentsPresenter(): SearchDocumentsPresenter {
     isEmpty,
     hasResults,
     results,
+    resultIds: results.map((item) => item.id),
     handleInputChange,
     handleSubmit,
     clearSearch,

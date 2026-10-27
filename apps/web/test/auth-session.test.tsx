@@ -1,8 +1,13 @@
-import { describe, expect, beforeEach, spyOn, test } from "bun:test";
+import { afterAll, describe, expect, beforeEach, spyOn, test } from "bun:test";
 import { createMemoryRouter, MemoryRouter, Route, Routes, RouterProvider } from "react-router";
 import type { AuthUser, LoginRequest, LoginResponse } from "@axentra/shared";
 import { z } from "zod";
-import { apiRequest, setAuthTokenGetter, setUnauthorizedHandler } from "../src/lib/api-client";
+import {
+  apiRequest,
+  setAuthTokenGetter,
+  setSessionRefresher,
+  setUnauthorizedHandler,
+} from "../src/lib/api-client";
 import {
   AUTH_SESSION_STORAGE_KEY,
   clearSession,
@@ -65,6 +70,15 @@ function createMockFetch(
   });
 }
 
+const EXPIRES_AT = "2026-10-27T12:00:00.000Z";
+
+// Handler dan refresher didaftarkan saat render (termasuk renderToString), jadi bersihkan setelah file.
+afterAll(() => {
+  setAuthTokenGetter(null);
+  setUnauthorizedHandler(null);
+  setSessionRefresher(null);
+});
+
 const mockMemberUser: AuthUser = {
   id: "usr-001",
   email: "member@axentra.local",
@@ -99,11 +113,10 @@ describe("FE-S1-06: In-Memory Token Storage (F1)", () => {
     sessionStorage.clear();
   });
 
-  test("keeps bearer and refresh tokens in memory only and NEVER writes them to Web Storage", () => {
+  test("keeps the access token in memory only and NEVER writes it to Web Storage", () => {
     const session: AuthSession = {
       user: mockMemberUser,
       token: "ax_token_secret_123",
-      refreshToken: "ax_rt_secret_456",
       rememberMe: true,
     };
 
@@ -212,6 +225,7 @@ describe("FE-S1-06: 401 Redirect and Session Cleared (F2, F3)", () => {
   });
 
   test("mounts provider and router, receives 401 from API, clears session, and observes redirect to /login with preserved location (F3)", async () => {
+    const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
     Object.defineProperty(globalThis, "window", {
       value: {
         location: {
@@ -302,6 +316,9 @@ describe("FE-S1-06: 401 Redirect and Session Cleared (F2, F3)", () => {
       expect(after401Html).not.toContain("Protected Dashboard View");
     } finally {
       fetchSpy.mockRestore();
+      if (originalWindow) {
+        Object.defineProperty(globalThis, "window", originalWindow);
+      }
     }
   });
 });
@@ -317,7 +334,7 @@ describe("FE-S1-06: Login Success Behavior and Routing (F3)", () => {
     const mockLoginResponse: LoginResponse = {
       user: mockMemberUser,
       token: "ax_new_session_token",
-      refreshToken: "ax_new_rt",
+      expiresAt: EXPIRES_AT,
     };
 
     const mockLoginFn = async (_payload: LoginRequest): Promise<LoginResponse> => {
@@ -401,7 +418,7 @@ describe("FE-S1-06: Login Success Behavior and Routing (F3)", () => {
     const mockLoginResponse: LoginResponse = {
       user: mockMemberUser,
       token: "ax_dashboard_token",
-      refreshToken: "ax_dashboard_rt",
+      expiresAt: EXPIRES_AT,
     };
 
     const mockLoginFn = async (_payload: LoginRequest): Promise<LoginResponse> => {
@@ -475,7 +492,7 @@ describe("FE-S1-06: Login Success Behavior and Routing (F3)", () => {
     const mockResponse: LoginResponse = {
       user: mockMemberUser,
       token: "ax_new_token",
-      refreshToken: "ax_new_rt",
+      expiresAt: EXPIRES_AT,
     };
 
     capturedContext?.loginSession(mockResponse, true);

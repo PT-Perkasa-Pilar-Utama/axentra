@@ -1,4 +1,4 @@
-import { and, count, desc, eq, ilike, inArray, isNull, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import {
   documentFiles,
@@ -8,6 +8,7 @@ import {
   smartTags,
 } from "@axentra/db";
 import type { SearchDocument, SearchDocumentsQuery } from "@axentra/shared";
+import { ilikeContains } from "./search.like";
 import { resolveDocumentSnippet } from "./snippet";
 
 export type SearchQueryResult = {
@@ -30,22 +31,22 @@ export class DrizzleSearchRepository implements ISearchRepository {
     }
 
     if (query.q && query.q.trim().length > 0) {
-      const pattern = `%${query.q.trim()}%`;
+      const term = query.q.trim();
       const matchingDocIdsQuery = this.db
         .select({ id: documents.id })
         .from(documents)
-        .where(ilike(documents.title, pattern))
+        .where(ilikeContains(documents.title, term))
         .union(
           this.db
             .select({ id: documentFiles.documentId })
             .from(documentFiles)
-            .where(ilike(documentFiles.originalName, pattern)),
+            .where(ilikeContains(documentFiles.originalName, term)),
         )
         .union(
           this.db
             .select({ id: documentMetadata.documentId })
             .from(documentMetadata)
-            .where(ilike(documentMetadata.extractedText, pattern)),
+            .where(ilikeContains(documentMetadata.extractedText, term)),
         );
 
       conditions.push(inArray(documents.id, matchingDocIdsQuery));

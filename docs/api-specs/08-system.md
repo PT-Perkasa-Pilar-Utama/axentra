@@ -63,4 +63,5 @@ Checks PostgreSQL, Redis, and Storage.
 
 - Readiness dependency checks are bounded.
 - Liveness intentionally avoids dependency checks.
-- These endpoints are the only implemented API routes in Foundation v1.0.0.
+- These endpoints are the Foundation v1.0.0 system routes.
+- Business route status is tracked in [\_index.md](_index.md).

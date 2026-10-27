@@ -659,7 +659,10 @@ describe("safeCleanupTestCategories Multi-Layer Guard & Atomic Cleanup (Findings
   integrationTest(
     "proves real PostgreSQL atomic transaction rollback when category deletion fails (Findings F23, F24)",
     async () => {
-      const dbUrl = "postgres://axentra:local-postgres-password@localhost:5432/axentra_test";
+      const dbUrl =
+        Bun.env.TEST_DATABASE_URL ??
+        Bun.env.DATABASE_URL ??
+        "postgres://axentra:local-postgres-password@localhost:5432/axentra_test";
       const realClient = createDatabaseClient(dbUrl);
       await realClient.sql.unsafe("SET client_min_messages TO warning;");
 

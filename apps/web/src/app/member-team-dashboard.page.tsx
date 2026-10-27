@@ -4,21 +4,28 @@ import type React from "react";
 import perkasaLogo from "../assets/perkasa-logo-sidebar.png";
 import { CategoryNavigationView } from "../features/categories/categories.view";
 import { useCategoriesPresenter } from "../features/categories/categories.presenter";
+import { canUploadDocuments } from "../features/document-upload/document-upload.access";
 import { useDocumentUploadPresenter } from "../features/document-upload/document-upload.presenter";
 import { DocumentUploadAreaView } from "../features/document-upload/document-upload.view";
 import { RecentDocumentsView } from "../features/recent-documents/recent-documents.view";
 import { useRecentDocumentsPresenter } from "../features/recent-documents/recent-documents.presenter";
-import { useTopTagsPresenter } from "../features/top-tags/top-tags.presenter";
+import {
+  useTagFilterPresenter,
+  useTopTagsPresenter,
+} from "../features/top-tags/top-tags.presenter";
 import { TopTagsView } from "../features/top-tags/top-tags.view";
 import { useSearchDocumentsPresenter } from "../features/search-documents/search-documents.presenter";
 import { SearchBarView } from "../features/search-documents/search-bar.view";
 import { SearchResultsView } from "../features/search-documents/search-results.view";
+import { useAuthSession } from "../features/auth/auth-session.context";
 
 export function MemberTeamDashboardPage(): React.JSX.Element {
+  const { user } = useAuthSession();
+  const canUpload = canUploadDocuments(user?.role);
   const uploadPresenter = useDocumentUploadPresenter();
-  const topTagsPresenter = useTopTagsPresenter("dashboard");
-  const documentsPresenter = useRecentDocumentsPresenter(5, topTagsPresenter.activeTagNames);
-  const searchPresenter = useSearchDocumentsPresenter();
+  const tagFilter = useTagFilterPresenter();
+  const documentsPresenter = useRecentDocumentsPresenter(5, tagFilter.activeTagList);
+  const searchPresenter = useSearchDocumentsPresenter(tagFilter.activeTagList);
   const categoriesPresenter = useCategoriesPresenter(
     searchPresenter.categoryId,
     searchPresenter.setCategoryFilter,
@@ -26,6 +33,12 @@ export function MemberTeamDashboardPage(): React.JSX.Element {
 
   const isSearching =
     searchPresenter.keyword.length > 0 || searchPresenter.categoryId !== undefined;
+  // Konteks Top Tags mengikuti mode: dasbor memakai tag global, pencarian memakai hasilnya (AC-04.01).
+  const topTagsPresenter = useTopTagsPresenter({
+    context: isSearching ? "search" : "dashboard",
+    documentIds: isSearching ? searchPresenter.resultIds : undefined,
+    activeTagNames: tagFilter.activeTagList,
+  });
 
   return (
     <main
@@ -70,11 +83,11 @@ export function MemberTeamDashboardPage(): React.JSX.Element {
           <div className="space-y-6 pb-8">
             <TopTagsView
               presenter={topTagsPresenter}
-              activeTagNames={topTagsPresenter.activeTagNames}
-              onTagClick={topTagsPresenter.toggleTag}
+              activeTagNames={tagFilter.activeTagNames}
+              onTagClick={tagFilter.toggleTag}
             />
 
-            <DocumentUploadAreaView presenter={uploadPresenter} />
+            {canUpload && <DocumentUploadAreaView presenter={uploadPresenter} />}
 
             {isSearching ? (
               <SearchResultsView presenter={searchPresenter} />

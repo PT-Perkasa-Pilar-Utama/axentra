@@ -37,3 +37,8 @@ Goal: Member Team can preview, download one document, and download selected docu
 
 Goal: Head of Team can monitor adoption, view download audit logs, and control download
 permission by category.
+
+## Admin (usulan, belum ada sprint)
+
+US-14 to US-18 are not assigned to a sprint yet. The requirements are in
+[admin-role.md](admin-role.md).

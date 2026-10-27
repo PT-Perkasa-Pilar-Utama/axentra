@@ -2,19 +2,23 @@
 
 Source: BA user stories US-01, US-02, US-03, US-07, US-08, US-09, US-10.
 
-These APIs are planned and not implemented in Foundation v1.0.0.
+Status: every route below is implemented in Foundation v1.0.0.
 
-## Planned Endpoints
+## Endpoints
 
 ```text
-GET  /api/v1/documents
-POST /api/v1/documents/upload
-POST /api/v1/documents/check-duplicate
-GET  /api/v1/documents/:id
-GET  /api/v1/documents/:id/preview
-GET  /api/v1/documents/:id/download
-POST /api/v1/documents/bulk-download
-GET  /api/v1/documents/:id/related
+GET  /api/v1/documents                    Implemented (BE-S1-06)
+POST /api/v1/documents/upload             Implemented (BE-S1-02)
+POST /api/v1/documents/check-duplicate    Implemented (BE-S1-04)
+GET  /api/v1/documents/:id                Implemented
+GET  /api/v1/documents/:id/metadata       Implemented (BE-S1-05)
+GET  /api/v1/documents/:id/smart-tags     Implemented (BE-S2-01)
+GET  /api/v1/documents/:id/category       Implemented (BE-S2-04)
+GET  /api/v1/documents/:id/related        Implemented (BE-S2-06)
+GET  /api/v1/documents/:id/preview        Implemented (BE-S3-01)
+GET  /api/v1/documents/:id/preview/content Implemented (BE-S3-01)
+GET  /api/v1/documents/:id/download       Implemented (BE-S3-02)
+POST /api/v1/documents/bulk-download      Implemented (BE-S3-03)
 ```
 
 ## Recent Document List
@@ -112,7 +116,8 @@ Status: Implemented (BE-S1-02).
 
 **Error Responses:**
 
-- `400 VALIDATION_ERROR` / `UNSUPPORTED_FILE_TYPE`: Invalid request, unsupported extension/MIME, mixed types, or exceeded batch limit.
+- `400 VALIDATION_ERROR`: Invalid request, mixed PDF and DOCX types, or exceeded batch limit.
+- `415 UNSUPPORTED_FILE_TYPE`: Unsupported extension or MIME type (`"Tipe file tidak didukung"`).
 - `401 UNAUTHORIZED`: Missing, forged, or expired bearer token.
 - `403 FORBIDDEN`: Non-member role (e.g. `head_of_team`).
 - `409 DUPLICATE_DOCUMENT`: Content identical to existing document or intra-batch duplicate.
@@ -136,7 +141,9 @@ Status: Implemented (BE-S1-02).
 
 ### `POST /api/v1/documents/check-duplicate`
 
-Planned behavior:
+Status: Implemented (BE-S1-04).
+
+Behavior:
 
 - Compare uploaded content, not only filename.
 - Return duplicate warning `File ini sudah ada`.
@@ -147,15 +154,17 @@ Planned behavior:
 
 ### `GET /api/v1/documents/:id`
 
-Planned response includes:
+Status: Implemented. Authorization: `member_team` and `head_of_team`, the same as the sibling read endpoints.
 
-- Filename.
-- Original format.
-- Extracted metadata such as author.
-- Smart Tags.
-- Auto category.
-- Preview availability.
-- Download permission state.
+**Success Response (`200 OK`):** `data` contains `id`, `title`, `processingStatus`, `category` (or `null`), `tags` (Smart Tags), `file` (`originalName`, `mimeType`, `fileSize`, `fileExtension`, `createdAt`), `metadata` (`author`, `extractedAt`, or `null` when no metadata is stored), `errorMessage`, `canDownload`, `createdAt`, and `updatedAt`.
+
+- `canDownload` is `true` for `head_of_team` and `admin`. For `member_team` it is `true` only when the document's category has download permission enabled (AC-13.01).
+
+**Error Responses:**
+
+- `400 VALIDATION_ERROR`: `id` is not a valid UUID.
+- `401 UNAUTHORIZED`: Missing, forged, or expired token.
+- `404 NOT_FOUND`: Document not found, soft-deleted, or stored file record not found.
 
 ## Preview and Download
 
@@ -163,8 +172,8 @@ Planned response includes:
 
 Status: Implemented (BE-S3-01).
 
-Shows document content without downloading the original file by issuing a bounded signed URL for the
-stored file. The object key is never returned as a response field and signed URLs are never logged.
+Returns preview metadata only. The response carries no storage key and no storage URL of any kind.
+The file bytes are fetched from `GET /api/v1/documents/:id/preview/content`.
 
 **Authorization:**
 
@@ -183,24 +192,62 @@ stored file. The object key is never returned as a response field and signed URL
 {
   "success": true,
   "data": {
-    "previewUrl": "https://storage.local/documents/11111111-1111-4111-8111-111111111111/laporan.pdf?...",
     "filename": "laporan.pdf",
     "mimeType": "application/pdf",
-    "fileSize": 1048576,
-    "expiresInSeconds": 300
+    "fileSize": 1048576
   }
 }
 ```
 
-`previewUrl` is a bounded signed URL (`PREVIEW_URL_TTL_SECONDS = 300`). PDF content renders inline in
-the browser; for DOCX the Web viewer decides how to render or fall back. Preview does not write a
-download audit event.
+Preview does not write a download audit event.
 
 **Error Responses:**
 
 - `400 VALIDATION_ERROR`: `id` is not a valid UUID.
 - `401 UNAUTHORIZED`: Missing, forged, or expired token.
 - `404 NOT_FOUND`: Document not found, soft-deleted, or stored file record not found.
+
+### `GET /api/v1/documents/:id/preview/content`
+
+Status: Implemented (BE-S3-01).
+
+Streams the stored file bytes through the API so the Web application can render PDF inline from a
+browser `blob:` URL. No presigned or storage URL is issued, and the object key is never returned in a
+header or body. PDF renders inline; DOCX is served with its stored type and the Web viewer decides how
+to render or fall back.
+
+**Authorization:**
+
+- Requires authenticated session (`Bearer <token>`).
+- Allowed roles: `member_team`, `head_of_team`, `admin`.
+- Same rules as the metadata route: soft-deleted documents and documents without a stored file record
+  are not found. Category download permission does not apply.
+
+**Parameters:**
+
+- `id` (path, required) — UUID of the target document.
+
+Query parameters and request headers do not select the content type or the filename.
+
+**Success Response (`200 OK`):**
+
+- Headers:
+  - `Content-Type: <stored mimeType>`. Only `application/pdf` and the DOCX MIME type are served; any other
+    stored type returns `404 NOT_FOUND`.
+  - `Content-Disposition: inline; filename="<ascii-fallback>"; filename*=UTF-8''<rfc5987-encoded-filename>`
+  - `Content-Length: <fileSize>`
+  - `X-Content-Type-Options: nosniff`
+  - `Cache-Control: private, no-store`
+- Body: Binary file bytes.
+
+**Error Responses:**
+
+- `400 VALIDATION_ERROR`: `id` is not a valid UUID.
+- `401 UNAUTHORIZED`: Missing, forged, or expired token.
+- `404 NOT_FOUND`: Document not found, soft-deleted, stored file record not found, or stored type not
+  servable (`"File dokumen tidak ditemukan"`).
+- `500 INTERNAL_ERROR`: Storage read failure, stored byte length different from the metadata `fileSize`,
+  or unexpected server error (`"Terjadi kesalahan pada server"`). No file bytes are returned.
 
 ### `GET /api/v1/documents/:id/download`
 
@@ -297,7 +344,7 @@ Accepts selected document IDs, validates existence, enforces category download p
 - Headers:
   - `Content-Type: application/zip`
   - `Content-Disposition: attachment; filename="axentra-documents.zip"; filename*=UTF-8''axentra-documents.zip`
-  - `Content-Length: <fileSize>`
+  - `Transfer-Encoding: chunked`: the archive is streamed as a chunked response, and no `Content-Length` is sent. Bun drops an explicit `Content-Length` on streamed bodies, so the size is not advertised (see the approver decision below).
 - Body: Binary ZIP archive bytes containing all requested files.
 
 **Error Responses:**
@@ -306,16 +353,17 @@ Accepts selected document IDs, validates existence, enforces category download p
 - `401 UNAUTHORIZED`: Missing, forged, or expired token.
 - `403 FORBIDDEN`: Category download permission disabled or document uncategorized for `member_team` (`"Akses unduh tidak diizinkan untuk kategori dokumen ini"`).
 - `404 NOT_FOUND`: One or more requested documents not found, soft-deleted, or lacking a stored file record.
-- `413 PAYLOAD_TOO_LARGE`: Total aggregate size of selected documents exceeds 250 MB (`"Total ukuran dokumen melebihi batas maksimum unduhan massal (250 MB)"`).
-- `429 TOO_MANY_REQUESTS`: Concurrency queue capacity exceeded (`"Terlalu banyak permintaan unduhan massal secara bersamaan, antrean penuh"`).
+- `413 PAYLOAD_TOO_LARGE`: JSON body larger than 16 KiB (`"Payload unduhan massal melebihi batas ukuran"`), or total aggregate size of selected documents exceeds 250 MB (`"Total ukuran dokumen melebihi batas maksimum unduhan massal (250 MB)"`).
+- `429 TOO_MANY_REQUESTS`: Concurrency queue capacity exceeded, or the in-flight byte budget would be exceeded (both use `"Terlalu banyak permintaan unduhan massal secara bersamaan, antrean penuh"`). Rejected requests write no audit record.
 - `500 INTERNAL_ERROR`: Storage retrieval failure, file size mismatch with metadata, the audit write failing, or unexpected server error (`"Terjadi kesalahan pada server"`). Requests encountering storage or audit failures do not write audit records, and no archive is returned.
 
-> **Approver Architectural Decision (Arya Isnaidi, Tech Lead — 21 Oktober 2026 / Disempurnakan 22 Oktober 2026):**
+> **Approver Architectural Decision (Arya Isnaidi, Tech Lead — 21 Oktober 2026 / Disempurnakan 27 Oktober 2026):**
 >
-> 1. **Prefetch Storage & Zero-Audit on Failure (F12, F17):** Endpoint melakukan prefetch seluruh objek dokumen dari storage dan memverifikasi integritas ukuran sebelum membuat ZIP archive, menulis audit event, atau mengirim response. Jika storage gagal atau ukuran tidak sesuai, endpoint mengembalikan `500 INTERNAL_ERROR` tanpa catatan audit. Follow-up untuk menyelaraskan urutan audit pada single download (`download.operations.ts`) dialokasikan ke pemilik kartu BE-S3-04.
-> 2. **Pengendalian Memori Konkurensi & Siklus Hidup Respons (F7, F10, F24, F25, F27):** Batas payload 250 MB dipertahankan dengan penerapan global async semaphore (`BulkDownloadSemaphore`, `maxConcurrency: 2`, `maxQueueLength: 10`) yang berlaku per instans proses API. Slot semaphore di-acquire sebelum prefetch dan dipertahankan sepanjang transmisi chunked `ReadableStream` sampai klien selesai membaca body, koneksi dibatalkan (`cancel`/`abort`), atau batas waktu transfer (60 detik) tercapai, mencegah akumulasi buffer arsip di memori proses saat terjadi lonjakan permintaan paralel.
-> 3. **Pengecualian Ruang Lingkup Dependensi (F23):** Pembaruan dependensi `hono` (4.13.11) dan `vite` (7.3.7) pada commit `e7455aa` disetujui sebagai pengecualian ruang lingkup (scope exception) yang sah dalam PR ini demi resolusi peringatan keamanan audit tanpa menunggu siklus maintenance terpisah.
-> 4. **Urutan Penggabungan Cabang (Merge Order):** Cabang `BE-S3-03` digabungkan terlebih dahulu ke `dev`. Pemilik kartu `BE-S3-04` akan melakukan rebase setelahnya untuk menyelesaikan konflik teks pada `download.repository.ts` dan berkas tes integrasi terkait.
+> 1. **Prefetch Storage & Zero-Audit on Failure:** Endpoint memuat seluruh objek dokumen dari storage dan memverifikasi ukuran setiap objek terhadap metadata sebelum membuat ZIP archive, menulis audit event, atau mengirim response. Jika storage gagal atau ukuran tidak sesuai, endpoint mengembalikan `500 INTERNAL_ERROR` tanpa catatan audit dan tanpa archive.
+> 2. **Konkurensi & Siklus Hidup Respons:** Global async semaphore (`BulkDownloadSemaphore`, `maxConcurrency: 2`, `maxQueueLength: 10`) berlaku per instans proses API. Slot di-acquire sebelum prefetch dan tetap ditahan sampai body respons selesai dibaca, dibatalkan (`cancel`), dibatalkan oleh `abort` request, atau batas waktu transfer 60 detik tercapai. Pada saat itu slot dilepas dan referensi archive dibebaskan.
+> 3. **Batas Byte In-Flight:** Setelah ZIP archive dirakit dan sebelum audit ditulis, endpoint mencadangkan (reserve) jumlah byte archive terhadap budget per proses `BULK_DOWNLOAD_INFLIGHT_BYTES_LIMIT` (default 512 MiB). Reservasi tidak diantrekan: jika melebihi budget, endpoint mengembalikan `429 TOO_MANY_REQUESTS` tanpa catatan audit. Reservasi dilepas bersamaan dengan slot, yaitu saat body selesai dibaca, dibatalkan, dibatalkan oleh `abort`, atau saat batas waktu transfer 60 detik tercapai.
+> 4. **Respons Chunked Tanpa Content-Length:** Respons dikirim sebagai stream chunked tanpa header `Content-Length`, karena Bun 1.3.12 (versi yang dipin) menghapus `Content-Length` yang eksplisit pada body stream. Keputusan ini menggantikan opsi `Content-Length` sebelumnya dan memerlukan konfirmasi approver.
+> 5. **Batasan yang Diketahui:** Bun membaca body stream hingga akhir hampir seketika, sehingga reservasi byte dapat dilepas sebelum klien menerima seluruh byte. Budget ini membatasi tumpang-tindih antara perakitan dan streaming archive, bukan buffer socket di sisi Bun. Risiko ini perlu dikonfirmasi oleh approver.
 
 ## Related Documents
 

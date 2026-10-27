@@ -11,6 +11,7 @@ import {
 import { ConflictError } from "../../http/errors";
 import { listRelatedDocuments as listRelatedDocumentsQuery } from "./documents-related.repository";
 import { listRecentDocumentsWithTagFilter } from "./documents.tag-filter";
+import { type DocumentDetailRecord, findDocumentDetailRecord } from "./documents.detail.repository";
 
 export type CreateDocumentBatchItem = {
   id: string;
@@ -55,6 +56,7 @@ export type IDocumentRepository = {
   findDocumentFileByDocumentId: (
     documentId: string,
   ) => Promise<typeof documentFiles.$inferSelect | null>;
+  findDocumentDetail: (id: string) => Promise<DocumentDetailRecord | null>;
   markProcessingEnqueueFailed: (
     documentIds: ReadonlyArray<string>,
     errorMessage: string,
@@ -273,6 +275,10 @@ export class DocumentRepository implements IDocumentRepository {
       .where(eq(documentFiles.documentId, documentId))
       .limit(1);
     return rows[0] ?? null;
+  }
+
+  public async findDocumentDetail(id: string): Promise<DocumentDetailRecord | null> {
+    return findDocumentDetailRecord(this.sqlDb, id);
   }
 
   public async markProcessingEnqueueFailed(

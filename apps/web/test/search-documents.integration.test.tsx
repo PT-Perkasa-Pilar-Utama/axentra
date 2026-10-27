@@ -12,7 +12,7 @@ if (typeof window !== "undefined" && window.document) {
 }
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { AuthSessionProvider } from "../src/features/auth/auth-session.context";
@@ -124,6 +124,62 @@ function createSuccessFetchMock(): typeof fetch {
     }
 
     return new Response(JSON.stringify({ success: true, data: [] }), { status: 200 });
+  };
+
+  return Object.assign(handler, { preconnect: (): void => {} });
+}
+
+const topTagIds: Record<string, string> = {
+  Strategy: "66666666-6666-4666-8666-666666666666",
+  Legal: "77777777-7777-4777-8777-777777777777",
+};
+
+type SearchCorpusDocument = { id: string; filename: string; tags: string[] };
+
+// Mock pencarian dengan filter tag AND (sama seperti server) dan Top Tags kontekstual.
+function createTagSearchFetch(corpus: SearchCorpusDocument[], log: string[]): typeof fetch {
+  const handler = async (input: RequestInfo | URL): Promise<Response> => {
+    const url = new URL(String(input), "http://localhost");
+    log.push(`${url.pathname}${url.search}`);
+
+    if (url.pathname === "/api/v1/search/documents") {
+      const tags = url.searchParams.getAll("tags");
+      const matched = corpus.filter((doc) => tags.every((tag) => doc.tags.includes(tag)));
+      return Response.json({
+        success: true,
+        data: matched.map((doc) => ({
+          id: doc.id,
+          filename: doc.filename,
+          processingStatus: "completed",
+          createdAt: "2026-09-22T00:00:00.000Z",
+          snippet: `...${doc.filename}...`,
+          highlights: [],
+        })),
+        meta: { page: 1, limit: 20, total: matched.length },
+      });
+    }
+
+    if (url.pathname === "/api/v1/tags/top") {
+      const ids = url.searchParams.getAll("documentIds");
+      const scope =
+        url.searchParams.get("context") === "search"
+          ? corpus.filter((doc) => ids.includes(doc.id))
+          : corpus;
+      const counts = new Map<string, number>();
+      for (const doc of scope) {
+        for (const tag of doc.tags) counts.set(tag, (counts.get(tag) ?? 0) + 1);
+      }
+      return Response.json({
+        success: true,
+        data: [...counts].map(([name, documentCount]) => ({
+          id: topTagIds[name],
+          name,
+          documentCount,
+        })),
+      });
+    }
+
+    return Response.json({ success: true, data: [] });
   };
 
   return Object.assign(handler, { preconnect: (): void => {} });
@@ -291,5 +347,98 @@ describe("Search Documents Integration (FE-S2-04)", () => {
 
     expect(screen.getByText("Semua Dokumen")).toBeTruthy();
     expect(screen.queryByText('Hasil Pencarian: "keuangan"')).toBeNull();
+  });
+
+  test("AC-04.01: search results show Top Tags for the returned documents and render no selection checkboxes (FE-S2-04 disabled controls removed)", async () => {
+    const requestLog: string[] = [];
+    globalThis.fetch = createTagSearchFetch(
+      [
+        {
+          id: "11111111-1111-4111-8111-111111111111",
+          filename: "gabungan.pdf",
+          tags: ["Strategy", "Legal"],
+        },
+        { id: "22222222-2222-4222-8222-222222222222", filename: "legal.pdf", tags: ["Legal"] },
+      ],
+      requestLog,
+    );
+    const queryClient = makeQueryClient();
+
+    await act(async () => {
+      renderDashboard(queryClient);
+    });
+
+    const searchInput = screen.getByPlaceholderText("Cari dokumen...");
+    await act(async () => {
+      fireEvent.change(searchInput, { target: { value: "keuangan" } });
+      submitSearch(searchInput);
+    });
+
+    expect(await screen.findByText("gabungan.pdf")).toBeTruthy();
+    expect(screen.queryByRole("checkbox")).toBeNull();
+
+    const topTagsPanel = await screen.findByLabelText("Top Tags");
+    expect(within(topTagsPanel).getByRole("button", { name: "Strategy" })).toBeTruthy();
+    expect(within(topTagsPanel).getByRole("button", { name: "Legal" })).toBeTruthy();
+
+    const searchTopTagsRequest = requestLog.filter(
+      (entry) => entry.startsWith("/api/v1/tags/top") && entry.includes("context=search"),
+    );
+    expect(searchTopTagsRequest.length).toBeGreaterThan(0);
+    const lastRequest = searchTopTagsRequest[searchTopTagsRequest.length - 1] ?? "";
+    expect(lastRequest).toContain("documentIds=11111111-1111-4111-8111-111111111111");
+    expect(lastRequest).toContain("documentIds=22222222-2222-4222-8222-222222222222");
+  });
+
+  test("AC-04.03: clicking a Top Tags chip on search results re-runs the search with that tag, and clicking it again removes the filter", async () => {
+    const requestLog: string[] = [];
+    globalThis.fetch = createTagSearchFetch(
+      [
+        {
+          id: "11111111-1111-4111-8111-111111111111",
+          filename: "gabungan.pdf",
+          tags: ["Strategy", "Legal"],
+        },
+        { id: "22222222-2222-4222-8222-222222222222", filename: "legal.pdf", tags: ["Legal"] },
+      ],
+      requestLog,
+    );
+    const queryClient = makeQueryClient();
+
+    await act(async () => {
+      renderDashboard(queryClient);
+    });
+
+    const searchInput = screen.getByPlaceholderText("Cari dokumen...");
+    await act(async () => {
+      fireEvent.change(searchInput, { target: { value: "keuangan" } });
+      submitSearch(searchInput);
+    });
+    expect(await screen.findByText("legal.pdf")).toBeTruthy();
+
+    const chip = async (): Promise<HTMLElement> =>
+      within(await screen.findByLabelText("Top Tags")).getByRole("button", { name: "Strategy" });
+
+    await act(async () => {
+      fireEvent.click(await chip());
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    });
+
+    expect(await screen.findByText("gabungan.pdf")).toBeTruthy();
+    expect(screen.queryByText("legal.pdf")).toBeNull();
+    expect((await chip()).getAttribute("aria-pressed")).toBe("true");
+    expect(
+      requestLog.some((entry) =>
+        entry.includes("/api/v1/search/documents?q=keuangan&tags=Strategy"),
+      ),
+    ).toBe(true);
+
+    await act(async () => {
+      fireEvent.click(await chip());
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    });
+
+    expect(await screen.findByText("legal.pdf")).toBeTruthy();
+    expect((await chip()).getAttribute("aria-pressed")).toBe("false");
   });
 });

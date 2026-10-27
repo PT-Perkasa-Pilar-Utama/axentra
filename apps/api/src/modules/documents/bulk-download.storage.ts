@@ -15,7 +15,8 @@ export async function getObjectWithTimeout(
 
   const timeoutPromise = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
-      reject(new Error(`Storage retrieval timed out after ${timeoutMs}ms for key "${key}"`));
+      // The object key is deliberately left out: this message can reach logs.
+      reject(new Error(`Storage retrieval timed out after ${timeoutMs}ms`));
     }, timeoutMs);
   });
 

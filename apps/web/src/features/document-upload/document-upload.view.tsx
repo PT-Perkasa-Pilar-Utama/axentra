@@ -11,6 +11,7 @@ import {
   UploadProcessingState,
   UploadRetryState,
 } from "./document-upload-dropzone-states.view";
+import { UserSessionBadge } from "../auth/user-session-badge.view";
 
 const fileOutlinePaths = [
   "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z",
@@ -20,7 +21,6 @@ const toastIconPaths = {
   success: [...fileOutlinePaths, "m9 15 2 2 4-4"],
   error: [...fileOutlinePaths, "m14.5 12.5-5 5", "m9.5 12.5 5 5"],
 } as const;
-import { UserSessionBadge } from "../auth/user-session-badge.view";
 
 export type DocumentUploadNotificationViewProps = {
   presenter: DocumentUploadPresenter;
@@ -34,7 +34,6 @@ export function DocumentUploadNotificationView({
 
   const isSuccess = notification.type === "success";
   const iconPaths = isSuccess ? toastIconPaths.success : toastIconPaths.error;
-  const statusLabel = isSuccess ? "Unggah berhasil." : "Unggah gagal.";
 
   return (
     <div
@@ -59,10 +58,9 @@ export function DocumentUploadNotificationView({
           <path key={path} d={path} />
         ))}
       </svg>
-      <p className="min-w-0 flex-1">
-        <span className="font-semibold">{statusLabel}</span>{" "}
-        <span data-testid="notification-message">{notification.message}</span>
-      </p>
+      <div className="min-w-0 flex-1">
+        <p data-testid="notification-message">{notification.message}</p>
+      </div>
       <button
         type="button"
         onClick={dismissNotification}

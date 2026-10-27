@@ -1,8 +1,8 @@
 import type { Context } from "hono";
-import { topTagsQuerySchema } from "@axentra/shared";
 import type { ApiEnvironment } from "../../environment";
 import { ValidationError } from "../../http/errors";
 import { jsonSuccess } from "../../http/responses";
+import { topTagsQuerySchema } from "./tags.schema";
 import type { TopTagsService } from "./tags.service";
 
 export type TopTagsHandlerDependencies = {

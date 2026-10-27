@@ -47,12 +47,19 @@ export class InMemoryDocumentProcessingRepository implements DocumentProcessingR
   public readonly enqueueFailures: FailedProcessingDocument[] = [];
   public readonly createdCategoryIds: string[] = [];
 
-  public async listRecoverableDocuments(): Promise<ReadonlyArray<FailedProcessingDocument>> {
+  public async listRecoverableDocuments(
+    staleProcessingBefore: Date,
+  ): Promise<ReadonlyArray<FailedProcessingDocument>> {
     if (this.enqueueFailures.length > 0) return [...this.enqueueFailures];
     const recoverable: FailedProcessingDocument[] = [];
     for (const [documentId, document] of this.documents) {
+      const staleProcessing =
+        document.processingStatus === "processing" &&
+        document.updatedAt !== undefined &&
+        document.updatedAt < staleProcessingBefore;
       const stranded =
         document.processingStatus === "queued" ||
+        staleProcessing ||
         (document.processingStatus === "failed" &&
           document.errorMessage === PROCESSING_ENQUEUE_FAILURE_MESSAGE);
       const file = this.files.get(documentId);

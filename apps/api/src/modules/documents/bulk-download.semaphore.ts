@@ -3,6 +3,11 @@ import { TooManyRequestsError } from "../../http/errors";
 export const DEFAULT_BULK_DOWNLOAD_MAX_CONCURRENCY = 2;
 export const DEFAULT_BULK_DOWNLOAD_MAX_QUEUE_LENGTH = 10;
 export const DEFAULT_BULK_DOWNLOAD_QUEUE_TIMEOUT_MS = 30_000;
+// Per-process cap on archive bytes reserved by responses that are still streaming (see
+// BulkDownloadByteBudget). Two maximum-size archives (2 x 250 MB) fit within it.
+export const BULK_DOWNLOAD_INFLIGHT_BYTES_LIMIT = 512 * 1024 * 1024;
+export const BULK_DOWNLOAD_BUSY_MESSAGE =
+  "Terlalu banyak permintaan unduhan massal secara bersamaan, antrean penuh";
 
 export type BulkDownloadSemaphoreOptions = {
   readonly maxConcurrency?: number;
@@ -59,9 +64,7 @@ export class BulkDownloadSemaphore {
     }
 
     if (this.queue.length >= this.maxQueueLength) {
-      throw new TooManyRequestsError(
-        "Terlalu banyak permintaan unduhan massal secara bersamaan, antrean penuh",
-      );
+      throw new TooManyRequestsError(BULK_DOWNLOAD_BUSY_MESSAGE);
     }
 
     const timeoutDuration = options?.timeoutMs ?? this.queueTimeoutMs;

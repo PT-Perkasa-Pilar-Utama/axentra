@@ -1,12 +1,13 @@
 import { describe, expect, spyOn, test, beforeEach } from "bun:test";
 import { z } from "zod";
-import { clearAuthToken, getAuthToken, setAuthToken } from "../src/lib/auth-token.store";
 import {
   mergeRequestHeaders,
   apiRequest,
   apiDownloadRequest,
   isSuccessEnvelope,
   setAuthTokenGetter,
+  setSessionRefresher,
+  setUnauthorizedHandler,
 } from "../src/lib/api-client";
 
 // ---------------------------------------------------------------------------
@@ -25,12 +26,13 @@ function createMockFetch(
 }
 
 // ---------------------------------------------------------------------------
-// Reset store sebelum setiap test agar tidak ada state yang bocor antar test
+// Reset state sebelum setiap test agar tidak ada state yang bocor antar test
 // ---------------------------------------------------------------------------
 
 beforeEach(() => {
-  clearAuthToken();
   setAuthTokenGetter(null);
+  setUnauthorizedHandler(null);
+  setSessionRefresher(null);
 });
 
 // ---------------------------------------------------------------------------
@@ -123,33 +125,6 @@ describe("API response contract", () => {
 });
 
 // ---------------------------------------------------------------------------
-// auth-token.store
-// ---------------------------------------------------------------------------
-
-describe("auth-token.store", () => {
-  test("getAuthToken mengembalikan null sebelum setAuthToken dipanggil", () => {
-    expect(getAuthToken()).toBeNull();
-  });
-
-  test("setAuthToken menyimpan token dan getAuthToken mengembalikannya", () => {
-    setAuthToken("ax_test_token");
-    expect(getAuthToken()).toBe("ax_test_token");
-  });
-
-  test("clearAuthToken menghapus token yang tersimpan", () => {
-    setAuthToken("ax_test_token");
-    clearAuthToken();
-    expect(getAuthToken()).toBeNull();
-  });
-
-  test("setAuthToken menimpa token sebelumnya", () => {
-    setAuthToken("ax_token_lama");
-    setAuthToken("ax_token_baru");
-    expect(getAuthToken()).toBe("ax_token_baru");
-  });
-});
-
-// ---------------------------------------------------------------------------
 // mergeRequestHeaders — F8
 // ---------------------------------------------------------------------------
 
@@ -181,10 +156,9 @@ describe("mergeRequestHeaders — F8 bearer credential", () => {
     expect(headers.get("authorization")).toBe("Bearer ax_abc123");
   });
 
-  test("menggunakan getter sesi sebagai satu-satunya sumber bearer token", () => {
+  test("tidak menyertakan bearer saat includeAuth false (endpoint sesi)", () => {
     setAuthTokenGetter(() => "ax_abc123");
-    const headers = mergeRequestHeaders();
-    expect(headers.get("authorization")).toBe("Bearer ax_abc123");
-    expect(getAuthToken()).toBeNull();
+    const headers = mergeRequestHeaders(undefined, false);
+    expect(headers.get("authorization")).toBeNull();
   });
 });

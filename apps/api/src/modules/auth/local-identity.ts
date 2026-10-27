@@ -39,6 +39,12 @@ export function parseLocalIdentityDirectory(encodedDirectory: string): LocalIden
   return parsed.data;
 }
 
+// The single Argon2id verifier shared by the development identity directory and the production user store.
+// Bun throws for a malformed hash, so callers that must fail closed catch that error.
+export function verifyPasswordHash(password: string, passwordHash: string): Promise<boolean> {
+  return Bun.password.verify(password, passwordHash);
+}
+
 export function createLocalIdentityAuthenticator(encodedDirectory: string): UserAuthenticator {
   const directory = parseLocalIdentityDirectory(encodedDirectory);
 
@@ -47,7 +53,7 @@ export function createLocalIdentityAuthenticator(encodedDirectory: string): User
     const record = directory.find((candidate) => candidate.email.toLowerCase() === email);
     if (record === undefined) return null;
 
-    const passwordMatches = await Bun.password.verify(credentials.password, record.passwordHash);
+    const passwordMatches = await verifyPasswordHash(credentials.password, record.passwordHash);
     if (!passwordMatches) return null;
 
     const user: AuthUser = {

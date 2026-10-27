@@ -55,6 +55,7 @@ function repositoryWith(page: RecentDocumentPage): IDocumentRepository {
     saveDocumentBatch: async () => [],
     findDocumentById: async () => null,
     findDocumentFileByDocumentId: async () => null,
+    findDocumentDetail: async () => null,
     markProcessingEnqueueFailed: async () => undefined,
   };
 }
@@ -156,6 +157,42 @@ describe("GET /api/v1/documents — BE-S1-06", () => {
     expect(listed.meta.total).toBe(1);
   });
 
+  test("lists two uploaded documents newest first by createdAt (BE-S1-06)", async () => {
+    const queue: QueueProducer = {
+      enqueueSystemHealthCheck: async () => "health-job",
+      enqueueDocumentProcessing: async (payload) => payload.jobId,
+      reconcileDocumentProcessing: async (payload) => payload.jobId,
+      close: async () => undefined,
+    };
+    const service = createDocumentService({ queue });
+    const olderBytes = new TextEncoder().encode("%PDF-1.4\n% pertama\n");
+    const newerBytes = new TextEncoder().encode("%PDF-1.4\n% kedua\n");
+
+    await service.uploadDocuments([
+      {
+        filename: "pertama.pdf",
+        mimeType: "application/pdf",
+        size: olderBytes.byteLength,
+        bytes: olderBytes,
+      },
+    ]);
+    await service.uploadDocuments([
+      {
+        filename: "kedua.pdf",
+        mimeType: "application/pdf",
+        size: newerBytes.byteLength,
+        bytes: newerBytes,
+      },
+    ]);
+    const listed = await service.listRecentDocuments(1, 20);
+    const [newest, oldest] = listed.items;
+
+    expect(listed.items.map((item) => item.filename)).toEqual(["kedua.pdf", "pertama.pdf"]);
+    expect(Date.parse(newest?.createdAt ?? "")).toBeGreaterThanOrEqual(
+      Date.parse(oldest?.createdAt ?? ""),
+    );
+  });
+
   describe("tag filtering — BE-S2-03 (AC-04.03, AC-04.04)", () => {
     test("filters by single tag via tags query parameter (AC-04.03)", async () => {
       let passedTags: ReadonlyArray<string> | undefined;
@@ -169,6 +206,7 @@ describe("GET /api/v1/documents — BE-S1-06", () => {
         saveDocumentBatch: async () => [],
         findDocumentById: async () => null,
         findDocumentFileByDocumentId: async () => null,
+        findDocumentDetail: async () => null,
         markProcessingEnqueueFailed: async () => undefined,
       };
 
@@ -192,6 +230,7 @@ describe("GET /api/v1/documents — BE-S1-06", () => {
         saveDocumentBatch: async () => [],
         findDocumentById: async () => null,
         findDocumentFileByDocumentId: async () => null,
+        findDocumentDetail: async () => null,
         markProcessingEnqueueFailed: async () => undefined,
       };
 
@@ -215,6 +254,7 @@ describe("GET /api/v1/documents — BE-S1-06", () => {
         saveDocumentBatch: async () => [],
         findDocumentById: async () => null,
         findDocumentFileByDocumentId: async () => null,
+        findDocumentDetail: async () => null,
         markProcessingEnqueueFailed: async () => undefined,
       };
 
@@ -238,6 +278,7 @@ describe("GET /api/v1/documents — BE-S1-06", () => {
         saveDocumentBatch: async () => [],
         findDocumentById: async () => null,
         findDocumentFileByDocumentId: async () => null,
+        findDocumentDetail: async () => null,
         markProcessingEnqueueFailed: async () => undefined,
       };
 

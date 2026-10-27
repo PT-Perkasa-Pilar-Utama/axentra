@@ -1,19 +1,23 @@
-import crypto from "node:crypto";
 import type { Logger } from "@axentra/observability";
 import { createLogger } from "@axentra/observability";
 import type { QueueProducer } from "@axentra/queue";
 import type { StorageAdapter } from "@axentra/storage";
 import {
+  type AuthUser,
   type CategorySummary,
   type CheckDuplicateResponse,
+  type DocumentDetail,
   type DocumentMetadataResult,
   type DocumentUploadAcceptedData,
-  type PaginationMeta,
-  type RecentDocument,
   RELATED_DOCUMENTS_MAX_LIMIT,
   type RelatedDocument,
   type SmartTag,
 } from "@axentra/shared";
+import type {
+  DocumentServiceDependencies,
+  IDocumentService,
+  RecentDocumentList,
+} from "./documents.service.types";
 import type { RawUploadFile } from "./documents.schema";
 import type { IDocumentRepository } from "./documents.repository";
 import type { IDocumentContentHashRepository } from "./duplicate.repository";
@@ -37,6 +41,7 @@ import {
 } from "./documents.metadata.operations";
 import { readDocumentSmartTags, storeDocumentSmartTags } from "./smart-tags.operations";
 import { readDocumentCategory } from "./category.operations";
+import { readDocumentDetail } from "./documents.detail.operations";
 import type { IDownloadRepository } from "./download.repository";
 import { InMemoryDownloadRepository } from "./download.repository";
 import {
@@ -57,6 +62,11 @@ import {
   type PreviewOperationResult,
   type ExecutePreviewInput,
 } from "./preview.operations";
+import {
+  executePreviewContentOperation,
+  type ExecutePreviewContentInput,
+  type PreviewContentOperationResult,
+} from "./preview-content.operations";
 
 export type {
   BulkDownloadOperationResult,
@@ -64,56 +74,14 @@ export type {
   DownloadOperationResult,
   ExecuteBulkDownloadInput,
   ExecuteDownloadInput,
+  ExecutePreviewContentInput,
   ExecutePreviewInput,
   ExtractMetadataOptions,
+  PreviewContentOperationResult,
   PreviewOperationResult,
 };
 
-export type DocumentServiceDependencies = {
-  repository?: IDocumentRepository | undefined;
-  storage?: StorageAdapter | undefined;
-  queue?: QueueProducer | undefined;
-  logger?: Logger | undefined;
-  metadataRepository?: IDocumentMetadataRepository | undefined;
-  metadataExtractor?: IMetadataExtractor | undefined;
-  queueProducer?: QueueProducer | undefined;
-  contentHashRepository?: IDocumentContentHashRepository | undefined;
-  smartTagsRepository?: IDocumentSmartTagsRepository | undefined;
-  categoryRepository?: IDocumentCategoryRepository | undefined;
-  downloadRepository?: IDownloadRepository | undefined;
-  previewRepository?: IPreviewRepository | undefined;
-  bulkDownloadSemaphore?: BulkDownloadSemaphore | undefined;
-};
-
-export type RecentDocumentList = {
-  items: ReadonlyArray<RecentDocument>;
-  meta: PaginationMeta;
-};
-
-export type IDocumentService = {
-  uploadDocuments(files: ReadonlyArray<RawUploadFile>): Promise<DocumentUploadAcceptedData>;
-  validateUpload(files: ReadonlyArray<RawUploadFile>): Promise<DocumentUploadAcceptedData>;
-  checkDuplicate(input: CheckDuplicateInput): Promise<CheckDuplicateResponse>;
-  listRecentDocuments(
-    page: number,
-    limit: number,
-    tags?: ReadonlyArray<string> | undefined,
-  ): Promise<RecentDocumentList>;
-  listRelatedDocuments(documentId: string): Promise<ReadonlyArray<RelatedDocument>>;
-  getDocumentMetadata(documentId: string): Promise<DocumentMetadataResult>;
-  getDocumentSmartTags(documentId: string): Promise<ReadonlyArray<SmartTag>>;
-  getDocumentCategory(documentId: string): Promise<CategorySummary | null>;
-  storeSmartTags(documentId: string, tags: ReadonlyArray<string>): Promise<ReadonlyArray<SmartTag>>;
-  extractAndStoreMetadata(
-    documentId: string,
-    options?: ExtractMetadataOptions | undefined,
-  ): Promise<DocumentMetadataResult>;
-  storeMetadata(data: SaveMetadataInput): Promise<DocumentMetadataResult>;
-  enqueueProcessingJob(documentId: string): Promise<string>;
-  downloadDocument(input: ExecuteDownloadInput): Promise<DownloadOperationResult>;
-  bulkDownloadDocuments(input: ExecuteBulkDownloadInput): Promise<BulkDownloadOperationResult>;
-  previewDocument(input: ExecutePreviewInput): Promise<PreviewOperationResult>;
-};
+export type { DocumentServiceDependencies, IDocumentService, RecentDocumentList };
 
 export class DocumentService implements IDocumentService {
   private readonly repository: IDocumentRepository;
@@ -217,6 +185,22 @@ export class DocumentService implements IDocumentService {
     return readDocumentCategory(this.categoryRepository, documentId);
   }
 
+  public async getDocumentDetail(
+    documentId: string,
+    role: AuthUser["role"],
+  ): Promise<DocumentDetail> {
+    return readDocumentDetail(
+      {
+        repository: this.repository,
+        metadataRepository: this.metadataRepository,
+        smartTagsRepository: this.smartTagsRepository,
+        categoryRepository: this.categoryRepository,
+      },
+      documentId,
+      role,
+    );
+  }
+
   public async storeSmartTags(
     documentId: string,
     tags: ReadonlyArray<string>,
@@ -245,8 +229,9 @@ export class DocumentService implements IDocumentService {
     if (!producer) {
       throw new Error("QueueProducer tidak tersedia untuk memproses dokumen");
     }
+    // Job id = document id, the same id the upload path uses, so BullMQ never holds two jobs for one document.
     return producer.enqueueDocumentProcessing({
-      jobId: crypto.randomUUID(),
+      jobId: documentId,
       documentId,
       schemaVersion: 1,
       requestedAt: new Date().toISOString(),
@@ -282,7 +267,19 @@ export class DocumentService implements IDocumentService {
     return executePreviewOperation(
       {
         previewRepository: this.previewRepository,
+      },
+      input,
+    );
+  }
+
+  public async previewDocumentContent(
+    input: ExecutePreviewContentInput,
+  ): Promise<PreviewContentOperationResult> {
+    return executePreviewContentOperation(
+      {
+        previewRepository: this.previewRepository,
         storage: this.storage,
+        logger: this.logger,
       },
       input,
     );

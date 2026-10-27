@@ -3,14 +3,14 @@
 Source: BA user stories and acceptance criteria. Figma is the visual reference; this document keeps
 the functional text design.
 
-## Analytics
+## Analitik
 
-Purpose: show adoption and usage metrics.
+Purpose: show adoption and usage metrics on the page `Dasbor analitik` (menu `Analitik`).
 
 Expected metrics:
 
-- Total documents in the system.
-- Documents uploaded in the last 7 days.
+- Kartu data: jumlah total dokumen di sistem.
+- Kartu data: jumlah dokumen yang diunggah dalam 7 hari terakhir.
 
 ## Audit Trail
 
@@ -18,17 +18,17 @@ Purpose: track document download activity.
 
 Expected fields:
 
-- User who downloaded the document.
-- Document name.
-- Download timestamp.
+- Siapa (User): pengguna yang mengunduh dokumen.
+- Apa (Nama Dokumen): nama dokumen yang diunduh.
+- Kapan (Waktu): waktu proses unduh dilakukan.
 
-## Permission Category
+## Permission category
 
-Purpose: control Member Team download permission by category.
+Purpose: control Member Team download permission by category, in the menu `Permission category`.
 
 Expected behavior:
 
-- Head of Team can toggle a category from inactive to active.
+- Head of Team can toggle a category from inactive to active (toggle switch status `inactive` menjadi `Active`).
 - When category permission is active, Member Team can download documents in that category.
 - New auto-created categories do not receive download permission by default.
 - Head of Team must explicitly activate download permission for new categories.

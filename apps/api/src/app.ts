@@ -1,4 +1,6 @@
 import { Hono } from "hono";
+import { cors } from "hono/cors";
+import { DEFAULT_WEB_ORIGIN, type ApiConfig } from "@axentra/config";
 import type { Logger } from "@axentra/observability";
 import type { ApiEnvironment } from "./environment";
 import type { DependencyCheck } from "./modules/health/health.service";
@@ -29,11 +31,23 @@ export type AppDependencies = {
   searchService?: SearchService | undefined;
   categoriesService?: CategoriesService | undefined;
   enableUploadRoute?: boolean | undefined;
+  // The one browser origin allowed to call the API with credentials. Defaults to the local Web dev server.
+  webOrigin?: string | undefined;
+  appEnvironment?: ApiConfig["APP_ENV"] | undefined;
 };
 
 export function createApp(dependencies: AppDependencies): Hono<ApiEnvironment> {
   const app = new Hono<ApiEnvironment>();
   app.use("*", requestContextMiddleware(dependencies.logger));
+  app.use(
+    "*",
+    cors({
+      origin: dependencies.webOrigin ?? DEFAULT_WEB_ORIGIN,
+      credentials: true,
+      allowHeaders: ["Content-Type", "Authorization"],
+      allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    }),
+  );
 
   app.route(
     "/api/v1/health",
@@ -52,6 +66,7 @@ export function createApp(dependencies: AppDependencies): Hono<ApiEnvironment> {
     createAuthRoutes({
       tokenVerifier,
       authService: dependencies.authService,
+      appEnvironment: dependencies.appEnvironment,
     }),
   );
 

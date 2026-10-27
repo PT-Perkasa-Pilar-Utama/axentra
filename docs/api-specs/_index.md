@@ -4,7 +4,7 @@
 
 **Version:** 1.0.0<br>
 **Base URL:** `/api/v1`  
-**Status:** Foundation active, BA feature APIs planned
+**Status:** Sprint 1-3 APIs implemented on `dev`; Sprint 4 APIs planned
 
 Legend:
 
@@ -21,29 +21,32 @@ OK GET /health
 OK GET /health/ready
 ```
 
-### Authentication
+### Authentication (TECHNICAL prerequisite)
 
 Authentication is a technical prerequisite for Member Team and Head of Team flows.
 
 ```text
-TECHNICAL POST /auth/login
-TECHNICAL POST /auth/refresh
-TECHNICAL POST /auth/logout
-TECHNICAL GET  /auth/me
+OK      POST   /auth/login
+OK      POST   /auth/refresh
+OK      POST   /auth/logout
+OK      GET    /auth/me
 ```
 
 ### Documents
 
 ```text
 OK      GET    /documents
-PLANNED POST   /documents/upload
-PLANNED POST   /documents/check-duplicate
+OK      POST   /documents/upload
+OK      POST   /documents/check-duplicate
 PLANNED GET    /documents/:id
 OK      GET    /documents/:id/preview
 OK      GET    /documents/:id/download
 OK      POST   /documents/bulk-download
 OK      GET    /documents/:id/related
 ```
+
+`GET /documents/:id` is not registered on `dev`. The Web detail page reads
+`GET /documents/:id/metadata`.
 
 ### Processing
 
@@ -61,19 +64,19 @@ OK GET /tags/top
 OK GET /categories
 ```
 
-### Analytics
+### Analytics (Sprint 4)
 
 ```text
 PLANNED GET /analytics/summary
 ```
 
-### Audit
+### Audit (Sprint 4)
 
 ```text
 PLANNED GET /audit/downloads
 ```
 
-### Permission Category
+### Permission Category (Sprint 4)
 
 ```text
 PLANNED GET   /permission-categories

@@ -1,21 +1,21 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import type { AuthUser, LoginRequest, LoginResponse } from "@axentra/shared";
 import type { TokenVerifier } from "../../middleware/auth";
-import { UnauthorizedError } from "../../http/errors";
+import { defaultTokenVerifier } from "../../middleware/auth";
+import { TooManyRequestsError, UnauthorizedError } from "../../http/errors";
+import { ACCESS_TOKEN_TTL_MS, computeRefreshExpiry } from "./auth.policy";
+import {
+  generateAccessToken,
+  generateRefreshToken,
+  normalizeEmail,
+  sha256Hex,
+} from "./auth.tokens";
+import type { AuthSessionRecord, AuthSessionStore, LoginAttemptStore } from "./auth.types";
 
-export type SessionRecord = {
-  id: string;
-  token: string;
+// The refresh token and remember_me travel to the handler, which sets the cookie and keeps them out of the body.
+export type IssuedSession = LoginResponse & {
   refreshToken: string;
-  user: AuthUser;
-  expiresAt: number;
-  refreshExpiresAt: number;
-  revoked: boolean;
-};
-
-export type RefreshResult = {
-  token: string;
-  refreshToken: string;
+  rememberMe: boolean;
 };
 
 export type LogoutResult = {
@@ -27,59 +27,68 @@ export type UserAuthenticator = (
 ) => Promise<AuthUser | null> | AuthUser | null;
 
 export type AuthService = {
-  login(input: LoginRequest): Promise<LoginResponse>;
-  refresh(refreshToken: string): Promise<RefreshResult>;
-  logout(token: string): Promise<LogoutResult>;
+  login(input: LoginRequest): Promise<IssuedSession>;
+  refresh(refreshToken: string | undefined): Promise<IssuedSession>;
+  logout(refreshToken: string | undefined): Promise<LogoutResult>;
   tokenVerifier: TokenVerifier;
 };
 
 export type AuthServiceOptions = {
-  authenticator?: UserAuthenticator;
-  accessTokenTtlMs?: number;
-  refreshTokenTtlMs?: number;
-  clock?: () => number;
+  authenticator: UserAuthenticator;
+  sessionStore: AuthSessionStore;
+  loginAttemptStore: LoginAttemptStore;
+  clock?: (() => Date) | undefined;
 };
 
-const DEFAULT_ACCESS_TOKEN_TTL_MS = 15 * 60 * 1000; // 15 minutes
-const DEFAULT_REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const INVALID_CREDENTIALS_MESSAGE = "Email atau kata sandi salah";
+const INVALID_SESSION_MESSAGE = "Token tidak valid atau telah kedaluwarsa";
+const LOGIN_LOCKED_MESSAGE = "Terlalu banyak percobaan masuk. Silakan coba beberapa saat lagi.";
+const LOGOUT_MESSAGE = "Logout berhasil";
 
-export function createAuthService(options: AuthServiceOptions = {}): AuthService {
-  const {
-    authenticator = () => null,
-    accessTokenTtlMs = DEFAULT_ACCESS_TOKEN_TTL_MS,
-    refreshTokenTtlMs = DEFAULT_REFRESH_TOKEN_TTL_MS,
-    clock = () => Date.now(),
-  } = options;
+type TokenSet = {
+  token: string;
+  refreshToken: string;
+  accessTokenHash: string;
+  refreshTokenHash: string;
+  accessExpiresAt: Date;
+};
 
-  const sessionsByToken = new Map<string, SessionRecord>();
-  const sessionsByRefreshToken = new Map<string, SessionRecord>();
+function createTokenSet(now: Date): TokenSet {
+  const token = generateAccessToken();
+  const refreshToken = generateRefreshToken();
+  return {
+    token,
+    refreshToken,
+    accessTokenHash: sha256Hex(token),
+    refreshTokenHash: sha256Hex(refreshToken),
+    accessExpiresAt: new Date(now.getTime() + ACCESS_TOKEN_TTL_MS),
+  };
+}
 
-  function createSession(user: AuthUser): SessionRecord {
-    const now = clock();
-    const session: SessionRecord = {
-      id: randomUUID(),
-      token: `ax_${randomUUID().replace(/-/g, "")}_${randomBytes(16).toString("hex")}`,
-      refreshToken: `ax_rt_${randomUUID().replace(/-/g, "")}_${randomBytes(16).toString("hex")}`,
-      user,
-      expiresAt: now + accessTokenTtlMs,
-      refreshExpiresAt: now + refreshTokenTtlMs,
-      revoked: false,
-    };
+function isAccessUsable(session: AuthSessionRecord, now: Date): boolean {
+  return (
+    session.revokedAt === null &&
+    session.accessExpiresAt.getTime() > now.getTime() &&
+    session.refreshExpiresAt.getTime() > now.getTime()
+  );
+}
 
-    sessionsByToken.set(session.token, session);
-    sessionsByRefreshToken.set(session.refreshToken, session);
-    return session;
-  }
+function isRefreshUsable(session: AuthSessionRecord, now: Date): boolean {
+  return session.revokedAt === null && session.refreshExpiresAt.getTime() > now.getTime();
+}
+
+function isPresent(value: string | undefined): value is string {
+  return value !== undefined && value.length > 0;
+}
+
+export function createAuthService(options: AuthServiceOptions): AuthService {
+  const { authenticator, sessionStore, loginAttemptStore } = options;
+  const clock = options.clock ?? (() => new Date());
 
   const tokenVerifier: TokenVerifier = {
-    verifyToken(token: string): AuthUser | null {
-      const session = sessionsByToken.get(token);
-      if (!session || session.revoked) {
-        return null;
-      }
-      if (clock() >= session.expiresAt) {
-        return null;
-      }
+    async verifyToken(token: string): Promise<AuthUser | null> {
+      const session = await sessionStore.findByAccessTokenHash(sha256Hex(token));
+      if (session === null || !isAccessUsable(session, clock())) return null;
       return session.user;
     },
   };
@@ -87,51 +96,101 @@ export function createAuthService(options: AuthServiceOptions = {}): AuthService
   return {
     tokenVerifier,
 
-    async login(input: LoginRequest): Promise<LoginResponse> {
+    async login(input: LoginRequest): Promise<IssuedSession> {
+      const now = clock();
+      const emailHash = sha256Hex(normalizeEmail(input.email));
+      const decision = await loginAttemptStore.reserve(emailHash, now);
+      if (!decision.allowed) throw new TooManyRequestsError(LOGIN_LOCKED_MESSAGE);
+
       const user = await authenticator(input);
-      if (!user) {
-        throw new UnauthorizedError("Email atau kata sandi salah");
-      }
+      if (!user) throw new UnauthorizedError(INVALID_CREDENTIALS_MESSAGE);
+      await loginAttemptStore.reset(emailHash);
 
-      const session = createSession(user);
-      return {
-        user: session.user,
-        token: session.token,
-        refreshToken: session.refreshToken,
-      };
+      const rememberMe = input.rememberMe ?? false;
+      const tokens = createTokenSet(now);
+      await sessionStore.createSession({
+        id: randomUUID(),
+        user,
+        rememberMe,
+        accessTokenHash: tokens.accessTokenHash,
+        refreshTokenHash: tokens.refreshTokenHash,
+        accessExpiresAt: tokens.accessExpiresAt,
+        refreshExpiresAt: computeRefreshExpiry({ now, rememberMe, createdAt: now }),
+        now,
+      });
+      return issued(user, tokens, rememberMe);
     },
 
-    async refresh(refreshToken: string): Promise<RefreshResult> {
-      const session = sessionsByRefreshToken.get(refreshToken);
-      if (!session || session.revoked) {
-        throw new UnauthorizedError("Token tidak valid atau telah kedaluwarsa");
+    async refresh(refreshToken: string | undefined): Promise<IssuedSession> {
+      if (!isPresent(refreshToken)) throw new UnauthorizedError(INVALID_SESSION_MESSAGE);
+      const now = clock();
+      const presentedHash = sha256Hex(refreshToken);
+      const match = await sessionStore.findByRefreshTokenHash(presentedHash);
+      if (match === null) throw new UnauthorizedError(INVALID_SESSION_MESSAGE);
+
+      if (!match.current) {
+        // A rotated refresh token was presented again: the whole session is treated as compromised.
+        await sessionStore.revokeSession(match.session.id, now);
+        throw new UnauthorizedError(INVALID_SESSION_MESSAGE);
       }
 
-      if (clock() >= session.refreshExpiresAt) {
-        throw new UnauthorizedError("Token tidak valid atau telah kedaluwarsa");
+      const { session } = match;
+      if (!isRefreshUsable(session, now)) throw new UnauthorizedError(INVALID_SESSION_MESSAGE);
+
+      const tokens = createTokenSet(now);
+      const rotated = await sessionStore.rotateSession({
+        sessionId: session.id,
+        presentedRefreshTokenHash: presentedHash,
+        accessTokenHash: tokens.accessTokenHash,
+        refreshTokenHash: tokens.refreshTokenHash,
+        accessExpiresAt: tokens.accessExpiresAt,
+        refreshExpiresAt: computeRefreshExpiry({
+          now,
+          rememberMe: session.rememberMe,
+          createdAt: session.createdAt,
+        }),
+        now,
+      });
+      if (!rotated) {
+        // A concurrent request rotated this refresh token first, so the presented token is reused.
+        await sessionStore.revokeSession(session.id, now);
+        throw new UnauthorizedError(INVALID_SESSION_MESSAGE);
       }
-
-      // Revoke current session (refresh token rotation)
-      session.revoked = true;
-      sessionsByToken.delete(session.token);
-      sessionsByRefreshToken.delete(session.refreshToken);
-
-      // Issue new session
-      const newSession = createSession(session.user);
-      return {
-        token: newSession.token,
-        refreshToken: newSession.refreshToken,
-      };
+      return issued(session.user, tokens, session.rememberMe);
     },
 
-    async logout(token: string): Promise<LogoutResult> {
-      const session = sessionsByToken.get(token);
-      if (session) {
-        session.revoked = true;
-        sessionsByToken.delete(session.token);
-        sessionsByRefreshToken.delete(session.refreshToken);
+    async logout(refreshToken: string | undefined): Promise<LogoutResult> {
+      if (isPresent(refreshToken)) {
+        const match = await sessionStore.findByRefreshTokenHash(sha256Hex(refreshToken));
+        if (match !== null) await sessionStore.revokeSession(match.session.id, clock());
       }
-      return { message: "Logout berhasil" };
+      return { message: LOGOUT_MESSAGE };
+    },
+  };
+}
+
+function issued(user: AuthUser, tokens: TokenSet, rememberMe: boolean): IssuedSession {
+  return {
+    user,
+    token: tokens.token,
+    expiresAt: tokens.accessExpiresAt.toISOString(),
+    refreshToken: tokens.refreshToken,
+    rememberMe,
+  };
+}
+
+// Used when no auth service is injected. Every credential login fails and every refresh is rejected.
+export function createUnconfiguredAuthService(): AuthService {
+  return {
+    tokenVerifier: defaultTokenVerifier,
+    async login(): Promise<IssuedSession> {
+      throw new UnauthorizedError(INVALID_CREDENTIALS_MESSAGE);
+    },
+    async refresh(): Promise<IssuedSession> {
+      throw new UnauthorizedError(INVALID_SESSION_MESSAGE);
+    },
+    async logout(): Promise<LogoutResult> {
+      return { message: LOGOUT_MESSAGE };
     },
   };
 }

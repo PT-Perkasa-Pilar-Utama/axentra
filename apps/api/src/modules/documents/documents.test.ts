@@ -18,7 +18,7 @@ import type { QueueProducer } from "@axentra/queue";
 import { createApp } from "../../app";
 import { ConflictError, PayloadTooLargeError, UnsupportedFileTypeError } from "../../http/errors";
 import type { TokenVerifier } from "../../middleware/auth";
-import { createAuthService } from "../auth/auth.service";
+import { createInMemoryAuthService } from "../auth/auth.memory-stores";
 import type { CreateDocumentBatchItem, IDocumentRepository } from "./documents.repository";
 import { validateSingleFileConstraints } from "./documents.schema";
 import { createDocumentService, DocumentService } from "./documents.service";
@@ -285,6 +285,7 @@ function createMockRepository(): IDocumentRepository & {
     },
     findDocumentById: async () => null,
     findDocumentFileByDocumentId: async () => null,
+    findDocumentDetail: async () => null,
     markProcessingEnqueueFailed: async () => undefined,
   };
   return repo;
@@ -1151,7 +1152,7 @@ describe("POST /api/v1/documents/upload", () => {
 
   describe("Production Route Registration & AuthService Integration", () => {
     test("registers /api/v1/documents/upload in production createApp configuration when authService and documentService are injected", async () => {
-      const authService = createAuthService({
+      const authService = createInMemoryAuthService({
         authenticator: (creds) => {
           if (creds.email === "member@axentra.local" && creds.password === "correct-password") {
             return {
@@ -1194,7 +1195,7 @@ describe("POST /api/v1/documents/upload", () => {
     });
 
     test("mounts upload route and applies authentication/RBAC when documentService is injected for BE-S1-02", async () => {
-      const authService = createAuthService({
+      const authService = createInMemoryAuthService({
         authenticator: (creds) => {
           if (creds.email === "member@axentra.local") {
             return {

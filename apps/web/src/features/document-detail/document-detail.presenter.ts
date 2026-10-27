@@ -1,8 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { DocumentMetadataResult, PreviewDocumentResponse } from "@axentra/shared";
+import type { DocumentDetail, PreviewDocumentResponse } from "@axentra/shared";
 import { ApiClientError } from "../../lib/api-client";
-import { getDocumentDetail, getDocumentPreview, getDocumentDownload } from "./document-detail.api";
+import {
+  getDocumentDetail,
+  getDocumentPreview,
+  getDocumentPreviewContent,
+  getDocumentDownload,
+} from "./document-detail.api";
+import {
+  deriveDocumentDetailFields,
+  type DocumentDetailFields,
+} from "./document-detail-fields.presenter";
+import { usePreviewObjectUrl } from "./document-preview-object-url";
 
 export type DownloadStatus = "idle" | "loading" | "success" | "denied" | "error";
 export type PreviewView = "pdf" | "unsupported";
@@ -33,16 +43,16 @@ export function isSafeDownloadUrl(value: string): boolean {
 }
 
 // Menyembunyikan toolbar bawaan viewer PDF (termasuk tombol simpan) di area preview.
-// Fragment tidak dikirim ke server, jadi tidak memengaruhi tanda tangan presigned URL.
+// Fragment tidak dikirim ke server dan tidak mengubah blob URL lokal.
 const PDF_VIEWER_PARAMS = "toolbar=0&navpanes=0";
 
-export function buildPdfPreviewSrc(previewUrl: string): string {
+export function buildPdfPreviewSrc(objectUrl: string): string {
   try {
-    const url = new URL(previewUrl);
+    const url = new URL(objectUrl);
     url.hash = PDF_VIEWER_PARAMS;
     return url.toString();
   } catch {
-    return `${previewUrl.split("#")[0]}#${PDF_VIEWER_PARAMS}`;
+    return `${objectUrl.split("#")[0]}#${PDF_VIEWER_PARAMS}`;
   }
 }
 
@@ -53,19 +63,21 @@ export type DocumentDetailPresenter = {
   previewFormatLabel: string | null;
   previewFrameSrc: string | null;
   downloadStatus: DownloadStatus;
-  document: DocumentMetadataResult | undefined;
+  canDownload: boolean;
+  document: DocumentDetail | undefined;
   preview: PreviewDocumentResponse | undefined;
   author: string | null;
   filename: string;
-  uploadDate: string;
+  fields: DocumentDetailFields | null;
   retry: () => void;
   retryPreview: () => void;
   handleDownload: () => Promise<void>;
 };
 
 export type DocumentDetailPresenterOptions = {
-  fetchFn?: (id: string) => Promise<DocumentMetadataResult>;
+  fetchFn?: (id: string) => Promise<DocumentDetail>;
   previewFetchFn?: (id: string) => Promise<PreviewDocumentResponse>;
+  previewContentFetchFn?: (id: string) => Promise<Blob>;
 };
 
 export function useDocumentDetailPresenter(
@@ -74,6 +86,7 @@ export function useDocumentDetailPresenter(
 ): DocumentDetailPresenter {
   const fetchFn = options?.fetchFn ?? getDocumentDetail;
   const previewFetchFn = options?.previewFetchFn ?? getDocumentPreview;
+  const previewContentFetchFn = options?.previewContentFetchFn ?? getDocumentPreviewContent;
 
   const [downloadStatus, setDownloadStatus] = useState<DownloadStatus>("idle");
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -101,8 +114,28 @@ export function useDocumentDetailPresenter(
     retry: false,
   });
 
+  const preview = previewQuery.data;
+  const previewView: PreviewView | null = preview ? derivePreviewView(preview.mimeType) : null;
+  const contentEnabled = Boolean(documentId) && previewView === "pdf";
+
+  // Hanya PDF yang dirender inline, sehingga byte DOCX tidak diminta. Blob tidak disimpan di cache
+  // setelah komponen unmount; staleTime Infinity mencegah iframe dimuat ulang saat fokus jendela berubah.
+  const contentQuery = useQuery({
+    queryKey: ["document-preview-content", documentId],
+    queryFn: () => previewContentFetchFn(documentId),
+    enabled: contentEnabled,
+    retry: false,
+    staleTime: Infinity,
+    gcTime: 0,
+    refetchOnWindowFocus: false,
+  });
+  const previewObjectUrl = usePreviewObjectUrl(contentQuery.data);
+
+  // Hanya nilai true dari server yang mengizinkan unduhan; nilai hilang diperlakukan ditolak.
+  const canDownload = docQuery.data?.canDownload === true;
+
   const handleDownload = useCallback(async () => {
-    if (!documentId) return;
+    if (!documentId || !canDownload) return;
     clearResetTimer();
     setDownloadStatus("loading");
 
@@ -132,7 +165,7 @@ export function useDocumentDetailPresenter(
         setDownloadStatus("error");
       }
     }
-  }, [documentId, clearResetTimer]);
+  }, [documentId, canDownload, clearResetTimer]);
 
   let status: DocumentDetailPresenter["status"] = "ready";
   if (!documentId) {
@@ -146,33 +179,37 @@ export function useDocumentDetailPresenter(
   let previewStatus: DocumentDetailPresenter["previewStatus"] = "ready";
   if (!documentId || previewQuery.isPending) {
     previewStatus = "loading";
-  } else if (previewQuery.isError) {
+  } else if (previewQuery.isError || (contentEnabled && contentQuery.isError)) {
     previewStatus = "error";
+  } else if (contentEnabled && previewObjectUrl === null) {
+    previewStatus = "loading";
   }
 
   const doc = docQuery.data;
-  const preview = previewQuery.data;
 
   return {
     status,
     previewStatus,
-    previewView: preview ? derivePreviewView(preview.mimeType) : null,
+    previewView,
     previewFormatLabel: preview ? formatMimeLabel(preview.mimeType) : null,
     previewFrameSrc:
-      preview && derivePreviewView(preview.mimeType) === "pdf"
-        ? buildPdfPreviewSrc(preview.previewUrl)
-        : null,
+      contentEnabled && previewObjectUrl !== null ? buildPdfPreviewSrc(previewObjectUrl) : null,
     downloadStatus,
+    canDownload,
     document: doc,
     preview,
-    author: doc?.author?.trim() || null,
+    author: doc?.metadata?.author?.trim() || null,
     filename: preview?.filename ?? "Nama berkas belum tersedia",
-    uploadDate: "Belum tersedia",
+    fields: doc ? deriveDocumentDetailFields(doc) : null,
     retry: () => {
       void docQuery.refetch();
     },
     retryPreview: () => {
-      void previewQuery.refetch();
+      if (previewQuery.isError) {
+        void previewQuery.refetch();
+      } else {
+        void contentQuery.refetch();
+      }
     },
     handleDownload,
   };

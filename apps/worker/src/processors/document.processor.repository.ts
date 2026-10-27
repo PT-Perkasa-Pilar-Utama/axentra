@@ -1,4 +1,4 @@
-import { and, eq, isNull, or } from "drizzle-orm";
+import { and, eq, isNull, lt, or } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import {
   documentFiles,
@@ -37,7 +37,9 @@ export type FailedProcessingDocument = {
 };
 
 export type DocumentProcessingRepository = {
-  listRecoverableDocuments: () => Promise<ReadonlyArray<FailedProcessingDocument>>;
+  listRecoverableDocuments: (
+    staleProcessingBefore: Date,
+  ) => Promise<ReadonlyArray<FailedProcessingDocument>>;
   markEnqueueRecovered: (documentId: string) => Promise<void>;
   findDocumentById: (id: string) => Promise<DocumentProcessingRecord | null>;
   findDocumentFileByDocumentId: (
@@ -59,7 +61,9 @@ export class DrizzleDocumentProcessingRepository implements DocumentProcessingRe
 
   public constructor(private readonly db: PostgresJsDatabase) {}
 
-  public async listRecoverableDocuments(): Promise<ReadonlyArray<FailedProcessingDocument>> {
+  public async listRecoverableDocuments(
+    staleProcessingBefore: Date,
+  ): Promise<ReadonlyArray<FailedProcessingDocument>> {
     return this.db
       .select({
         documentId: documents.id,
@@ -75,6 +79,11 @@ export class DrizzleDocumentProcessingRepository implements DocumentProcessingRe
             and(
               eq(documents.processingStatus, "failed"),
               eq(documents.errorMessage, PROCESSING_ENQUEUE_FAILURE_MESSAGE),
+            ),
+            // A worker that crashed mid-job leaves the document in 'processing' with no owner.
+            and(
+              eq(documents.processingStatus, "processing"),
+              lt(documents.updatedAt, staleProcessingBefore),
             ),
           ),
         ),

@@ -1,5 +1,7 @@
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import type { StorageAdapter } from "@axentra/storage";
+import type { DocumentDetailRecord } from "./documents.detail.repository";
 import {
   DOCUMENT_COPY,
   DOCUMENT_ERROR_CODES,
@@ -32,11 +34,39 @@ export function sanitizeFilename(filename: string): string {
   return cleaned.length > 0 ? cleaned : "document";
 }
 
+function toDetailRecord(item: CreateDocumentBatchItem): DocumentDetailRecord {
+  const now = new Date();
+  return {
+    document: {
+      id: item.id,
+      title: item.title,
+      categoryId: null,
+      processingStatus: "queued",
+      errorMessage: null,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+    },
+    file: {
+      id: randomUUID(),
+      documentId: item.id,
+      storageKey: item.storageKey,
+      originalName: item.originalName,
+      mimeType: item.mimeType,
+      fileSize: item.fileSize,
+      fileExtension: item.fileExtension,
+      createdAt: now,
+      updatedAt: now,
+    },
+  };
+}
+
 export function createInMemoryRepository(): IDocumentRepository {
   const existingHashes = new Set<string>();
   const hashToDocId = new Map<string, string>();
   const savedBatches: CreateDocumentBatchItem[][] = [];
   const recentDocuments: RecentDocument[] = [];
+  const detailRecords = new Map<string, DocumentDetailRecord>();
   const documentTags = new Map<string, Set<string>>();
   return {
     findExistingHashes: async (hashes) => {
@@ -95,6 +125,7 @@ export function createInMemoryRepository(): IDocumentRepository {
           processingStatus: "queued",
           createdAt: new Date().toISOString(),
         });
+        detailRecords.set(item.id, toDetailRecord(item));
       }
       return items.map((i) => ({
         documentId: i.id,
@@ -109,6 +140,7 @@ export function createInMemoryRepository(): IDocumentRepository {
     },
     findDocumentById: async () => null,
     findDocumentFileByDocumentId: async () => null,
+    findDocumentDetail: async (id) => detailRecords.get(id) ?? null,
     markProcessingEnqueueFailed: async () => undefined,
   };
 }

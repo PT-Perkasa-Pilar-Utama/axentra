@@ -1,11 +1,12 @@
-import { describe, expect, spyOn, test } from "bun:test";
+import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { createElement } from "react";
 import { renderToString } from "react-dom/server";
 import { MemoryRouter } from "react-router";
-import type { LoginRequest, LoginResponse } from "@axentra/shared";
+import { loginRequestSchema, type LoginRequest, type LoginResponse } from "@axentra/shared";
 import { login } from "../src/features/auth/login.api";
 import {
   LOGIN_MESSAGES,
+  loginFormSchema,
   mapLoginError,
   useLoginPresenter,
   validateLoginInput,
@@ -13,7 +14,16 @@ import {
   type UseLoginPresenterOptions,
 } from "../src/features/auth/login.presenter";
 import { LoginPage, PerkasaLoginForm, PerkasaLogo } from "../src/features/auth/login.view";
-import { ApiClientError } from "../src/lib/api-client";
+import {
+  apiRequest,
+  ApiClientError,
+  setAuthTokenGetter,
+  setSessionRefresher,
+  setUnauthorizedHandler,
+} from "../src/lib/api-client";
+import { z } from "zod";
+
+const EXPIRES_AT = "2026-10-27T12:00:00.000Z";
 
 function createMockFetch(
   handler: (input: RequestInfo | URL, init?: RequestInit | undefined) => Promise<Response>,
@@ -51,6 +61,23 @@ function renderPresenterHarness(options: UseLoginPresenterOptions = {}): {
   return { html, presenter: captured.current };
 }
 
+const mockLoginResponse: LoginResponse = {
+  user: {
+    id: "usr-1",
+    email: "user@perkasa.co.id",
+    role: "member_team",
+    name: "Aiman",
+  },
+  token: "mock-token",
+  expiresAt: EXPIRES_AT,
+};
+
+afterEach(() => {
+  setAuthTokenGetter(null);
+  setUnauthorizedHandler(null);
+  setSessionRefresher(null);
+});
+
 describe("login input validation (F1, F2)", () => {
   test("returns error when email and password are empty", () => {
     const result = validateLoginInput({ email: "", password: "" });
@@ -75,41 +102,39 @@ describe("login input validation (F1, F2)", () => {
     expect(result.errors.email).toBeUndefined();
     expect(result.errors.password).toBeUndefined();
   });
+
+  test("trims surrounding whitespace from the email before validating", () => {
+    const result = validateLoginInput({ email: "  user@company.com  ", password: "secret" });
+    expect(result.valid).toBe(true);
+  });
+
+  test("F2: form schema builds on the shared loginRequestSchema and adds a boolean rememberMe", () => {
+    expect(loginRequestSchema.shape).toHaveProperty("rememberMe");
+    expect(
+      loginFormSchema.safeParse({ email: "a@b.co", password: "x", rememberMe: true }).success,
+    ).toBe(true);
+    expect(loginFormSchema.safeParse({ email: "a@b.co", password: "x" }).success).toBe(false);
+  });
 });
 
 describe("login API client", () => {
-  test("makes POST /auth/login request with valid payload", async () => {
+  test("makes POST /auth/login request with remember me in the body and sends credentials", async () => {
     let capturedUrl = "";
     let capturedMethod: string | undefined;
+    let capturedCredentials: RequestCredentials | undefined;
     let capturedBody: unknown;
-
-    const mockResponse: LoginResponse = {
-      user: {
-        id: "usr-123",
-        email: "user@company.com",
-        role: "member_team",
-        name: "Test User",
-      },
-      token: "ax_token_xyz",
-      refreshToken: "ax_rt_xyz",
-    };
 
     const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
       createMockFetch(async (input: RequestInfo | URL, init?: RequestInit) => {
         capturedUrl = String(input);
         capturedMethod = init?.method;
+        capturedCredentials = init?.credentials;
         capturedBody = init?.body ? JSON.parse(String(init.body)) : null;
 
-        return new Response(
-          JSON.stringify({
-            success: true,
-            data: mockResponse,
-          }),
-          {
-            status: 200,
-            headers: { "content-type": "application/json" },
-          },
-        );
+        return new Response(JSON.stringify({ success: true, data: mockLoginResponse }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
       }),
     );
 
@@ -117,15 +142,18 @@ describe("login API client", () => {
       const payload: LoginRequest = {
         email: "user@company.com",
         password: "secretpassword",
+        rememberMe: true,
       };
 
       const result = await login(payload);
       expect(capturedUrl).toContain("/auth/login");
       expect(capturedMethod).toBe("POST");
+      expect(capturedCredentials).toBe("include");
       expect(capturedBody).toEqual(payload);
-      expect(result.token).toBe("ax_token_xyz");
-      expect(result.user.email).toBe("user@company.com");
+      expect(result.token).toBe("mock-token");
+      expect(result.user.email).toBe("user@perkasa.co.id");
       expect(result.user.role).toBe("member_team");
+      expect(result.expiresAt).toBe(EXPIRES_AT);
     } finally {
       fetchSpy.mockRestore();
     }
@@ -158,27 +186,75 @@ describe("login API client", () => {
       fetchSpy.mockRestore();
     }
   });
+
+  test("a 401 from the login POST does not refresh the session or trigger the sign-out redirect", async () => {
+    const unauthorizedHandler = mock(() => {});
+    const refresher = mock(async () => true);
+    setUnauthorizedHandler(unauthorizedHandler);
+    setSessionRefresher(refresher);
+
+    const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
+      createMockFetch(
+        async () =>
+          new Response(
+            JSON.stringify({
+              success: false,
+              error: { code: "UNAUTHORIZED", message: "Kredensial tidak valid" },
+            }),
+            { status: 401, headers: { "content-type": "application/json" } },
+          ),
+      ),
+    );
+
+    try {
+      await expect(login({ email: "wrong@company.com", password: "bad" })).rejects.toMatchObject({
+        status: 401,
+      });
+      expect(unauthorizedHandler).not.toHaveBeenCalled();
+      expect(refresher).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  test("a 401 on a protected endpoint without a refresher signs out through the handler", async () => {
+    setAuthTokenGetter(() => "ax_expired_token");
+    const unauthorizedHandler = mock(() => {});
+    setUnauthorizedHandler(unauthorizedHandler);
+
+    const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
+      createMockFetch(
+        async () =>
+          new Response(
+            JSON.stringify({
+              success: false,
+              error: { code: "UNAUTHORIZED", message: "Token kadaluarsa" },
+            }),
+            { status: 401, headers: { "content-type": "application/json" } },
+          ),
+      ),
+    );
+
+    try {
+      await expect(apiRequest("/documents", z.object({ ok: z.boolean() }))).rejects.toMatchObject({
+        status: 401,
+      });
+      expect(unauthorizedHandler).toHaveBeenCalledTimes(1);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
 });
 
 describe("login presenter interaction & error mapping (F3)", () => {
-  test("submits valid credentials, passes payload to loginFn, and calls onSuccess", async () => {
+  test("submits valid credentials with rememberMe, passes payload to loginFn, and calls onSuccess", async () => {
     const capturedPayloads: LoginRequest[] = [];
     let successCalledWith: { response: LoginResponse; rememberMe: boolean } | undefined;
-
-    const mockResponse: LoginResponse = {
-      user: {
-        id: "usr-1",
-        email: "user@perkasa.co.id",
-        role: "member_team",
-        name: "Aiman",
-      },
-      token: "mock-token",
-    };
 
     const { presenter } = renderPresenterHarness({
       loginFn: async (payload) => {
         capturedPayloads.push(payload);
-        return mockResponse;
+        return mockLoginResponse;
       },
       onSuccess: (response, rememberMe) => {
         successCalledWith = { response, rememberMe };
@@ -196,12 +272,31 @@ describe("login presenter interaction & error mapping (F3)", () => {
       {
         email: "user@perkasa.co.id",
         password: "validpassword",
+        rememberMe: true,
       },
     ]);
     expect(successCalledWith).toEqual({
-      response: mockResponse,
+      response: mockLoginResponse,
       rememberMe: true,
     });
+  });
+
+  test("sends rememberMe false when the checkbox is left unchecked", async () => {
+    const capturedPayloads: LoginRequest[] = [];
+    const { presenter } = renderPresenterHarness({
+      loginFn: async (payload) => {
+        capturedPayloads.push(payload);
+        return mockLoginResponse;
+      },
+    });
+
+    await presenter.submitValues({
+      email: "user@perkasa.co.id",
+      password: "validpassword",
+      rememberMe: false,
+    });
+
+    expect(capturedPayloads[0]?.rememberMe).toBe(false);
   });
 
   test("rejects invalid input before loginFn and maps validation errors", async () => {
@@ -211,15 +306,7 @@ describe("login presenter interaction & error mapping (F3)", () => {
       initialEmail: "",
       loginFn: async () => {
         loginFnCalled = true;
-        return {
-          user: {
-            id: "usr-1",
-            email: "user@perkasa.co.id",
-            role: "member_team",
-            name: "Aiman",
-          },
-          token: "mock-token",
-        };
+        return mockLoginResponse;
       },
     });
 
@@ -338,7 +425,7 @@ describe("Perkasa login UI rendering (F1, F2)", () => {
     expect(html).toContain('placeholder="Masukkan kata sandi"');
   });
 
-  test("renders submitting state indicator when isSubmitting is true", () => {
+  test("renders submitting state with an accessible busy spinner on the submit button", () => {
     const dummyPresenter: LoginPresenter = {
       form: {
         register: (() => ({})) as never,
@@ -356,6 +443,15 @@ describe("Perkasa login UI rendering (F1, F2)", () => {
 
     const html = renderToString(createElement(PerkasaLoginForm, { presenter: dummyPresenter }));
     expect(html).toContain("Memproses...");
+    expect(html).toContain("animate-spin");
+    expect(html).toContain('aria-busy="true"');
+  });
+
+  test("renders the idle submit button without busy state", () => {
+    const { html } = renderPresenterHarness();
+    expect(html).toContain("Masuk");
+    expect(html).toMatch(/aria-busy="false"/);
+    expect(html).not.toContain("animate-spin");
   });
 
   test("renders error message envelope when errorMessage is present", () => {

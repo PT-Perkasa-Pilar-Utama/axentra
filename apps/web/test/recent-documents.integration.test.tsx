@@ -70,10 +70,13 @@ function buildListResponse(data: RecentDocument[]): string {
   });
 }
 
+type TopTagFixture = { id: string; name: string; documentCount: number };
+
 function createFetchMock(
   stage: { current: ListStage },
   documentsOverride?: RecentDocument[],
   bulkDownloadHandler?: (init?: RequestInit) => Response,
+  topTags?: TopTagFixture[],
 ): typeof fetch {
   const handler = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = String(input);
@@ -112,7 +115,7 @@ function createFetchMock(
       return new Response(
         JSON.stringify({
           success: true,
-          data: [{ id: tagId, name: "Strategy", documentCount: 5 }],
+          data: topTags ?? [{ id: tagId, name: "Strategy", documentCount: 5 }],
         }),
         { status: 200 },
       );
@@ -401,6 +404,78 @@ describe("Recent documents and Tags integration", () => {
     expect(topTagButton.getAttribute("aria-pressed")).toBe("true");
   });
 
+  test("AC-04.04 and AC-04.03: selecting Strategy and Legal shows only documents with both tags, and toggling a chip off restores the list", async () => {
+    const legalTagId = "88888888-8888-4888-8888-888888888888";
+    const strategyTag = { id: tagId, name: "Strategy", createdAt };
+    const legalTag = { id: legalTagId, name: "Legal", createdAt };
+    const documents: RecentDocument[] = [
+      {
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        filename: "gabungan.pdf",
+        processingStatus: "completed",
+        createdAt,
+        tags: [strategyTag, legalTag],
+      },
+      {
+        id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        filename: "strategi.pdf",
+        processingStatus: "completed",
+        createdAt,
+        tags: [strategyTag],
+      },
+      {
+        id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        filename: "legal.pdf",
+        processingStatus: "completed",
+        createdAt,
+        tags: [legalTag],
+      },
+      {
+        id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+        filename: "tanpa-tag.pdf",
+        processingStatus: "completed",
+        createdAt,
+        tags: [],
+      },
+    ];
+    globalThis.fetch = createFetchMock({ current: "completed" }, documents, undefined, [
+      { id: tagId, name: "Strategy", documentCount: 2 },
+      { id: legalTagId, name: "Legal", documentCount: 2 },
+    ]);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const fileNames = ["gabungan.pdf", "strategi.pdf", "legal.pdf", "tanpa-tag.pdf"];
+    const visibleFiles = (): string[] =>
+      fileNames.filter((name) => screen.queryByText(name) !== null);
+    const chip = (name: string): HTMLElement => screen.getByRole("button", { name });
+
+    await act(async () => {
+      renderDashboard(queryClient);
+    });
+    expect(await screen.findByText("tanpa-tag.pdf")).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(chip("Strategy"));
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    });
+    expect(visibleFiles()).toEqual(["gabungan.pdf", "strategi.pdf"]);
+
+    await act(async () => {
+      fireEvent.click(chip("Legal"));
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    });
+    expect(visibleFiles()).toEqual(["gabungan.pdf"]);
+    expect(chip("Strategy").getAttribute("aria-pressed")).toBe("true");
+    expect(chip("Legal").getAttribute("aria-pressed")).toBe("true");
+
+    await act(async () => {
+      fireEvent.click(chip("Strategy"));
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    });
+    expect(visibleFiles()).toEqual(["gabungan.pdf", "legal.pdf"]);
+    expect(chip("Strategy").getAttribute("aria-pressed")).toBe("false");
+    expect(chip("Legal").getAttribute("aria-pressed")).toBe("true");
+  });
+
   test("F3 regression: refreshes Top Tags when upload completes even if active filter hides the queued document", async () => {
     const existingDoc = recentDocument("completed", [{ id: tagId, name: "Strategy", createdAt }]);
     const newDocId = "44444444-4444-4444-8444-444444444444";
@@ -572,6 +647,8 @@ describe("Recent documents and Tags integration", () => {
       if (!(downloadButton instanceof HTMLButtonElement)) {
         throw new Error("Tombol unduh tidak tersedia");
       }
+      // AC-10.01: label tombol harus persis "Download Selected", bukan hanya aria-label.
+      expect(downloadButton.textContent?.trim()).toBe("Download Selected");
       expect(downloadButton.disabled).toBe(true);
 
       await act(async () => {

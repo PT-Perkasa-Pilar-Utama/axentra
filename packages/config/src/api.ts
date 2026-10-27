@@ -3,6 +3,8 @@ import type { EnvironmentSource } from "./common";
 import { baseServerSchema, formatConfigurationError } from "./common";
 import { storageEnvironmentSchema } from "./storage";
 
+export const DEFAULT_WEB_ORIGIN = "http://localhost:5173";
+
 const apiEnvironmentSchema = baseServerSchema
   .extend({
     API_PORT: z.coerce.number().int().min(1).max(65535).default(3001),
@@ -13,6 +15,11 @@ const apiEnvironmentSchema = baseServerSchema
     AUTH_LOCAL_IDENTITY_DIRECTORY: z.preprocess(
       (value) => (value === undefined || value === "" ? undefined : value),
       z.string().min(1),
+    ),
+    // The single browser origin allowed to call the API with credentials (CORS). Stored as an origin.
+    WEB_ORIGIN: z.preprocess(
+      (value) => (value === undefined || value === "" ? DEFAULT_WEB_ORIGIN : value),
+      z.url({ protocol: /^https?$/ }).transform((value) => new URL(value).origin),
     ),
   })
   .and(storageEnvironmentSchema);

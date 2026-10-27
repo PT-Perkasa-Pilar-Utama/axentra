@@ -27,6 +27,19 @@ export type UploadPresenterEvent =
   | { type: "DRAG_OVER" }
   | { type: "DRAG_LEAVE" };
 
+/**
+ * Satu notifikasi sukses per unggahan (AC-01.04). Untuk banyak file, nama setiap file yang
+ * diterima ditulis di belakang kalimat BA dalam satu baris, dipisah koma:
+ * "File diterima untuk diproses: a.docx, b.docx, c.docx".
+ */
+function buildSuccessNotification(result: DocumentUploadAcceptedData): UploadNotification {
+  if (result.files.length > 1) {
+    const fileNames = result.files.map((file) => file.filename).join(", ");
+    return { type: "success", message: `${result.message}: ${fileNames}` };
+  }
+  return { type: "success", message: result.message };
+}
+
 export function initialUploadPresenterState(): UploadPresenterState {
   return {
     status: "idle",
@@ -70,10 +83,7 @@ export function applyUploadPresenterEvent(
         ...state,
         status: "processing",
         uploadedResult: event.result,
-        notification: {
-          type: "success",
-          message: event.result.message ?? UPLOAD_MESSAGES.SUCCESS,
-        },
+        notification: buildSuccessNotification(event.result),
       };
     }
 

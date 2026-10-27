@@ -1,12 +1,24 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { createElement } from "react";
+import { createElement, type ReactNode } from "react";
 import { renderToString } from "react-dom/server";
 import { MemoryRouter, createMemoryRouter, RouterProvider } from "react-router";
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { RelatedDocument } from "@axentra/shared";
 import { RelatedDocumentsView } from "../src/features/document-detail/related-documents.view";
-import type { RelatedDocumentsPresenter } from "../src/features/document-detail/related-documents.presenter";
+import {
+  useRelatedDocumentsPresenter,
+  type RelatedDocumentsPresenter,
+} from "../src/features/document-detail/related-documents.presenter";
 import { getRelatedDocuments } from "../src/features/document-detail/related-documents.api";
 import { DocumentDetailView } from "../src/features/document-detail/document-detail.view";
 import { setAuthTokenGetter } from "../src/lib/api-client";
@@ -78,23 +90,57 @@ function respond(data: unknown): Response {
   return Response.json({ success: true, data });
 }
 
+let smartTagNames: string[] = ["Strategy"];
+
+const sourceListItem = {
+  id: sourceId,
+  filename: "Source document.pdf",
+  processingStatus: "completed",
+  createdAt,
+};
+const relatedListItem = {
+  id: relatedId,
+  filename: "CustomerAdvise.pdf",
+  processingStatus: "completed",
+  createdAt,
+};
+
+// Mock HTTP seluruh endpoint halaman detail; hanya permintaan /related yang diteruskan ke handler.
 function mockRelated(handler: (id: string, init?: RequestInit) => Promise<Response>): void {
   globalThis.fetch = Object.assign(
     async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-      const path = new URL(String(input), "http://localhost").pathname;
-      expect(path).toMatch(/^\/api\/v1\/documents\/[^/]+\/(metadata|related)$/);
-      const id = path.split("/")[4] ?? "";
-      if (path.endsWith("/metadata")) {
-        return respond({
-          id,
-          documentId: id,
-          author: "Bessie Cooper",
-          extractedAt: createdAt,
-          createdAt,
-          updatedAt: createdAt,
-        });
+      const { pathname } = new URL(String(input), "http://localhost");
+      if (pathname === "/api/v1/documents") {
+        return respond([sourceListItem, relatedListItem]);
       }
-      return handler(id, init);
+      const match = /^\/api\/v1\/documents\/([^/]+)(?:\/(related|preview))?$/.exec(pathname);
+      expect(match).not.toBeNull();
+      const id = match?.[1] ?? "";
+      switch (match?.[2]) {
+        case undefined:
+          return respond({
+            id,
+            title: "Source document.pdf",
+            processingStatus: "completed",
+            category: null,
+            tags: smartTagNames.map((name, index) => ({
+              id: `00000000-0000-4000-8000-00000000000${index + 1}`,
+              name,
+              createdAt,
+            })),
+            metadata: { author: "Bessie Cooper", extractedAt: createdAt },
+            canDownload: true,
+            createdAt,
+            updatedAt: createdAt,
+          });
+        case "related":
+          return handler(id, init);
+        default:
+          return Response.json(
+            { success: false, error: { code: "NOT_FOUND", message: "Tidak ditemukan" } },
+            { status: 404 },
+          );
+      }
     },
     { preconnect: (): void => {} },
   );
@@ -124,6 +170,7 @@ afterEach(() => {
   client?.clear();
   globalThis.fetch = originalFetch;
   setAuthTokenGetter(null);
+  smartTagNames = ["Strategy"];
 });
 
 describe("Related documents API and presenter", () => {
@@ -289,5 +336,52 @@ describe("Related documents API and presenter", () => {
     await mountDetail();
     expect(await screen.findByText("<img src=x onerror=alert(1)>")).toBeTruthy();
     expect(relatedRegion().querySelector("img, script")).toBeNull();
+  });
+});
+
+describe("Dokumen Terkait gating and presenter path (AC-07.01, AC-07.02)", () => {
+  test("AC-07.01: hides Dokumen Terkait and skips the related request when the document has no smart tags", async () => {
+    smartTagNames = [];
+    let relatedRequests = 0;
+    mockRelated(async () => {
+      relatedRequests += 1;
+      return respond([recommendation]);
+    });
+    await mountDetail();
+    expect(await screen.findByText("Tidak ada tag")).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Dokumen Terkait" })).toBeNull();
+    expect(relatedRequests).toBe(0);
+  });
+
+  test("AC-07.01: useRelatedDocumentsPresenter uses the real request path and drops the source document", async () => {
+    setAuthTokenGetter(() => "ax_test_related_presenter");
+    const requestedIds: string[] = [];
+    mockRelated(async (id, init) => {
+      requestedIds.push(id);
+      expect(new Headers(init?.headers).get("authorization")).toBe(
+        "Bearer ax_test_related_presenter",
+      );
+      return respond([
+        { ...recommendation, id: sourceId, filename: "Source document.pdf" },
+        recommendation,
+      ]);
+    });
+    const presenterClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client: presenterClient }, children);
+
+    const { result } = renderHook(() => useRelatedDocumentsPresenter(sourceId), { wrapper });
+
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    expect(requestedIds).toEqual([sourceId]);
+    expect(result.current.items).toEqual([
+      {
+        id: relatedId,
+        filename: "CustomerAdvise.pdf",
+        sharedTags: ["Strategy", "AI"],
+        href: `/documents/${relatedId}`,
+      },
+    ]);
+    presenterClient.clear();
   });
 });

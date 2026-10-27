@@ -5,6 +5,10 @@ import type { DocumentProcessingRepository } from "./document.processor.reposito
 
 const RECOVERY_INTERVAL_MS = 30_000;
 
+// A document still 'processing' this long after its last update has lost its worker. Its job id is
+// the document id, so reconciliation never adds a second runnable job for the same document.
+export const STALE_PROCESSING_THRESHOLD_MS = 30 * 60 * 1000;
+
 export type ProcessingRecoveryDependencies = {
   repository: Pick<
     DocumentProcessingRepository,
@@ -17,7 +21,8 @@ export type ProcessingRecoveryDependencies = {
 export async function recoverFailedProcessingJobs(
   dependencies: ProcessingRecoveryDependencies,
 ): Promise<number> {
-  const pending = await dependencies.repository.listRecoverableDocuments();
+  const staleProcessingBefore = new Date(Date.now() - STALE_PROCESSING_THRESHOLD_MS);
+  const pending = await dependencies.repository.listRecoverableDocuments(staleProcessingBefore);
   const requestedAt = new Date().toISOString();
   let recovered = 0;
 

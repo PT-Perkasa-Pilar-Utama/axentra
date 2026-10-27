@@ -12,6 +12,8 @@ import type { RecentDocument } from "./recent-documents.api";
 import { TOP_TAGS_QUERY_KEY } from "../top-tags/top-tags.presenter";
 import { CATEGORIES_QUERY_KEY } from "../categories/categories.presenter";
 import { ApiClientError } from "../../lib/api-client";
+import { formatDate, formatStatus, hasPendingDocument } from "./recent-documents.format";
+import { clampPage, totalPagesFor } from "./recent-documents.pagination";
 
 export const RECENT_DOCUMENTS_QUERY_KEY = ["recent-documents"] as const;
 const recentDocumentsPollIntervalMs = 2000;
@@ -48,11 +50,23 @@ export type RecentDocumentItem = {
   };
 };
 
+export type RecentDocumentsPagination = {
+  /** Halaman yang ditampilkan, sudah dibatasi ke rentang [1, totalPages]. */
+  page: number;
+  totalPages: number;
+  hasPrevious: boolean;
+  hasNext: boolean;
+  /** true saat halaman baru sedang dimuat; navigasi dinonaktifkan selama itu. */
+  isChanging: boolean;
+  goToPage: (page: number) => void;
+};
+
 export type RecentDocumentsPresenter = {
   isLoading: boolean;
   isError: boolean;
   isEmpty: boolean;
   items: RecentDocumentItem[];
+  pagination: RecentDocumentsPagination;
   refresh: () => Promise<void>;
   retry: () => Promise<void>;
   selectedIds: ReadonlySet<string>;
@@ -63,56 +77,42 @@ export type RecentDocumentsPresenter = {
   downloadSelected: () => Promise<void>;
 };
 
-function formatDate(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleDateString("id-ID", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
-}
+type PageState = { scope: string; page: number };
+type SelectionState = { key: string; ids: ReadonlySet<string> };
 
-function formatStatus(status: RecentDocument["processingStatus"]): string {
-  switch (status) {
-    case "completed":
-      return "Selesai Diproses";
-    case "processing":
-      return "Sedang Diproses";
-    case "queued":
-      return "Dalam Antrean";
-    case "failed":
-      return "Gagal";
-  }
-}
-
-function hasPendingDocument(documents: readonly RecentDocument[]): boolean {
-  return documents.some(
-    (document) =>
-      document.processingStatus === "queued" || document.processingStatus === "processing",
-  );
-}
+const NO_SELECTION: ReadonlySet<string> = new Set();
+const EMPTY_SELECTION: SelectionState = { key: "", ids: NO_SELECTION };
 
 export function useRecentDocumentsPresenter(
   limit = 20,
-  activeTagNames?: ReadonlySet<string>,
+  activeTagNames: readonly string[] = [],
 ): RecentDocumentsPresenter {
   const queryClient = useQueryClient();
   const isPollingRef = useRef(false);
-  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [pageState, setPageState] = useState<PageState>({ scope: "", page: 1 });
+  const [selection, setSelection] = useState<SelectionState>({ key: "", ids: NO_SELECTION });
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
-  const tagsArray = activeTagNames ? Array.from(activeTagNames) : [];
+  // Urutan dibuat tetap agar kunci cache stabil; server menerapkan logika AND (AC-04.04).
+  const tagsArray = [...activeTagNames].sort((a, b) => a.localeCompare(b));
   const isFilterActive = tagsArray.length > 0;
+  // Halaman kembali ke 1 saat filter tag berubah, karena jumlah hasilnya ikut berubah.
+  const scope = JSON.stringify(tagsArray);
+  const requestedPage = pageState.scope === scope ? pageState.page : 1;
 
   const query = useQuery({
-    queryKey: [...RECENT_DOCUMENTS_QUERY_KEY, limit, tagsArray],
-    queryFn: () => listRecentDocuments(1, limit, tagsArray),
+    queryKey: [...RECENT_DOCUMENTS_QUERY_KEY, limit, tagsArray, requestedPage],
+    queryFn: () => listRecentDocuments(requestedPage, limit, tagsArray),
+    // Halaman sebelumnya tetap tampil saat halaman lain dimuat, kecuali filter tag berubah.
+    placeholderData: (previousData, previousQuery) =>
+      previousQuery !== undefined && JSON.stringify(previousQuery.queryKey[2]) === scope
+        ? previousData
+        : undefined,
     staleTime: 30 * 1000,
     retry: 1,
     refetchInterval: (current) =>
-      hasPendingDocument(current.state.data ?? []) ? recentDocumentsPollIntervalMs : false,
+      hasPendingDocument(current.state.data?.items ?? []) ? recentDocumentsPollIntervalMs : false,
   });
 
   const pendingMonitorQuery = useQuery({
@@ -122,13 +122,21 @@ export function useRecentDocumentsPresenter(
     retry: 1,
     enabled: isFilterActive,
     refetchInterval: (current) =>
-      hasPendingDocument(current.state.data ?? []) ? recentDocumentsPollIntervalMs : false,
+      hasPendingDocument(current.state.data?.items ?? []) ? recentDocumentsPollIntervalMs : false,
   });
 
-  const documents = useMemo(() => query.data ?? [], [query.data]);
+  const documents = useMemo(() => query.data?.items ?? [], [query.data]);
+  const total = query.data?.meta.total ?? 0;
+  const totalPages = totalPagesFor(total, limit);
+  const page = clampPage(query.data?.meta.page ?? requestedPage, totalPages);
   const isPending =
     hasPendingDocument(documents) ||
-    (isFilterActive && hasPendingDocument(pendingMonitorQuery.data ?? []));
+    (isFilterActive && hasPendingDocument(pendingMonitorQuery.data?.items ?? []));
+
+  // Total yang menyusut (mis. setelah unggah) membuat halaman saat ini di luar rentang.
+  if (query.data !== undefined && !query.isPlaceholderData && requestedPage > totalPages) {
+    setPageState({ scope, page: totalPages });
+  }
 
   useEffect(() => {
     if (isPending) {
@@ -162,6 +170,13 @@ export function useRecentDocumentsPresenter(
     })),
   });
 
+  // Pilihan terikat pada halaman dan filter. Saat kunci berubah, pilihan lama dibuang
+  // agar tidak muncul kembali ketika pengguna kembali ke halaman tersebut.
+  const selectionKey = `${scope}#${requestedPage}`;
+  const selectedIds = selection.key === selectionKey ? selection.ids : NO_SELECTION;
+  if (selection.key !== selectionKey && selection.ids.size > 0) {
+    setSelection(EMPTY_SELECTION);
+  }
   const visibleIds = useMemo(() => new Set(documents.map((document) => document.id)), [documents]);
   const visibleSelectedIds = useMemo(
     () => new Set([...selectedIds].filter((id) => visibleIds.has(id))),
@@ -172,20 +187,31 @@ export function useRecentDocumentsPresenter(
     (id: string): void => {
       if (!visibleIds.has(id)) return;
       setDownloadError(null);
-      setSelectedIds((current) => {
-        const next = new Set([...current].filter((selectedId) => visibleIds.has(selectedId)));
+      setSelection((current) => {
+        const base = current.key === selectionKey ? current.ids : NO_SELECTION;
+        const next = new Set([...base].filter((selectedId) => visibleIds.has(selectedId)));
         if (next.has(id)) next.delete(id);
         else next.add(id);
-        return next;
+        return { key: selectionKey, ids: next };
       });
     },
-    [visibleIds],
+    [selectionKey, visibleIds],
   );
 
   const clearSelection = useCallback((): void => {
-    setSelectedIds(new Set());
+    setSelection({ key: selectionKey, ids: NO_SELECTION });
     setDownloadError(null);
-  }, []);
+  }, [selectionKey]);
+
+  const goToPage = useCallback(
+    (target: number): void => {
+      const nextPage = clampPage(target, totalPages);
+      if (nextPage === requestedPage) return;
+      setDownloadError(null);
+      setPageState({ scope, page: nextPage });
+    },
+    [requestedPage, scope, totalPages],
+  );
 
   const downloadSelected = useCallback(async (): Promise<void> => {
     if (visibleSelectedIds.size === 0 || isDownloading) return;
@@ -247,8 +273,16 @@ export function useRecentDocumentsPresenter(
   return {
     isLoading: query.isPending,
     isError: query.isError,
-    isEmpty: !query.isPending && !query.isError && documents.length === 0,
+    isEmpty: !query.isPending && !query.isError && total === 0,
     items,
+    pagination: {
+      page,
+      totalPages,
+      hasPrevious: page > 1,
+      hasNext: page < totalPages,
+      isChanging: query.isPlaceholderData,
+      goToPage,
+    },
     refresh,
     retry,
     selectedIds: visibleSelectedIds,

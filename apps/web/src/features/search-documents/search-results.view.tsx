@@ -70,17 +70,9 @@ export function SearchResultsView({ presenter }: SearchResultsViewProps): React.
           {presenter.results.map((item) => (
             <li
               key={item.id}
-              className="grid min-h-[4.5rem] grid-cols-[1.25rem_minmax(0,1fr)] items-start gap-x-5 rounded-2xl border border-[#e1e5e9] bg-white px-5 py-4 md:px-8"
+              className="min-h-[4.5rem] rounded-2xl border border-[#e1e5e9] bg-white px-5 py-4 md:px-8"
             >
-              <input
-                type="checkbox"
-                aria-label={`Pilih ${item.filename}`}
-                className="mt-0.5 h-5 w-5 shrink-0 rounded border-gray-300 accent-[#65a448]"
-                disabled
-                readOnly
-              />
-
-              <div className="min-w-0 flex-1">
+              <div className="min-w-0">
                 <p className="truncate text-sm font-medium text-[#535a63]">{item.filename}</p>
                 <p className="mt-1 text-xs text-gray-500">
                   {item.snippet ?? "Tidak ada cuplikan teks."}

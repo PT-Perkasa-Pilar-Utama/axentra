@@ -1,5 +1,6 @@
 import type React from "react";
 import { Link, useParams } from "react-router";
+import { DOWNLOAD_ACCESS_DENIED_MESSAGE } from "@axentra/shared";
 import { useDocumentDetailPresenter } from "./document-detail.presenter";
 import { CloseIcon, DownloadIcon, FileIcon } from "./document-icons";
 import { DocumentMetadataSidebar } from "./document-metadata-sidebar";
@@ -41,7 +42,7 @@ export function DocumentDetailView({
     );
   }
 
-  if (presenter.status === "error" || !presenter.document) {
+  if (presenter.status === "error" || !presenter.document || !presenter.fields) {
     return (
       <div className="min-h-dvh bg-[#f3f4f6] flex flex-col items-center justify-center p-6">
         <div className="bg-white p-8 rounded-2xl shadow-sm text-center max-w-md w-full border border-gray-200">
@@ -72,18 +73,26 @@ export function DocumentDetailView({
     );
   }
 
-  const { filename, author, uploadDate } = presenter;
+  const { filename, author, canDownload } = presenter;
+  const fields = presenter.fields;
+  // Tombol nonaktif saat unduhan diproses, ditolak (403), atau kategori tidak mengizinkan unduh.
+  const downloadBlocked =
+    presenter.downloadStatus === "loading" || presenter.downloadStatus === "denied" || !canDownload;
 
   // Ekstraksi logika styling untuk menghindari nested ternary (linter fix)
   let downloadBtnClass = "bg-[#477532] text-white hover:bg-[#365b26] focus-visible:ring-green-800";
   if (presenter.downloadStatus === "loading") {
     downloadBtnClass = "bg-[#e8f0e4] text-[#477532] cursor-wait";
-  } else if (presenter.downloadStatus === "denied") {
+  } else if (downloadBlocked) {
     downloadBtnClass = "bg-gray-200 text-gray-500 cursor-not-allowed";
   }
 
   let downloadNoteClass = "text-gray-500";
-  if (presenter.downloadStatus === "error" || presenter.downloadStatus === "denied") {
+  if (
+    presenter.downloadStatus === "error" ||
+    presenter.downloadStatus === "denied" ||
+    !canDownload
+  ) {
     downloadNoteClass = "text-rose-600";
   }
 
@@ -110,13 +119,11 @@ export function DocumentDetailView({
             id="document-preview-download"
             type="button"
             onClick={presenter.handleDownload}
-            disabled={
-              presenter.downloadStatus === "loading" || presenter.downloadStatus === "denied"
-            }
+            disabled={downloadBlocked}
             className={`flex min-h-11 items-center gap-2 text-sm font-medium px-4 py-2 rounded-lg transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 ${downloadBtnClass}`}
             aria-describedby="download-note"
           >
-            <span>{presenter.downloadStatus === "loading" ? "Menyiapkan..." : "Unduh"}</span>
+            <span>{presenter.downloadStatus === "loading" ? "Menyiapkan..." : "Download"}</span>
             <DownloadIcon />
           </button>
 
@@ -126,10 +133,11 @@ export function DocumentDetailView({
             aria-live="polite"
             className={`text-xs ${downloadNoteClass}`}
           >
-            {presenter.downloadStatus === "idle" && "Unduh dalam format asli"}
+            {presenter.downloadStatus === "idle" && canDownload && "Unduh dalam format asli"}
+            {presenter.downloadStatus === "idle" && !canDownload && DOWNLOAD_ACCESS_DENIED_MESSAGE}
             {presenter.downloadStatus === "loading" && "Menyiapkan tautan unduhan..."}
             {presenter.downloadStatus === "success" && "Unduhan dimulai..."}
-            {presenter.downloadStatus === "error" && "Gagal mengunduh dokumen. Coba lagi."}
+            {presenter.downloadStatus === "error" && "Unduhan gagal. Silakan coba lagi."}
             {presenter.downloadStatus === "denied" &&
               "Anda tidak memiliki izin mengunduh dokumen ini."}
           </span>
@@ -192,10 +200,12 @@ export function DocumentDetailView({
 
         {/* Right Column: Meta Data & Related Documents Sidebar */}
         <DocumentMetadataSidebar
-          documentId={presenter.document.documentId}
+          documentId={presenter.document.id}
           filename={filename}
           author={author}
-          uploadDate={uploadDate}
+          tags={fields.tags}
+          category={fields.category}
+          uploadDate={fields.uploadDate}
         />
       </div>
     </div>

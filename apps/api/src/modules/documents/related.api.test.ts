@@ -60,6 +60,7 @@ function appWith(source: SourceDocument | null, related: ReadonlyArray<RelatedDo
     saveDocumentBatch: async () => [],
     findDocumentById: async (id) => (id === SOURCE_ID ? source : null),
     findDocumentFileByDocumentId: async () => null,
+    findDocumentDetail: async () => null,
     markProcessingEnqueueFailed: async () => undefined,
   };
 

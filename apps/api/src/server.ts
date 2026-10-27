@@ -5,6 +5,9 @@ import { createQueueProducer, createRedisProbe } from "@axentra/queue";
 import { createS3StorageAdapter } from "@axentra/storage";
 import { createApp } from "./app";
 import { createAuthService } from "./modules/auth/auth.service";
+import { DrizzleAuthSessionStore } from "./modules/auth/auth.session-store.drizzle";
+import { DrizzleLoginAttemptStore } from "./modules/auth/auth.login-attempt-store.drizzle";
+import { DrizzleAuthUserRepository } from "./modules/auth/auth.user-repository.drizzle";
 import { createRuntimeAuthenticator } from "./modules/auth/runtime-authenticator";
 import { DocumentRepository } from "./modules/documents/documents.repository";
 import { createDocumentService } from "./modules/documents/documents.service";
@@ -79,7 +82,11 @@ async function start(): Promise<void> {
   }
 
   const authService = createAuthService({
-    authenticator: createRuntimeAuthenticator(config),
+    authenticator: createRuntimeAuthenticator(config, {
+      userRepository: new DrizzleAuthUserRepository(database.db),
+    }),
+    sessionStore: new DrizzleAuthSessionStore(database.db),
+    loginAttemptStore: new DrizzleLoginAttemptStore(database.db),
   });
   const documentRepository = new DocumentRepository(database.db);
   const documentService = createDocumentService({
@@ -112,6 +119,8 @@ async function start(): Promise<void> {
     searchService,
     categoriesService,
     enableUploadRoute: true,
+    webOrigin: config.WEB_ORIGIN,
+    appEnvironment: config.APP_ENV,
   });
 
   const server = Bun.serve({

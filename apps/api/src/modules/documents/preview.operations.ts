@@ -1,11 +1,8 @@
-import type { StorageAdapter } from "@axentra/storage";
-import { PREVIEW_URL_TTL_SECONDS } from "@axentra/shared";
 import { NotFoundError } from "../../http/errors";
-import type { IPreviewRepository } from "./preview.repository";
+import type { IPreviewRepository, PreviewTargetRecord } from "./preview.repository";
 
 export type PreviewOperationDependencies = {
   previewRepository: IPreviewRepository;
-  storage: StorageAdapter;
 };
 
 export type ExecutePreviewInput = {
@@ -13,19 +10,15 @@ export type ExecutePreviewInput = {
 };
 
 export type PreviewOperationResult = {
-  previewUrl: string;
   filename: string;
   mimeType: string;
   fileSize: number;
-  expiresInSeconds: number;
 };
 
-export async function executePreviewOperation(
-  dependencies: PreviewOperationDependencies,
-  input: ExecutePreviewInput,
-): Promise<PreviewOperationResult> {
-  const target = await dependencies.previewRepository.findPreviewTarget(input.documentId);
+export type PreviewFileRecord = NonNullable<PreviewTargetRecord["file"]>;
 
+// Shared by the metadata and content routes so both apply the same deletedAt and file rules.
+export function assertPreviewAllowed(target: PreviewTargetRecord | null): PreviewFileRecord {
   if (!target || target.document.deletedAt !== null) {
     throw new NotFoundError("Dokumen tidak ditemukan");
   }
@@ -34,16 +27,19 @@ export async function executePreviewOperation(
     throw new NotFoundError("File dokumen tidak ditemukan");
   }
 
-  const previewUrl = await dependencies.storage.createDownloadUrl(
-    target.file.storageKey,
-    PREVIEW_URL_TTL_SECONDS,
-  );
+  return target.file;
+}
+
+export async function executePreviewOperation(
+  dependencies: PreviewOperationDependencies,
+  input: ExecutePreviewInput,
+): Promise<PreviewOperationResult> {
+  const target = await dependencies.previewRepository.findPreviewTarget(input.documentId);
+  const file = assertPreviewAllowed(target);
 
   return {
-    previewUrl,
-    filename: target.file.originalName,
-    mimeType: target.file.mimeType,
-    fileSize: target.file.fileSize,
-    expiresInSeconds: PREVIEW_URL_TTL_SECONDS,
+    filename: file.originalName,
+    mimeType: file.mimeType,
+    fileSize: file.fileSize,
   };
 }

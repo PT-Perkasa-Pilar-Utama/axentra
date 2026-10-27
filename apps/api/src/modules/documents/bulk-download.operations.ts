@@ -5,16 +5,24 @@ import {
   DOWNLOAD_ACCESS_DENIED_MESSAGE,
   type AuthUser,
 } from "@axentra/shared";
-import { ForbiddenError, NotFoundError, PayloadTooLargeError } from "../../http/errors";
+import {
+  ForbiddenError,
+  NotFoundError,
+  PayloadTooLargeError,
+  TooManyRequestsError,
+} from "../../http/errors";
 import type { DownloadTargetRecord, IDownloadRepository } from "./download.repository";
 import { runDownloadAuditTransaction } from "./download.audit-transaction";
+import { createZipArchive, ZIP32_MAX_ENTRY_SIZE, type ZipEntry } from "./zip.writer";
 import {
-  createZipArchive,
-  ZIP32_MAX_ENTRY_COUNT,
-  ZIP32_MAX_ENTRY_SIZE,
-  type ZipEntry,
-} from "./zip.writer";
-import { type BulkDownloadSemaphore, globalBulkDownloadSemaphore } from "./bulk-download.semaphore";
+  BULK_DOWNLOAD_BUSY_MESSAGE,
+  type BulkDownloadSemaphore,
+  globalBulkDownloadSemaphore,
+} from "./bulk-download.semaphore";
+import {
+  type BulkDownloadByteBudget,
+  globalBulkDownloadByteBudget,
+} from "./bulk-download.byte-budget";
 import { getObjectWithTimeout } from "./bulk-download.storage";
 
 export type BulkDownloadOperationDependencies = {
@@ -22,6 +30,7 @@ export type BulkDownloadOperationDependencies = {
   storage: StorageAdapter;
   logger?: Logger | undefined;
   bulkDownloadSemaphore?: BulkDownloadSemaphore | undefined;
+  bulkDownloadByteBudget?: BulkDownloadByteBudget | undefined;
   storageTimeoutMs?: number | undefined;
 };
 
@@ -36,8 +45,10 @@ export type ExecuteBulkDownloadInput = {
 export type BulkDownloadOperationResult = {
   filename: string;
   bytes: Uint8Array;
-  contentLength: number;
   fileCount: number;
+  // Releases the concurrency slot and the byte reservation. The caller must invoke it once the archive
+  // body has been read, cancelled, or aborted, or when it discards the result (see createBulkDownloadBody).
+  release: () => void;
 };
 
 // Runs inside the audit unit of work: rechecks each selected document under a share lock, then records
@@ -92,15 +103,10 @@ export async function executeBulkDownloadOperation(
 ): Promise<BulkDownloadOperationResult> {
   const uniqueIds = Array.from(new Set(input.documentIds));
 
-  // 1. Enforce ZIP32 entry count limit before database operations
-  if (uniqueIds.length > ZIP32_MAX_ENTRY_COUNT) {
-    throw new PayloadTooLargeError("Jumlah dokumen melebihi batas maksimum arsip ZIP (65.535)");
-  }
-
   const targets = await dependencies.downloadRepository.findDownloadTargets(uniqueIds);
   const targetMap = new Map(targets.map((t) => [t.document.id, t]));
 
-  // 2. Verify all selected documents exist and are not soft-deleted
+  // 1. Verify all selected documents exist and are not soft-deleted
   for (const docId of uniqueIds) {
     const target = targetMap.get(docId);
     if (!target || target.document.deletedAt !== null) {
@@ -112,7 +118,7 @@ export async function executeBulkDownloadOperation(
     }
   }
 
-  // 3. Enforce category download permissions per item for member_team (AC-10.01, AC-13.01)
+  // 2. Enforce category download permissions per item for member_team (AC-10.01, AC-13.01)
   if (input.user.role === "member_team") {
     for (const docId of uniqueIds) {
       const target = targetMap.get(docId);
@@ -128,7 +134,7 @@ export async function executeBulkDownloadOperation(
     }
   }
 
-  // 4. Enforce aggregate and individual file size limits before storage retrieval
+  // 3. Enforce aggregate and individual file size limits before storage retrieval
   let totalBytes = 0;
   for (const docId of uniqueIds) {
     const target = targetMap.get(docId);
@@ -147,14 +153,15 @@ export async function executeBulkDownloadOperation(
     );
   }
 
-  // 5. Acquire concurrency slot to protect peak RSS during storage prefetch and archive assembly
-  // Total aggregate size is checked against 250 MB (BULK_DOWNLOAD_MAX_TOTAL_BYTES) in step 4,
-  // which strictly guarantees total archive size never approaches the ZIP32 4 GiB limit.
+  // 4. Acquire the concurrency slot before prefetch. On success it stays held until the response body
+  // ends (see createBulkDownloadBody). Total aggregate size is checked against 250 MB
+  // (BULK_DOWNLOAD_MAX_TOTAL_BYTES) in step 3, which keeps the archive far below the ZIP32 4 GiB limit.
   const semaphore = dependencies.bulkDownloadSemaphore ?? globalBulkDownloadSemaphore;
   const releaseSlot = await semaphore.acquire({ signal: input.signal });
+  let releaseBytes: (() => void) | undefined;
 
   try {
-    // 6. Prefetch all storage objects before audit recording and response generation
+    // 5. Prefetch all storage objects before audit recording and response generation
     const entries: Array<ZipEntry> = [];
     for (const docId of uniqueIds) {
       const target = targetMap.get(docId);
@@ -177,8 +184,17 @@ export async function executeBulkDownloadOperation(
       });
     }
 
-    // 7. Assemble the ZIP archive using single-pass continuous buffer allocation
+    // 6. Assemble the ZIP archive using single-pass continuous buffer allocation
     const bytes = createZipArchive(entries);
+
+    // 7. Reserve the archive bytes before audit, so an over-budget request writes no audit record.
+    // Reservations are not queued: an over-budget request is rejected with 429.
+    const reserved = dependencies.bulkDownloadByteBudget ?? globalBulkDownloadByteBudget;
+    const releaseReservation = reserved.tryReserve(bytes.byteLength);
+    if (releaseReservation === null) {
+      throw new TooManyRequestsError(BULK_DOWNLOAD_BUSY_MESSAGE);
+    }
+    releaseBytes = releaseReservation;
 
     // 8. Atomically recheck category permissions with row lock and record point-in-time audit events
     await runDownloadAuditTransaction(
@@ -191,10 +207,17 @@ export async function executeBulkDownloadOperation(
     return {
       filename: "axentra-documents.zip",
       bytes,
-      contentLength: bytes.byteLength,
       fileCount: entries.length,
+      release: () => {
+        releaseReservation();
+        releaseSlot();
+      },
     };
-  } finally {
+  } catch (error: unknown) {
+    // Failures before the response exists release both the reservation and the slot here;
+    // success hands them to the caller.
+    releaseBytes?.();
     releaseSlot();
+    throw error;
   }
 }

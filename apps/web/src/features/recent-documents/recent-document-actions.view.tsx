@@ -54,6 +54,15 @@ function DownloadIcon(): React.JSX.Element {
   );
 }
 
+function BusyIcon(): React.JSX.Element {
+  return (
+    <span
+      className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-white border-t-transparent"
+      aria-hidden="true"
+    />
+  );
+}
+
 export type DownloadButtonProps = {
   presenter: RecentDocumentsPresenter;
 };
@@ -72,12 +81,11 @@ export function DownloadButton({ presenter }: DownloadButtonProps): React.JSX.El
       onClick={() => void presenter.downloadSelected()}
       disabled={presenter.selectedIds.size === 0 || presenter.isDownloading}
       title={disabledReason}
-      aria-label="Download Selected"
       aria-busy={presenter.isDownloading}
       className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-[#65a448] px-4 text-sm font-medium text-white transition-colors hover:bg-[#5b963f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#65a448] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 sm:px-5"
     >
-      <span>{presenter.isDownloading ? "Mengunduh..." : "Download"}</span>
-      <DownloadIcon />
+      <span>Download Selected</span>
+      {presenter.isDownloading ? <BusyIcon /> : <DownloadIcon />}
     </button>
   );
 }
@@ -86,33 +94,37 @@ export type RecentDocumentActionsProps = {
   presenter: RecentDocumentsPresenter;
 };
 
+const pageButtonClassName =
+  "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-[#65a448] hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#65a448] focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-40";
+
 export function RecentDocumentActions({
   presenter,
 }: RecentDocumentActionsProps): React.JSX.Element {
+  const { pagination } = presenter;
   return (
     <div className="flex min-w-0 flex-wrap items-center justify-end gap-3 sm:gap-5">
-      <nav aria-label="Navigasi halaman" className="flex items-center gap-1 text-gray-500">
+      <nav aria-label="Navigasi halaman" className="flex items-center gap-2 text-gray-500">
         <button
           type="button"
-          disabled
-          title="Fitur navigasi halaman belum tersedia"
+          onClick={() => pagination.goToPage(pagination.page - 1)}
+          disabled={!pagination.hasPrevious || pagination.isChanging}
           aria-label="Halaman sebelumnya"
-          className="rounded p-1 text-gray-400 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
+          className={pageButtonClassName}
         >
           <ChevronLeftIcon />
         </button>
         <span
-          aria-current="page"
-          className="flex h-8 min-w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-xs font-medium text-gray-700"
+          aria-live="polite"
+          className="min-w-[7.5rem] text-center text-xs font-medium text-gray-700"
         >
-          1
+          {`Halaman ${pagination.page} dari ${pagination.totalPages}`}
         </span>
         <button
           type="button"
-          disabled
-          title="Fitur navigasi halaman belum tersedia"
+          onClick={() => pagination.goToPage(pagination.page + 1)}
+          disabled={!pagination.hasNext || pagination.isChanging}
           aria-label="Halaman berikutnya"
-          className="rounded p-1 text-[#65a448] hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
+          className={pageButtonClassName}
         >
           <ChevronRightIcon />
         </button>

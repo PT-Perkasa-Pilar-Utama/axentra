@@ -193,12 +193,13 @@ describe("POST /api/v1/documents/bulk-download — Socket Concurrency & Header C
     expect(semaphore.activeCount).toBe(0);
     expect(semaphore.queueLength).toBe(0);
 
-    // Verify real Content-Length header is present and chunked transfer encoding is absent on 200 OK responses
+    // The archive is sent as a ReadableStream body (createBulkDownloadBody). Bun frames stream bodies with
+    // chunked transfer encoding and drops Content-Length, so 200 OK responses carry no Content-Length.
     const okResponses = completedResponses.filter((r) => r.includes("200 OK"));
     expect(okResponses.length).toBe(12);
     for (const res of okResponses) {
-      expect(res.toLowerCase()).toContain("content-length:");
-      expect(res.toLowerCase()).not.toContain("transfer-encoding: chunked");
+      expect(res.toLowerCase()).not.toContain("content-length:");
+      expect(res.toLowerCase()).toContain("transfer-encoding: chunked");
     }
 
     server.stop(true);

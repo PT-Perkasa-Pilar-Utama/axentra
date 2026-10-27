@@ -40,6 +40,6 @@ content specific to Axentra Foundation v1.0.0.
 | Document                                             | Purpose                     |
 | ---------------------------------------------------- | --------------------------- |
 | [DEPLOYMENT_PLAN.md](DEPLOYMENT_PLAN.md)             | Deployment plan draft       |
-| [E2E_TESTING.md](E2E_TESTING.md)                     | Future E2E guide            |
+| [E2E_TESTING.md](E2E_TESTING.md)                     | E2E guide (Playwright MCP)  |
 | [TASK_BREAKDOWN.md](TASK_BREAKDOWN.md)               | Foundation and sprint cards |
 | [TROUBLESHOOTING_GUIDE.md](TROUBLESHOOTING_GUIDE.md) | Known local failure modes   |

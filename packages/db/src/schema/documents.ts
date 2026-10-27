@@ -1,5 +1,6 @@
 import {
   bigint,
+  check,
   index,
   jsonb,
   pgTable,
@@ -50,6 +51,7 @@ export const documentFiles = pgTable(
   },
   (table) => [
     uniqueIndex("document_files_document_id_unique_idx").on(table.documentId),
+    check("document_files_file_size_non_negative_check", sql`${table.fileSize} >= 0`),
     index("document_files_storage_key_idx").on(table.storageKey),
     index("document_files_original_name_trgm_idx").using(
       "gin",

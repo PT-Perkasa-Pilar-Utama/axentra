@@ -139,16 +139,19 @@ async function deleteStoredObjects(
   const results = await Promise.allSettled(
     storageKeys.map((key) => dependencies.storage.deleteObject(key)),
   );
-  for (let index = 0; index < results.length; index += 1) {
-    const result = results[index];
-    const key = storageKeys[index];
-    if (result?.status === "rejected") {
-      dependencies.logger.error(
-        { storageKey: key, error: summarizeError(result.reason) },
-        "Failed to clean up orphaned storage object during rollback",
-      );
-    }
-  }
+  // Object keys stay out of the log: report counts and the error summary only.
+  const failures = results.flatMap((result) =>
+    result.status === "rejected" ? [result.reason] : [],
+  );
+  if (failures.length === 0) return;
+  dependencies.logger.error(
+    {
+      attemptedCount: storageKeys.length,
+      failedCount: failures.length,
+      error: summarizeError(failures[0]),
+    },
+    "Failed to clean up orphaned storage object during rollback",
+  );
 }
 
 async function enqueueAcceptedDocuments(

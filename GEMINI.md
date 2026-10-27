@@ -53,3 +53,43 @@ MCP server is unavailable, or runtime proof is needed.
 3. For code review, use `detect_changes`, then inspect affected flows and test relationships.
 4. For implementation, combine graph evidence with Axentra's documented contracts and relevant
    runtime verification.
+
+## E2E: Playwright MCP (instalasi lokal)
+
+E2E for this repository runs through the Playwright MCP. Developers do not install a separate E2E
+framework for it.
+
+- Requirement: Node.js 20 or newer ([playwright.dev/mcp/installation](https://playwright.dev/mcp/installation)).
+  Browsers download automatically on first use. Optional: add `--headless` after
+  `@playwright/mcp@latest` to run without a visible browser window.
+- Gemini CLI: add an `mcpServers` entry to `~/.gemini/settings.json`, or to the project
+  `.gemini/settings.json`, using the JSON below.
+
+  ```json
+  { "mcpServers": { "playwright": { "command": "npx", "args": ["@playwright/mcp@latest"] } } }
+  ```
+
+- Codex CLI:
+
+  ```powershell
+  codex mcp add playwright npx "@playwright/mcp@latest"
+  ```
+
+  Or in `~/.codex/config.toml`:
+
+  ```toml
+  [mcp_servers.playwright]
+  command = "npx"
+  args = ["@playwright/mcp@latest"]
+  ```
+
+- Claude Code:
+
+  ```powershell
+  claude mcp add playwright npx @playwright/mcp@latest
+  ```
+
+- Any other MCP client: use the JSON above.
+
+Acceptance evidence for E2E flows is recorded under `docs/screenshots/<CARD-ID>/` (screenshot plus
+observed result). See [docs/E2E_TESTING.md](docs/E2E_TESTING.md).
