@@ -1003,7 +1003,7 @@ describe("POST /api/v1/documents/bulk-download — BE-S3-03", () => {
       ).rejects.toThrow("Terlalu banyak permintaan unduhan massal secara bersamaan, antrean penuh");
     });
 
-    test("retains semaphore slot while response body stream is unread and releases on reader cancel", async () => {
+    test("holds semaphore slot during operation execution and releases automatically upon completion", async () => {
       const { downloadRepo } = createSetup();
 
       const semaphore = new BulkDownloadSemaphore({ maxConcurrency: 1 });
@@ -1012,7 +1012,6 @@ describe("POST /api/v1/documents/bulk-download — BE-S3-03", () => {
           downloadRepository: downloadRepo,
           storage: createMockStorage(),
           bulkDownloadSemaphore: semaphore,
-          streamChunkSize: 10,
         },
         {
           documentIds: [ENABLED_DOC_1],
@@ -1020,42 +1019,35 @@ describe("POST /api/v1/documents/bulk-download — BE-S3-03", () => {
         },
       );
 
-      // Slot remains occupied because stream has not finished reading
-      expect(semaphore.activeCount).toBe(1);
-
-      const reader = result.stream.getReader();
-      const firstChunk = await reader.read();
-      expect(firstChunk.value).toBeDefined();
-      expect(semaphore.activeCount).toBe(1);
-
-      // Cancelling the reader releases the slot
-      await reader.cancel();
+      expect(result.bytes).toBeDefined();
+      expect(result.contentLength).toBe(result.bytes.byteLength);
       expect(semaphore.activeCount).toBe(0);
     });
 
-    test("retains semaphore slot and releases automatically when stream is read to completion", async () => {
+    test("releases semaphore slot when operation throws an error", async () => {
       const { downloadRepo } = createSetup();
-
       const semaphore = new BulkDownloadSemaphore({ maxConcurrency: 1 });
-      const result = await executeBulkDownloadOperation(
-        {
-          downloadRepository: downloadRepo,
-          storage: createMockStorage(),
-          bulkDownloadSemaphore: semaphore,
-        },
-        {
-          documentIds: [ENABLED_DOC_1],
-          user: { id: "usr-member-1", email: "member@axentra.local", role: "member_team" },
-        },
-      );
 
-      expect(semaphore.activeCount).toBe(1);
+      const failingStorage: StorageAdapter = {
+        ...createMockStorage(),
+        getObject: async () => {
+          throw new Error("S3 storage error");
+        },
+      };
 
-      const reader = result.stream.getReader();
-      while (true) {
-        const { done } = await reader.read();
-        if (done) break;
-      }
+      await expect(
+        executeBulkDownloadOperation(
+          {
+            downloadRepository: downloadRepo,
+            storage: failingStorage,
+            bulkDownloadSemaphore: semaphore,
+          },
+          {
+            documentIds: [ENABLED_DOC_1],
+            user: { id: "usr-member-1", email: "member@axentra.local", role: "member_team" },
+          },
+        ),
+      ).rejects.toThrow("S3 storage error");
 
       expect(semaphore.activeCount).toBe(0);
     });

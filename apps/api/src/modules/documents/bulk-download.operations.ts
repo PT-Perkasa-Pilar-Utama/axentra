@@ -15,14 +15,13 @@ import {
   type ZipEntry,
 } from "./zip.writer";
 import { type BulkDownloadSemaphore, globalBulkDownloadSemaphore } from "./bulk-download.semaphore";
-import { createMonitoredZipStream, getObjectWithTimeout } from "./bulk-download.stream";
+import { getObjectWithTimeout } from "./bulk-download.stream";
 
 export type BulkDownloadOperationDependencies = {
   downloadRepository: IDownloadRepository;
   storage: StorageAdapter;
   logger?: Logger | undefined;
   bulkDownloadSemaphore?: BulkDownloadSemaphore | undefined;
-  streamChunkSize?: number | undefined;
   storageTimeoutMs?: number | undefined;
 };
 
@@ -37,7 +36,6 @@ export type ExecuteBulkDownloadInput = {
 export type BulkDownloadOperationResult = {
   filename: string;
   bytes: Uint8Array;
-  stream: ReadableStream<Uint8Array>;
   contentLength: number;
   fileCount: number;
 };
@@ -103,12 +101,11 @@ export async function executeBulkDownloadOperation(
     );
   }
 
-  // 5. Acquire concurrency slot to protect peak RSS during storage prefetch, archive assembly, and streaming
+  // 5. Acquire concurrency slot to protect peak RSS during storage prefetch and archive assembly
   // Total aggregate size is checked against 250 MB (BULK_DOWNLOAD_MAX_TOTAL_BYTES) in step 4,
   // which strictly guarantees total archive size never approaches the ZIP32 4 GiB limit.
   const semaphore = dependencies.bulkDownloadSemaphore ?? globalBulkDownloadSemaphore;
   const releaseSlot = await semaphore.acquire({ signal: input.signal });
-  let slotClaimedByStream = false;
 
   try {
     // 6. Prefetch all storage objects before audit recording and response generation
@@ -187,23 +184,13 @@ export async function executeBulkDownloadOperation(
       throw error;
     }
 
-    // 9. Wrap archive buffer in a monitored stream that holds the semaphore slot until fully transmitted
-    const stream = createMonitoredZipStream(bytes, releaseSlot, {
-      signal: input.signal,
-      chunkSize: dependencies.streamChunkSize,
-    });
-    slotClaimedByStream = true;
-
     return {
       filename: "axentra-documents.zip",
       bytes,
-      stream,
       contentLength: bytes.byteLength,
       fileCount: entries.length,
     };
   } finally {
-    if (!slotClaimedByStream) {
-      releaseSlot();
-    }
+    releaseSlot();
   }
 }

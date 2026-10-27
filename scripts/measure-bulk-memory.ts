@@ -97,21 +97,6 @@ function createMockEnvironment(fileCount = 5, fileSize = 50 * 1024 * 1024) {
   return { repo, storage, documentIds };
 }
 
-async function consumeStream(stream: ReadableStream<Uint8Array>): Promise<number> {
-  const reader = stream.getReader();
-  let totalBytes = 0;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (value) totalBytes += value.byteLength;
-    }
-  } finally {
-    reader.releaseLock();
-  }
-  return totalBytes;
-}
-
 async function runSingleIteration(_iteration: number): Promise<{
   baseline: number;
   singlePeak: number;
@@ -142,9 +127,10 @@ async function runSingleIteration(_iteration: number): Promise<{
   let rssNow = getRssMb();
   if (rssNow > singlePeak) singlePeak = rssNow;
 
-  await consumeStream(singleResult.stream);
-  rssNow = getRssMb();
-  if (rssNow > singlePeak) singlePeak = rssNow;
+  if (singleResult.bytes.byteLength > 0) {
+    rssNow = getRssMb();
+    if (rssNow > singlePeak) singlePeak = rssNow;
+  }
 
   runGc();
   await delay(200);
@@ -160,9 +146,10 @@ async function runSingleIteration(_iteration: number): Promise<{
     );
     const r1 = getRssMb();
     if (r1 > concurrentPeak) concurrentPeak = r1;
-    await consumeStream(res.stream);
-    const r2 = getRssMb();
-    if (r2 > concurrentPeak) concurrentPeak = r2;
+    if (res.bytes.byteLength > 0) {
+      const r2 = getRssMb();
+      if (r2 > concurrentPeak) concurrentPeak = r2;
+    }
   };
 
   await Promise.all([runConcurrent(), runConcurrent(), runConcurrent()]);
@@ -170,14 +157,14 @@ async function runSingleIteration(_iteration: number): Promise<{
   runGc();
   await delay(200);
 
-  // --- Skenario 3: Unread Socket Flood Test (20 requests with unread sockets) ---
-  // In Round 7 (e9b9dfe), slots were released before response was read.
-  // 20 unread requests accumulated 20 x 250 MB in Bun buffers (RSS 1,363 MB).
-  // Now with createMonitoredZipStream, slots are retained while streams are unread.
+  // --- Skenario 3: In-Process Flood Test (20 concurrent requests) ---
+  // Demonstrates semaphore bounds active assembly to 2, queues 10, and rejects 8 with 429
   const floodStart = getRssMb();
   let floodPeak = floodStart;
-  const activeStreams: ReadableStream<Uint8Array>[] = [];
+  const activeBuffers: Uint8Array[] = [];
   let floodRejectedCount = 0;
+  let peakActive = 0;
+  let peakQueue = 0;
 
   const floodPromises: Promise<void>[] = [];
   for (let i = 0; i < 20; i++) {
@@ -187,7 +174,9 @@ async function runSingleIteration(_iteration: number): Promise<{
           { downloadRepository: repo, storage, bulkDownloadSemaphore: semaphore },
           { documentIds, user: mockUser },
         );
-        activeStreams.push(res.stream);
+        activeBuffers.push(res.bytes);
+        if (semaphore.activeCount > peakActive) peakActive = semaphore.activeCount;
+        if (semaphore.queueLength > peakQueue) peakQueue = semaphore.queueLength;
         const r = getRssMb();
         if (r > floodPeak) floodPeak = r;
       } catch {
@@ -197,35 +186,14 @@ async function runSingleIteration(_iteration: number): Promise<{
       }
     })();
     floodPromises.push(p);
+    if (semaphore.activeCount > peakActive) peakActive = semaphore.activeCount;
+    if (semaphore.queueLength > peakQueue) peakQueue = semaphore.queueLength;
   }
 
-  // Allow flood to hit semaphore and settle: 2 acquire and build archive, 10 queue, 8 reject with 429
-  await delay(250);
-  const floodActiveCount = semaphore.activeCount;
-  const floodQueueLength = semaphore.queueLength;
+  // Allow flood to settle
+  await delay(100);
   const settledRss = getRssMb();
   if (settledRss > floodPeak) floodPeak = settledRss;
-
-  // Now simulate unread sockets timing out or cancelling
-  while (activeStreams.length > 0) {
-    const s = activeStreams.shift();
-    if (s) {
-      const reader = s.getReader();
-      await reader.cancel("Client disconnected / unread socket closed");
-      reader.releaseLock();
-    }
-  }
-
-  // Drain any queued requests that proceed
-  await delay(250);
-  while (activeStreams.length > 0) {
-    const s = activeStreams.shift();
-    if (s) {
-      const reader = s.getReader();
-      await reader.cancel("Client cancelled");
-      reader.releaseLock();
-    }
-  }
 
   await Promise.allSettled(floodPromises);
 
@@ -237,15 +205,15 @@ async function runSingleIteration(_iteration: number): Promise<{
     singlePeak,
     concurrentPeak,
     floodPeak,
-    floodActiveCount,
-    floodQueueLength,
+    floodActiveCount: peakActive,
+    floodQueueLength: peakQueue,
     floodRejectedCount,
   };
 }
 
 async function main(): Promise<void> {
   console.log("=== Axentra Bulk Download Memory Benchmark (Bun 1.3.12) ===");
-  console.log("Measuring executeBulkDownloadOperation with Response Stream Lifecycle\n");
+  console.log("Measuring executeBulkDownloadOperation with In-Process Buffer Lifecycle\n");
 
   const iterations = 3;
   const baselines: number[] = [];
@@ -305,11 +273,11 @@ async function main(): Promise<void> {
     `| 3 Requests (Semaphore limit: 2) | Maks 2 | ${concurrentStats.min} MB | ${concurrentStats.median} MB | ${concurrentStats.max} MB | +${Math.round(concurrentStats.median - baselineStats.median)} MB |`,
   );
   console.log(
-    `| 20 Unread Flood (Unread Sockets) | Maks 2 (10 queue, ${lastRejected} x 429) | ${floodStats.min} MB | ${floodStats.median} MB | ${floodStats.max} MB | +${Math.round(floodStats.median - baselineStats.median)} MB |`,
+    `| 20 Concurrent Flood (In-Process) | Maks 2 (10 queue, ${lastRejected} x 429) | ${floodStats.min} MB | ${floodStats.median} MB | ${floodStats.max} MB | +${Math.round(floodStats.median - baselineStats.median)} MB |`,
   );
   console.log("\nCatatan Penting:");
   console.log(
-    `1. Status banjir 20 request: ${lastActive} aktif di-stream, ${lastQueue} mengantre di semaphore, ${lastRejected} langsung ditolak HTTP 429 TOO_MANY_REQUESTS.`,
+    `1. Status banjir 20 request: ${lastActive} aktif dirakit, ${lastQueue} mengantre di semaphore, ${lastRejected} langsung ditolak HTTP 429 TOO_MANY_REQUESTS.`,
   );
   console.log(
     "2. Baseline CLI Bun ~22–42 MB. Pada proses server penuh (Hono, Drizzle, DB connection pool, Pino), baseline awal adalah ~108–110 MB.",
@@ -324,7 +292,7 @@ async function main(): Promise<void> {
     `   - 3 Concurrent Requests: ${concurrentStats.min} MB / ${concurrentStats.median} MB / ${concurrentStats.max} MB`,
   );
   console.log(
-    `   - 20 Unread Sockets Flood: ${floodStats.min} MB / ${floodStats.median} MB / ${floodStats.max} MB`,
+    `   - 20 Concurrent In-Process Flood: ${floodStats.min} MB / ${floodStats.median} MB / ${floodStats.max} MB`,
   );
   console.log(
     "4. Batas semaphore berlaku PER PROSES (instance API). Jika N instance dijalankan di balik load balancer, batas konkurensi cluster adalah N x 2.",

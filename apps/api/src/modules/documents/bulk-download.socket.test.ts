@@ -31,8 +31,8 @@ const tokenVerifier: TokenVerifier = {
   },
 };
 
-describe("POST /api/v1/documents/bulk-download — Socket Concurrency & Backpressure", () => {
-  test("bounds active streaming slots and rejects flood with 429 over real TCP sockets", async () => {
+describe("POST /api/v1/documents/bulk-download — Socket Concurrency & Header Contract", () => {
+  test("bounds active prefetch and archive assembly slots and rejects flood with 429 over real TCP sockets", async () => {
     const payloadSize = 64 * 1024;
     const dummyBytes = new Uint8Array(payloadSize);
 
@@ -126,6 +126,7 @@ describe("POST /api/v1/documents/bulk-download — Socket Concurrency & Backpres
     const totalClients = 20;
     const clients: Array<net.Socket> = [];
     let responses429Count = 0;
+    const completedResponses: Array<string> = [];
     const clientPromises: Array<Promise<void>> = [];
 
     const serverPort = server.port;
@@ -159,10 +160,12 @@ describe("POST /api/v1/documents/bulk-download — Socket Concurrency & Backpres
       });
 
       client.on("end", () => {
+        completedResponses.push(responseBuffer);
         resolveClient();
       });
 
       client.on("error", () => {
+        completedResponses.push(responseBuffer);
         resolveClient();
       });
 
@@ -189,6 +192,14 @@ describe("POST /api/v1/documents/bulk-download — Socket Concurrency & Backpres
     // After all clients complete, all slots and queues must be released
     expect(semaphore.activeCount).toBe(0);
     expect(semaphore.queueLength).toBe(0);
+
+    // Verify real Content-Length header is present and chunked transfer encoding is absent on 200 OK responses
+    const okResponses = completedResponses.filter((r) => r.includes("200 OK"));
+    expect(okResponses.length).toBe(12);
+    for (const res of okResponses) {
+      expect(res.toLowerCase()).toContain("content-length:");
+      expect(res.toLowerCase()).not.toContain("transfer-encoding: chunked");
+    }
 
     server.stop(true);
     for (const client of clients) {
