@@ -5,6 +5,11 @@ import type {
   IDownloadRepository,
 } from "./download.repository";
 
+// Mirrors PostgreSQL, where a document without a category has no permission to read.
+function withCategoryPermission(record: DownloadTargetRecord): DownloadTargetRecord {
+  return record.document.categoryId === null ? { ...record, categoryPermission: null } : record;
+}
+
 export class InMemoryDownloadRepository implements IDownloadRepository {
   private readonly targets = new Map<string, DownloadTargetRecord>();
   private readonly auditEvents: CreateDownloadAuditEventInput[] = [];
@@ -18,7 +23,8 @@ export class InMemoryDownloadRepository implements IDownloadRepository {
   }
 
   public async findDownloadTarget(documentId: string): Promise<DownloadTargetRecord | null> {
-    return this.targets.get(documentId) ?? null;
+    const target = this.targets.get(documentId);
+    return target ? withCategoryPermission(target) : null;
   }
 
   public async findDownloadTargets(
@@ -27,7 +33,7 @@ export class InMemoryDownloadRepository implements IDownloadRepository {
     const results: DownloadTargetRecord[] = [];
     for (const id of documentIds) {
       const target = this.targets.get(id);
-      if (target) results.push(target);
+      if (target) results.push(withCategoryPermission(target));
     }
     return results;
   }
@@ -44,7 +50,11 @@ export class InMemoryDownloadRepository implements IDownloadRepository {
           documentId: target.document.id,
           categoryId: target.document.categoryId,
           deletedAt: target.document.deletedAt,
-          downloadEnabled: target.categoryPermission?.downloadEnabled ?? null,
+          // Mirrors PostgreSQL, where a document without a category has no permission to read.
+          downloadEnabled:
+            target.document.categoryId === null
+              ? null
+              : (target.categoryPermission?.downloadEnabled ?? null),
         });
       }
     }
@@ -69,8 +79,31 @@ export class InMemoryDownloadRepository implements IDownloadRepository {
     }
   }
 
+  // Audit rows are buffered and committed only when the unit of work succeeds, like the database.
   public async transaction<T>(callback: (txRepo: IDownloadRepository) => Promise<T>): Promise<T> {
-    return await callback(this);
+    const pendingAuditEvents: CreateDownloadAuditEventInput[] = [];
+    const txRepo: IDownloadRepository = {
+      findDownloadTarget: (documentId) => this.findDownloadTarget(documentId),
+      findDownloadTargets: (documentIds) => this.findDownloadTargets(documentIds),
+      checkCategoryPermissions: (documentIds, options) =>
+        this.checkCategoryPermissions(documentIds, options),
+      recordDownloadAuditEvent: async (event) => {
+        pendingAuditEvents.push({ ...event, downloadedAt: event.downloadedAt ?? new Date() });
+      },
+      recordDownloadAuditEvents: async (events) => {
+        for (const event of events) {
+          pendingAuditEvents.push({ ...event, downloadedAt: event.downloadedAt ?? new Date() });
+        }
+      },
+      // Savepoints are not modelled, so a nested unit of work fails loudly instead of leaking its rows.
+      transaction: async () => {
+        throw new Error("Nested transactions are not modelled by InMemoryDownloadRepository");
+      },
+    };
+
+    const result = await callback(txRepo);
+    this.auditEvents.push(...pendingAuditEvents);
+    return result;
   }
 
   public getRecordedAuditEvents(): ReadonlyArray<CreateDownloadAuditEventInput> {

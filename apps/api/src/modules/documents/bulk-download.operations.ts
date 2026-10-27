@@ -1,5 +1,4 @@
 import type { Logger } from "@axentra/observability";
-import { summarizeError } from "@axentra/observability";
 import type { StorageAdapter } from "@axentra/storage";
 import {
   BULK_DOWNLOAD_MAX_TOTAL_BYTES,
@@ -7,7 +6,8 @@ import {
   type AuthUser,
 } from "@axentra/shared";
 import { ForbiddenError, NotFoundError, PayloadTooLargeError } from "../../http/errors";
-import type { IDownloadRepository } from "./download.repository";
+import type { DownloadTargetRecord, IDownloadRepository } from "./download.repository";
+import { runDownloadAuditTransaction } from "./download.audit-transaction";
 import {
   createZipArchive,
   ZIP32_MAX_ENTRY_COUNT,
@@ -39,6 +39,52 @@ export type BulkDownloadOperationResult = {
   contentLength: number;
   fileCount: number;
 };
+
+// Runs inside the audit unit of work: rechecks each selected document under a share lock, then records
+// one audit event per document in the same transaction, so a revoke cannot slip in between.
+async function recheckAndRecordBulkAudit(
+  downloadRepository: IDownloadRepository,
+  input: ExecuteBulkDownloadInput,
+  uniqueIds: ReadonlyArray<string>,
+  targetMap: ReadonlyMap<string, DownloadTargetRecord>,
+): Promise<void> {
+  await downloadRepository.transaction(async (txRepo) => {
+    // Deletion is rechecked for every role; the category permission applies to member_team only.
+    const permissionRows = await txRepo.checkCategoryPermissions(uniqueIds, {
+      lock: "share",
+    });
+    const permMap = new Map(permissionRows.map((r) => [r.documentId, r]));
+
+    for (const docId of uniqueIds) {
+      const perm = permMap.get(docId);
+      if (!perm || perm.deletedAt !== null) {
+        throw new NotFoundError("Dokumen tidak ditemukan");
+      }
+      if (
+        input.user.role === "member_team" &&
+        (!perm.categoryId || perm.downloadEnabled !== true)
+      ) {
+        throw new ForbiddenError(DOWNLOAD_ACCESS_DENIED_MESSAGE);
+      }
+    }
+
+    const now = new Date();
+    await txRepo.recordDownloadAuditEvents(
+      uniqueIds.map((docId) => {
+        const target = targetMap.get(docId);
+        const fileName = target?.file?.originalName ?? "unknown";
+        return {
+          userId: input.user.id,
+          userName: input.user.name ?? input.user.email,
+          userEmail: input.user.email,
+          documentId: docId,
+          documentName: fileName,
+          downloadedAt: now,
+        };
+      }),
+    );
+  });
+}
 
 export async function executeBulkDownloadOperation(
   dependencies: BulkDownloadOperationDependencies,
@@ -135,54 +181,12 @@ export async function executeBulkDownloadOperation(
     const bytes = createZipArchive(entries);
 
     // 8. Atomically recheck category permissions with row lock and record point-in-time audit events
-    try {
-      await dependencies.downloadRepository.transaction(async (txRepo) => {
-        if (input.user.role === "member_team") {
-          const permissionRows = await txRepo.checkCategoryPermissions(uniqueIds, {
-            lock: "share",
-          });
-          const permMap = new Map(permissionRows.map((r) => [r.documentId, r]));
-
-          for (const docId of uniqueIds) {
-            const perm = permMap.get(docId);
-            if (!perm || perm.deletedAt !== null) {
-              throw new NotFoundError("Dokumen tidak ditemukan");
-            }
-            if (!perm.categoryId || perm.downloadEnabled !== true) {
-              throw new ForbiddenError(DOWNLOAD_ACCESS_DENIED_MESSAGE);
-            }
-          }
-        }
-
-        const now = new Date();
-        await txRepo.recordDownloadAuditEvents(
-          uniqueIds.map((docId) => {
-            const target = targetMap.get(docId);
-            const fileName = target?.file?.originalName ?? "unknown";
-            return {
-              userId: input.user.id,
-              userName: input.user.name ?? input.user.email,
-              userEmail: input.user.email,
-              documentId: docId,
-              documentName: fileName,
-              downloadedAt: now,
-            };
-          }),
-        );
-      });
-    } catch (error) {
-      const effectiveLogger = input.logger ?? dependencies.logger;
-      effectiveLogger?.error(
-        {
-          requestId: input.requestId,
-          userId: input.user.id,
-          documentCount: uniqueIds.length,
-          error: summarizeError(error),
-        },
-        "Gagal mencatat audit event bulk download",
-      );
-      throw error;
-    }
+    await runDownloadAuditTransaction(
+      input.logger ?? dependencies.logger,
+      "Gagal mencatat audit event bulk download",
+      { requestId: input.requestId, userId: input.user.id, documentCount: uniqueIds.length },
+      () => recheckAndRecordBulkAudit(dependencies.downloadRepository, input, uniqueIds, targetMap),
+    );
 
     return {
       filename: "axentra-documents.zip",

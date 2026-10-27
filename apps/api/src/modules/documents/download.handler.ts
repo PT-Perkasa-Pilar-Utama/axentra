@@ -12,6 +12,8 @@ export function createDownloadDocumentHandler(
 ): Handler<ApiEnvironment> {
   return async (context) => {
     const user = getAuthenticatedUser(context);
+    const requestId = context.get("requestId");
+    const logger = context.get("logger");
 
     const paramResult = documentIdParamSchema.safeParse(context.req.param());
     if (!paramResult.success) {
@@ -36,6 +38,8 @@ export function createDownloadDocumentHandler(
       user,
       stream: prefersStream,
       expiresInSeconds: queryResult.data.expiresInSeconds,
+      logger,
+      requestId,
     });
 
     if (result.kind === "stream") {
