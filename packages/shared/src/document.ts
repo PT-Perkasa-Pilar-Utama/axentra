@@ -249,3 +249,16 @@ export const previewDocumentSuccessResponseSchema = z.object({
   data: previewDocumentResponseSchema,
 });
 export type PreviewDocumentSuccessResponse = z.infer<typeof previewDocumentSuccessResponseSchema>;
+
+export const BULK_DOWNLOAD_MAX_DOCUMENTS = 100;
+export const BULK_DOWNLOAD_MAX_TOTAL_BYTES = 250 * 1024 * 1024; // 250 MB aggregate limit
+
+export const bulkDownloadRequestSchema = z.object({
+  documentIds: z
+    .array(z.string().uuid({ message: "ID dokumen harus berupa UUID yang valid" }))
+    .min(1, { message: "Minimal satu dokumen harus dipilih" })
+    .max(BULK_DOWNLOAD_MAX_DOCUMENTS, {
+      message: `Maksimal ${BULK_DOWNLOAD_MAX_DOCUMENTS} dokumen per unduhan massal`,
+    }),
+});
+export type BulkDownloadRequest = z.infer<typeof bulkDownloadRequestSchema>;

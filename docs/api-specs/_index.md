@@ -41,7 +41,7 @@ PLANNED POST   /documents/check-duplicate
 PLANNED GET    /documents/:id
 OK      GET    /documents/:id/preview
 OK      GET    /documents/:id/download
-PLANNED POST   /documents/bulk-download
+OK      POST   /documents/bulk-download
 OK      GET    /documents/:id/related
 ```
 

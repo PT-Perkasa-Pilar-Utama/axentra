@@ -10,6 +10,7 @@ import { createGetDocumentSmartTagsHandler } from "./smart-tags.handler";
 import { createGetDocumentCategoryHandler } from "./category.handler";
 import { createListRelatedDocumentsHandler } from "./related.handler";
 import { createDownloadDocumentHandler } from "./download.handler";
+import { createBulkDownloadHandler } from "./bulk-download.handler";
 import { createPreviewDocumentHandler } from "./preview.handler";
 import type { DocumentService } from "./documents.service";
 
@@ -90,6 +91,13 @@ export function createDocumentRoutes(
     requireAuth(verifier),
     requireRole(["member_team", "head_of_team", "admin"]),
     createDownloadDocumentHandler(dependencies),
+  );
+
+  routes.post(
+    "/bulk-download",
+    requireAuth(verifier),
+    requireRole(["member_team", "head_of_team", "admin"]),
+    createBulkDownloadHandler(dependencies),
   );
 
   return routes;
