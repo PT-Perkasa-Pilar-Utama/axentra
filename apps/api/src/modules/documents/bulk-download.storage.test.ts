@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { StorageAdapter } from "@axentra/storage";
-import { getObjectWithTimeout } from "./bulk-download.stream";
+import { getObjectWithTimeout } from "./bulk-download.storage";
 
 describe("bulk-download storage helpers (F25)", () => {
   test("getObjectWithTimeout returns bytes when storage resolves quickly", async () => {

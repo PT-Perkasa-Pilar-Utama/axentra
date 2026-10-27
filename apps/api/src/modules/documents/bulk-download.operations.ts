@@ -15,7 +15,7 @@ import {
   type ZipEntry,
 } from "./zip.writer";
 import { type BulkDownloadSemaphore, globalBulkDownloadSemaphore } from "./bulk-download.semaphore";
-import { getObjectWithTimeout } from "./bulk-download.stream";
+import { getObjectWithTimeout } from "./bulk-download.storage";
 
 export type BulkDownloadOperationDependencies = {
   downloadRepository: IDownloadRepository;

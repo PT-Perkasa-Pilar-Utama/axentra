@@ -1007,10 +1007,20 @@ describe("POST /api/v1/documents/bulk-download — BE-S3-03", () => {
       const { downloadRepo } = createSetup();
 
       const semaphore = new BulkDownloadSemaphore({ maxConcurrency: 1 });
+      let activeDuringExecution = 0;
+      const baseStorage = createMockStorage();
+      const customStorage: StorageAdapter = {
+        ...baseStorage,
+        getObject: async (key: string) => {
+          activeDuringExecution = semaphore.activeCount;
+          return baseStorage.getObject(key);
+        },
+      };
+
       const result = await executeBulkDownloadOperation(
         {
           downloadRepository: downloadRepo,
-          storage: createMockStorage(),
+          storage: customStorage,
           bulkDownloadSemaphore: semaphore,
         },
         {
@@ -1019,6 +1029,7 @@ describe("POST /api/v1/documents/bulk-download — BE-S3-03", () => {
         },
       );
 
+      expect(activeDuringExecution).toBe(1);
       expect(result.bytes).toBeDefined();
       expect(result.contentLength).toBe(result.bytes.byteLength);
       expect(semaphore.activeCount).toBe(0);
