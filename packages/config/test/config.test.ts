@@ -40,3 +40,46 @@ describe("configuration", () => {
     expect(loadWebConfig({}).VITE_API_BASE_URL).toBe("/api/v1");
   });
 });
+
+describe("WEB_ORIGIN (F30)", () => {
+  const productionEnvironment = { ...serverEnvironment, APP_ENV: "production" } as const;
+
+  test("defaults to the local Web dev server outside production", () => {
+    const config = loadApiConfig(serverEnvironment);
+
+    expect(config.WEB_ORIGIN).toBe("http://localhost:5173");
+  });
+
+  test("treats an empty value as unset outside production", () => {
+    const config = loadApiConfig({ ...serverEnvironment, APP_ENV: "development", WEB_ORIGIN: "" });
+
+    expect(config.WEB_ORIGIN).toBe("http://localhost:5173");
+  });
+
+  test("fails validation when production leaves it unset", () => {
+    expect(() => loadApiConfig(productionEnvironment)).toThrow(
+      "WEB_ORIGIN: is required when APP_ENV=production",
+    );
+  });
+
+  test("fails validation when production sets it to an empty value", () => {
+    expect(() => loadApiConfig({ ...productionEnvironment, WEB_ORIGIN: "" })).toThrow(
+      "WEB_ORIGIN: is required when APP_ENV=production",
+    );
+  });
+
+  test("accepts an explicit production origin and keeps only the origin part", () => {
+    const config = loadApiConfig({
+      ...productionEnvironment,
+      WEB_ORIGIN: "https://web.axentra.internal/app/",
+    });
+
+    expect(config.WEB_ORIGIN).toBe("https://web.axentra.internal");
+  });
+
+  test("rejects an origin that is not http or https", () => {
+    expect(() =>
+      loadApiConfig({ ...productionEnvironment, WEB_ORIGIN: "ftp://web.axentra.internal" }),
+    ).toThrow("WEB_ORIGIN");
+  });
+});

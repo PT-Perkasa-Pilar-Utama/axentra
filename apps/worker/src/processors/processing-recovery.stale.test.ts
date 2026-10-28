@@ -90,7 +90,8 @@ describe("stale processing recovery (BE-S1-02 / worker crash)", () => {
       logger,
     });
 
-    expect(secondCount).toBe(1);
+    // The first claim restarted the stale clock, so the second sweep leaves the document alone.
+    expect(secondCount).toBe(0);
     expect(jobs.size).toBe(1);
     expect(jobs.get(STUCK_DOCUMENT_ID)?.state).toBe("waiting");
   });

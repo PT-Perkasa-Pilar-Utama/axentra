@@ -10,6 +10,7 @@ import {
   refreshCookieHeader,
   setCookieNamed,
   TEST_MEMBER,
+  TEST_WEB_ORIGIN,
 } from "./auth.test-support";
 
 const START = new Date("2026-10-27T08:00:00.000Z");
@@ -95,7 +96,7 @@ describe("refresh cookie attributes (A3)", () => {
 
   it("marks the cookie Secure only when APP_ENV is production", async () => {
     const development = createFixture({ appEnvironment: "development" });
-    const production = createFixture({ appEnvironment: "production" });
+    const production = createFixture({ appEnvironment: "production", webOrigin: TEST_WEB_ORIGIN });
 
     const developmentCookie = setCookieNamed(await login(development.app), REFRESH_COOKIE) ?? "";
     const productionCookie = setCookieNamed(await login(production.app), REFRESH_COOKIE) ?? "";
@@ -276,5 +277,11 @@ describe("CORS for the configured web origin (A5)", () => {
     expect(
       (await preflight(app, "http://localhost:5173")).headers.get("access-control-allow-origin"),
     ).toBeNull();
+  });
+
+  it("refuses to build a production app without an explicit web origin (F30)", () => {
+    expect(() => createFixture({ appEnvironment: "production" })).toThrow(
+      "A production API requires an explicit web origin",
+    );
   });
 });

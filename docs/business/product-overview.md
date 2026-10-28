@@ -24,11 +24,11 @@ Source: BA workbook `Doc_BA_DMS (Document Management System)_Versi 1 (2).xlsx`, 
 
 ## Persona
 
-| Persona      | Sumber                           | Keterangan                                                                                              |
-| ------------ | -------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| Member Team  | BA workbook (Persona Utama)      | Mengunggah, mencari, melihat preview, dan mengunduh dokumen.                                            |
-| Head of Team | BA workbook (Persona Utama)      | Melihat analitik, audit trail, dan mengatur izin unduh per kategori.                                    |
-| Admin        | Usulan, belum ada di BA workbook | Mengelola akun dan dokumen milik Member Team dan Head of Team. Rincian: [admin-role.md](admin-role.md). |
+| Persona      | Sumber                           | Keterangan                                                                                                                                              |
+| ------------ | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Member Team  | BA workbook (Persona Utama)      | Mengunggah, mencari, melihat preview, dan mengunduh dokumen.                                                                                            |
+| Head of Team | BA workbook (Persona Utama)      | Melihat analitik, audit trail, dan mengatur izin unduh per kategori.                                                                                    |
+| Admin        | Usulan, belum ada di BA workbook | Mengelola akun dan dokumen milik Member Team dan Head of Team. Rincian usulan: [proposals/admin-role-proposal.md](../proposals/admin-role-proposal.md). |
 
 ## Tujuan Bisnis
 

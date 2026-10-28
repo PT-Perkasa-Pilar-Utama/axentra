@@ -1,6 +1,10 @@
 # Evidence: FE-S1-03 - Metadata author on detail page
 
 Run: 2026-10-27, branch FND-10-Resolve-sprint-1-3-partials-and-blockers, Playwright MCP (Chromium), manual flows per docs/E2E_TESTING.md sections 3-6.
+Diverifikasi pada SHA: belum (lihat catatan)
+
+Catatan SHA: run ini tidak mencatat SHA commit. Ulangi alur pada SHA final sebelum rilis, lalu catat SHA di sini.
+
 Setup deviations (recorded for the Tech Lead):
 
 - Web runs on port 5174 (Vite --strictPort). Port 5173 was already held by an unrelated bun process (not touched).

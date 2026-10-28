@@ -1,13 +1,68 @@
 export const ZIP32_MAX_ENTRY_SIZE = 0xffffffff; // 4 GiB
 export const ZIP32_MAX_ENTRY_COUNT = 0xffff; // 65,535 entries
+// The ZIP name-length field is 16-bit (65,535 bytes). Names are capped far below it, at the 255-byte
+// limit of common file systems, so every extracted name stays usable.
+export const ZIP_ENTRY_NAME_MAX_BYTES = 255;
+// A suffix after the last dot counts as the extension, and survives truncation, only up to this size.
+const ZIP_ENTRY_EXTENSION_MAX_BYTES = 32;
+// C0 control characters (U+0000 to U+001F) and DEL (U+007F) are dropped from entry names.
+const LAST_C0_CONTROL_CODE_POINT = 0x1f;
+const DELETE_CODE_POINT = 0x7f;
+
+const utf8Encoder = new TextEncoder();
+
+function utf8ByteLength(value: string): number {
+  return utf8Encoder.encode(value).byteLength;
+}
+
+function stripControlCharacters(value: string): string {
+  let result = "";
+  for (const character of value) {
+    const codePoint = character.codePointAt(0) ?? DELETE_CODE_POINT;
+    if (codePoint > LAST_C0_CONTROL_CODE_POINT && codePoint !== DELETE_CODE_POINT) {
+      result += character;
+    }
+  }
+  return result;
+}
+
+// Cuts on code-point boundaries, so a multi-byte character is never split.
+function truncateUtf8(value: string, maxBytes: number): string {
+  let result = "";
+  let used = 0;
+  for (const character of value) {
+    const size = utf8ByteLength(character);
+    if (used + size > maxBytes) break;
+    result += character;
+    used += size;
+  }
+  return result;
+}
+
+function splitExtension(name: string): { base: string; extension: string } {
+  const dotIndex = name.lastIndexOf(".");
+  if (dotIndex <= 0) return { base: name, extension: "" };
+  const extension = name.slice(dotIndex);
+  if (utf8ByteLength(extension) > ZIP_ENTRY_EXTENSION_MAX_BYTES) {
+    return { base: name, extension: "" };
+  }
+  return { base: name.slice(0, dotIndex), extension };
+}
+
+// Joins the parts and shortens only the base, so the UTF-8 name fits ZIP_ENTRY_NAME_MAX_BYTES.
+function composeEntryName(base: string, marker: string, extension: string): string {
+  const room = ZIP_ENTRY_NAME_MAX_BYTES - utf8ByteLength(marker) - utf8ByteLength(extension);
+  return `${truncateUtf8(base, room)}${marker}${extension}`;
+}
 
 /**
  * Sanitizes ZIP entry names to prevent path traversal attacks.
- * Strips Windows/POSIX drive letters, directories, ../, ..\, and leading/trailing separators.
+ * Removes control characters, strips Windows/POSIX drive letters, directories, ../, ..\, and
+ * leading/trailing separators, then caps the UTF-8 length at ZIP_ENTRY_NAME_MAX_BYTES.
  * If the resulting name is empty or invalid, falls back to a safe identifier.
  */
 export function sanitizeZipEntryName(rawName: string): string {
-  let cleaned = rawName.replace(/\\/g, "/");
+  let cleaned = stripControlCharacters(rawName).replace(/\\/g, "/");
   cleaned = cleaned.replace(/^[a-zA-Z]:[/]*/, "");
   cleaned = cleaned.replace(/^[/]+/, "");
 
@@ -25,7 +80,8 @@ export function sanitizeZipEntryName(rawName: string): string {
     return "document";
   }
 
-  return cleaned;
+  const { base, extension } = splitExtension(cleaned);
+  return composeEntryName(base, "", extension);
 }
 
 /**
@@ -48,7 +104,7 @@ export function toDosDateTime(date: Date = new Date()): { time: number; date: nu
 /**
  * Disambiguates duplicate filenames by appending an incrementing index
  * before the file extension (e.g. "laporan.pdf" -> "laporan (1).pdf").
- * Also sanitizes entry names against path traversal.
+ * Also sanitizes entry names against path traversal. A suffixed name still fits the byte cap.
  */
 export function deduplicateEntryNames<T extends { name: string }>(
   entries: ReadonlyArray<T>,
@@ -66,16 +122,12 @@ export function deduplicateEntryNames<T extends { name: string }>(
       continue;
     }
 
-    const dotIndex = rawName.lastIndexOf(".");
-    const hasExtension = dotIndex > 0;
-    const base = hasExtension ? rawName.slice(0, dotIndex) : rawName;
-    const ext = hasExtension ? rawName.slice(dotIndex) : "";
-
-    let candidate = `${base} (${count})${ext}`;
+    const { base, extension } = splitExtension(rawName);
     let collisionIndex = count;
+    let candidate = composeEntryName(base, ` (${collisionIndex})`, extension);
     while (seenCount.has(candidate)) {
       collisionIndex++;
-      candidate = `${base} (${collisionIndex})${ext}`;
+      candidate = composeEntryName(base, ` (${collisionIndex})`, extension);
     }
     seenCount.set(candidate, 1);
     result.push({ ...entry, name: candidate });

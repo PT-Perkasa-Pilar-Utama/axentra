@@ -36,6 +36,12 @@ export function computeRefreshExpiry(input: {
   return new Date(Math.min(idleExpiryMs, absoluteExpiryMs));
 }
 
+// The state of an email with no recorded attempt. A store that must create its row before it can lock it
+// inserts this state; reserving from it decides exactly like reserving from no row.
+export function emptyLoginAttemptState(now: Date): LoginAttemptState {
+  return { failedCount: 0, windowStartedAt: now, lockedUntil: null };
+}
+
 // Records one login attempt for an email. The fifth attempt inside the window starts the lockout, and
 // every attempt while the lockout lasts is refused without checking the password.
 export function reserveLoginAttempt(

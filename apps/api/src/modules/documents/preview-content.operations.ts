@@ -1,20 +1,28 @@
 import type { Logger } from "@axentra/observability";
 import type { StorageAdapter } from "@axentra/storage";
 import { SUPPORTED_DOCUMENT_MIME_TYPES } from "@axentra/shared";
-import { AppError, NotFoundError } from "../../http/errors";
+import { AppError, NotFoundError, PayloadTooLargeError } from "../../http/errors";
+import type { RequestSemaphore } from "../../http/request-semaphore";
 import { assertPreviewAllowed, type PreviewFileRecord } from "./preview.operations";
 import type { IPreviewRepository } from "./preview.repository";
+import {
+  globalPreviewContentSemaphore,
+  PREVIEW_MAX_FILE_BYTES,
+  PREVIEW_TOO_LARGE_MESSAGE,
+} from "./preview-content.limits";
 
 export type PreviewContentOperationDependencies = {
   previewRepository: IPreviewRepository;
   storage: StorageAdapter;
   logger?: Logger | undefined;
+  previewContentSemaphore?: RequestSemaphore | undefined;
 };
 
 export type ExecutePreviewContentInput = {
   documentId: string;
   requestId?: string | undefined;
   logger?: Logger | undefined;
+  signal?: AbortSignal | undefined;
 };
 
 export type PreviewContentOperationResult = {
@@ -73,12 +81,24 @@ export async function executePreviewContentOperation(
     throw new NotFoundError("File dokumen tidak ditemukan");
   }
 
-  const bytes = await readPreviewBytes(dependencies, input, file);
+  // The stored size is checked before the object is read, so an oversized file never reaches memory.
+  if (file.fileSize > PREVIEW_MAX_FILE_BYTES) {
+    throw new PayloadTooLargeError(PREVIEW_TOO_LARGE_MESSAGE);
+  }
 
-  return {
-    filename: file.originalName,
-    mimeType: file.mimeType,
-    fileSize: file.fileSize,
-    bytes,
-  };
+  // The slot covers the storage read. Bytes handed to the response afterwards stay in Bun's buffer
+  // until the socket finishes, which this limit does not track.
+  const semaphore = dependencies.previewContentSemaphore ?? globalPreviewContentSemaphore;
+  const releaseSlot = await semaphore.acquire({ signal: input.signal });
+  try {
+    const bytes = await readPreviewBytes(dependencies, input, file);
+    return {
+      filename: file.originalName,
+      mimeType: file.mimeType,
+      fileSize: file.fileSize,
+      bytes,
+    };
+  } finally {
+    releaseSlot();
+  }
 }

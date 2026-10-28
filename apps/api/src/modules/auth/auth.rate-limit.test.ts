@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { createApp } from "../../app";
 import type { ApiErrorEnvelope } from "@axentra/shared";
-import { reserveLoginAttempt, type LoginAttemptState } from "./auth.policy";
+import { emptyLoginAttemptState, reserveLoginAttempt, type LoginAttemptState } from "./auth.policy";
 import { createInMemoryAuthService } from "./auth.memory-stores";
 import { jsonPost, logger, TEST_MEMBER } from "./auth.test-support";
 
@@ -40,6 +40,18 @@ describe("reserveLoginAttempt (A6 policy)", () => {
       failedCount: 1,
       windowStartedAt: at(15 * MINUTE_MS),
       lockedUntil: null,
+    });
+  });
+
+  it("decides from the row the upsert inserts exactly as from no row at all (F32)", () => {
+    const now = at(0);
+
+    const fromInsertedRow = reserveLoginAttempt(emptyLoginAttemptState(now), now);
+
+    expect(fromInsertedRow).toEqual(reserveLoginAttempt(null, now));
+    expect(fromInsertedRow).toEqual({
+      allowed: true,
+      state: { failedCount: 1, windowStartedAt: now, lockedUntil: null },
     });
   });
 

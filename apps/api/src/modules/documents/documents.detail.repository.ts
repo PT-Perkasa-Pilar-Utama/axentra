@@ -7,6 +7,10 @@ export type DocumentDetailRecord = {
   file: typeof documentFiles.$inferSelect;
 };
 
+export type IDocumentDetailRepository = {
+  findDocumentDetail: (id: string) => Promise<DocumentDetailRecord | null>;
+};
+
 // Active (not soft-deleted) document joined to its stored file. A document without a file record is absent.
 export async function findDocumentDetailRecord(
   db: PostgresJsDatabase,
@@ -19,4 +23,14 @@ export async function findDocumentDetailRecord(
     .where(and(eq(documents.id, documentId), isNull(documents.deletedAt)))
     .limit(1);
   return rows[0] ?? null;
+}
+
+// Drizzle-backed detail read. The service receives this repository directly; DocumentRepository does not
+// proxy it.
+export class DocumentDetailRepository implements IDocumentDetailRepository {
+  public constructor(private readonly db: PostgresJsDatabase) {}
+
+  public async findDocumentDetail(id: string): Promise<DocumentDetailRecord | null> {
+    return findDocumentDetailRecord(this.db, id);
+  }
 }

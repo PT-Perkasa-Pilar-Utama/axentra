@@ -40,5 +40,7 @@ permission by category.
 
 ## Admin (usulan, belum ada sprint)
 
-US-14 to US-18 are not assigned to a sprint yet. The requirements are in
-[admin-role.md](admin-role.md).
+The Admin role is not in the BA workbook, and the BA has not approved it. Its proposal IDs
+(PROP-ADM-01 to PROP-ADM-05 and PROP-ADM-AC-01.01 to PROP-ADM-AC-05.01) are not BA IDs. They appear
+only in the proposal [proposals/admin-role-proposal.md](../proposals/admin-role-proposal.md), which
+is not a BA source. No sprint covers them.

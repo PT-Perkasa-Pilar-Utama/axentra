@@ -1058,7 +1058,9 @@ describe("POST /api/v1/documents/bulk-download — BE-S3-03", () => {
 
       expect(activeDuringExecution).toBe(1);
       expect(result.bytes).toBeDefined();
-      expect(byteBudget.reservedBytes).toBe(result.bytes.byteLength);
+      // The reservation is taken before any read, from stored sizes: the prefetched entry buffers and the
+      // archive that copies them are alive together, so it is the stored file size plus the archive size.
+      expect(byteBudget.reservedBytes).toBe(pdfBytes1.byteLength + result.bytes.byteLength);
       expect(semaphore.activeCount).toBe(1);
       result.release();
       expect(semaphore.activeCount).toBe(0);

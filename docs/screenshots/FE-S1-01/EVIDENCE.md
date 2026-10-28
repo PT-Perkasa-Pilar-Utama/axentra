@@ -1,6 +1,12 @@
 # Evidence: FE-S1-01 - Upload panel and role gate
 
 Run: 2026-10-27, branch FND-10-Resolve-sprint-1-3-partials-and-blockers, Playwright MCP (Chromium), manual flows per docs/E2E_TESTING.md sections 3-6.
+Diverifikasi pada SHA: belum (lihat catatan)
+
+Catatan SHA: run ini tidak mencatat SHA commit. Ulangi alur pada SHA final sebelum rilis, lalu catat SHA di sini.
+
+Stale statements: the Web app no longer prefixes upload toasts with "Unggah berhasil." or "Unggah gagal.". The Observed lines below, and the screenshots `upload-toast.png`, `unsupported-type.png`, and `multi-docx-toast.png`, show that removed copy. The toast now carries the BA text alone: `File diterima untuk diproses` (a multi-file upload appends `: <file names>`) and `Tipe file tidak didukung` (see `document-upload.rules.ts` and `document-upload.state.ts` under `apps/web/src/features/document-upload/`). The Result lines below do not count as current evidence for AC-01.01, AC-01.03, and AC-01.04 until the flows run again. Usang: perlu diverifikasi ulang pada SHA final.
+
 Setup deviations (recorded for the Tech Lead):
 
 - Web runs on port 5174 (Vite --strictPort). Port 5173 was already held by an unrelated bun process (not touched).
@@ -46,7 +52,7 @@ Screenshot:  docs/screenshots/FE-S1-01/multi-docx-toast.png
 ```
 
 ```text
-AC:          FE-S1-01 role gate (D8)
+AC:          FE-S1-01 role gate (Head of Team has no upload panel)
 Card:        FE-S1-01
 Environment: local E2E stack: Web http://localhost:5174, API http://localhost:3001, worker queue axentra-jobs, DB axentra_e2e_test (127.0.0.1:15432), Redis 127.0.0.1:16379, MinIO 127.0.0.1:19000
 Role:        head_of_team (head@axentra.internal)

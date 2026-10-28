@@ -62,6 +62,7 @@ function recordFixture(): DocumentDetailRecord {
       categoryId: CATEGORY.id,
       processingStatus: "completed",
       errorMessage: null,
+      processingRecoveryAttempts: 0,
       createdAt: CREATED_AT,
       updatedAt: CREATED_AT,
       deletedAt: null,

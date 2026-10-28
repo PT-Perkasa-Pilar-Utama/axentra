@@ -1,5 +1,5 @@
 import { loadApiConfig, type ApiConfig } from "@axentra/config";
-import { createLogger } from "@axentra/observability";
+import { createLogger, type Logger } from "@axentra/observability";
 import type { AuthUser } from "@axentra/shared";
 
 export const logger = createLogger({
@@ -8,6 +8,37 @@ export const logger = createLogger({
   version: "0.1.0",
   level: "fatal",
 });
+
+export type CapturedLogger = {
+  logger: Logger;
+  // Every log line written so far, parsed from JSON.
+  entries(): unknown[];
+  // The raw output, for asserting that a value never reached the log.
+  output(): string;
+};
+
+// A warn-level logger that keeps its output in memory.
+export function captureLogger(): CapturedLogger {
+  const lines: string[] = [];
+  const captured = createLogger({
+    service: "axentra-api",
+    environment: "test",
+    version: "0.1.0",
+    level: "warn",
+    destination: {
+      write(line: string): void {
+        lines.push(line);
+      },
+    },
+  });
+  return {
+    logger: captured,
+    entries: () => lines.map((line): unknown => JSON.parse(line)),
+    output: () => lines.join(""),
+  };
+}
+
+export const TEST_WEB_ORIGIN = "https://web.axentra.internal";
 
 export const TEST_MEMBER: AuthUser = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -38,6 +69,7 @@ export function runtimeEnvironment(appEnv: "development" | "production"): Record
     S3_ACCESS_KEY_ID: "local-test-user",
     S3_SECRET_ACCESS_KEY: "local-test-password",
     S3_FORCE_PATH_STYLE: "true",
+    WEB_ORIGIN: TEST_WEB_ORIGIN,
   };
 }
 

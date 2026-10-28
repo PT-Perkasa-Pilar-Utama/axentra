@@ -31,10 +31,20 @@ export type AppDependencies = {
   searchService?: SearchService | undefined;
   categoriesService?: CategoriesService | undefined;
   enableUploadRoute?: boolean | undefined;
-  // The one browser origin allowed to call the API with credentials. Defaults to the local Web dev server.
+  // The one browser origin allowed to call the API with credentials. Outside production it defaults to the
+  // local Web dev server.
   webOrigin?: string | undefined;
   appEnvironment?: ApiConfig["APP_ENV"] | undefined;
 };
+
+// Production must name its Web origin, as config validation already requires of WEB_ORIGIN.
+function resolveWebOrigin(dependencies: AppDependencies): string {
+  if (dependencies.webOrigin !== undefined) return dependencies.webOrigin;
+  if (dependencies.appEnvironment === "production") {
+    throw new Error("A production API requires an explicit web origin");
+  }
+  return DEFAULT_WEB_ORIGIN;
+}
 
 export function createApp(dependencies: AppDependencies): Hono<ApiEnvironment> {
   const app = new Hono<ApiEnvironment>();
@@ -42,7 +52,7 @@ export function createApp(dependencies: AppDependencies): Hono<ApiEnvironment> {
   app.use(
     "*",
     cors({
-      origin: dependencies.webOrigin ?? DEFAULT_WEB_ORIGIN,
+      origin: resolveWebOrigin(dependencies),
       credentials: true,
       allowHeaders: ["Content-Type", "Authorization"],
       allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],

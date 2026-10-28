@@ -84,6 +84,9 @@ resources below.
 If no resource fits, use the standard Axentra workflow: read the linked docs, inspect the smallest
 relevant code path, make a scoped change, and run the appropriate verification.
 
+Installed project skills: `arx-be` (backend workflow) and `arx-ui-spec` (UI spec from Figma links or
+exports).
+
 ## Repository Layout
 
 ```text

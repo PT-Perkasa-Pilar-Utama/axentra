@@ -92,3 +92,8 @@ framework for it.
 
 Acceptance evidence for E2E flows is recorded under `docs/screenshots/<CARD-ID>/` (screenshot plus
 observed result). See [docs/E2E_TESTING.md](docs/E2E_TESTING.md).
+
+## Local skills
+
+Installed project skills: `arx-be` (backend workflow) and `arx-ui-spec` (UI spec from Figma links or
+exports).

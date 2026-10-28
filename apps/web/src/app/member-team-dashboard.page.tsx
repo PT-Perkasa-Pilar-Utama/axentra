@@ -3,42 +3,15 @@ import type React from "react";
 
 import perkasaLogo from "../assets/perkasa-logo-sidebar.png";
 import { CategoryNavigationView } from "../features/categories/categories.view";
-import { useCategoriesPresenter } from "../features/categories/categories.presenter";
-import { canUploadDocuments } from "../features/document-upload/document-upload.access";
-import { useDocumentUploadPresenter } from "../features/document-upload/document-upload.presenter";
 import { DocumentUploadAreaView } from "../features/document-upload/document-upload.view";
+import { useMemberTeamDashboardPresenter } from "../features/member-team-dashboard/member-team-dashboard.presenter";
 import { RecentDocumentsView } from "../features/recent-documents/recent-documents.view";
-import { useRecentDocumentsPresenter } from "../features/recent-documents/recent-documents.presenter";
-import {
-  useTagFilterPresenter,
-  useTopTagsPresenter,
-} from "../features/top-tags/top-tags.presenter";
 import { TopTagsView } from "../features/top-tags/top-tags.view";
-import { useSearchDocumentsPresenter } from "../features/search-documents/search-documents.presenter";
 import { SearchBarView } from "../features/search-documents/search-bar.view";
 import { SearchResultsView } from "../features/search-documents/search-results.view";
-import { useAuthSession } from "../features/auth/auth-session.context";
 
 export function MemberTeamDashboardPage(): React.JSX.Element {
-  const { user } = useAuthSession();
-  const canUpload = canUploadDocuments(user?.role);
-  const uploadPresenter = useDocumentUploadPresenter();
-  const tagFilter = useTagFilterPresenter();
-  const documentsPresenter = useRecentDocumentsPresenter(5, tagFilter.activeTagList);
-  const searchPresenter = useSearchDocumentsPresenter(tagFilter.activeTagList);
-  const categoriesPresenter = useCategoriesPresenter(
-    searchPresenter.categoryId,
-    searchPresenter.setCategoryFilter,
-  );
-
-  const isSearching =
-    searchPresenter.keyword.length > 0 || searchPresenter.categoryId !== undefined;
-  // Konteks Top Tags mengikuti mode: dasbor memakai tag global, pencarian memakai hasilnya (AC-04.01).
-  const topTagsPresenter = useTopTagsPresenter({
-    context: isSearching ? "search" : "dashboard",
-    documentIds: isSearching ? searchPresenter.resultIds : undefined,
-    activeTagNames: tagFilter.activeTagList,
-  });
+  const presenter = useMemberTeamDashboardPresenter();
 
   return (
     <main
@@ -71,28 +44,30 @@ export function MemberTeamDashboardPage(): React.JSX.Element {
               <span>Dashboard</span>
             </NavLink>
           </nav>
-          <CategoryNavigationView presenter={categoriesPresenter} />
+          <CategoryNavigationView presenter={presenter.categoriesPresenter} />
         </aside>
 
         <div className="min-w-0 px-4 sm:px-6 md:px-4">
           <header className="flex min-h-[4.5rem] items-center justify-between py-4">
             <h1 className="text-lg font-semibold leading-none">Dashboard</h1>
-            <SearchBarView presenter={searchPresenter} />
+            <SearchBarView presenter={presenter.searchPresenter} />
           </header>
 
           <div className="space-y-6 pb-8">
             <TopTagsView
-              presenter={topTagsPresenter}
-              activeTagNames={tagFilter.activeTagNames}
-              onTagClick={tagFilter.toggleTag}
+              presenter={presenter.topTagsPresenter}
+              activeTagNames={presenter.tagFilter.activeTagNames}
+              onTagClick={presenter.tagFilter.toggleTag}
             />
 
-            {canUpload && <DocumentUploadAreaView presenter={uploadPresenter} />}
+            {presenter.canUpload && (
+              <DocumentUploadAreaView presenter={presenter.uploadPresenter} />
+            )}
 
-            {isSearching ? (
-              <SearchResultsView presenter={searchPresenter} />
+            {presenter.isSearching ? (
+              <SearchResultsView presenter={presenter.searchPresenter} />
             ) : (
-              <RecentDocumentsView presenter={documentsPresenter} />
+              <RecentDocumentsView presenter={presenter.documentsPresenter} />
             )}
           </div>
         </div>

@@ -1,6 +1,14 @@
 # Evidence: FE-S3-01 - Inline preview
 
 Run: 2026-10-27, branch FND-10-Resolve-sprint-1-3-partials-and-blockers, Playwright MCP (Chromium), manual flows per docs/E2E_TESTING.md sections 3-6.
+Diverifikasi pada SHA: belum (lihat catatan)
+
+Catatan SHA: run ini tidak mencatat SHA commit. Ulangi alur pada SHA final sebelum rilis, lalu catat SHA di sini.
+
+Coverage: PDF only. Neither run records a DOCX preview.
+
+Superseded: the first record and its screenshot `inline-preview.png` show an iframe that loaded a presigned object-storage URL. The preview no longer exposes a storage URL, so the re-run below replaces that record. Do not cite `inline-preview.png` as current evidence. Usang: perlu diverifikasi ulang pada SHA final.
+
 Setup deviations (recorded for the Tech Lead):
 
 - Web runs on port 5174 (Vite --strictPort). Port 5173 was already held by an unrelated bun process (not touched).
@@ -17,8 +25,8 @@ Input:       Open detail page (preview) of report-api.pdf
 Expected:    Whole document shown inline in the viewer without a download
 Observed:    The viewer iframe renders the PDF page with text "API reporting strategy overview"; no download event was fired
 Result:      Pass
-Screenshot:  docs/screenshots/FE-S3-01/inline-preview.png
-Note:        The iframe src is a presigned object-storage URL (see review note B2).
+Screenshot:  docs/screenshots/FE-S3-01/inline-preview.png (superseded)
+Note:        The iframe src was a presigned object-storage URL, which gives the browser a storage URL. The re-run below replaces this record.
 ```
 
 ## Re-run 2026-10-27: preview served through the API proxy

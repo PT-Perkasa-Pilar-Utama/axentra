@@ -1,27 +1,23 @@
 import type React from "react";
 import { BookmarkIcon, CalendarIcon, FileIcon, GridIcon, UserIcon } from "./document-icons";
 import type {
+  DetailAuthorField,
   DetailCategoryField,
   DetailTagsField,
   DetailUploadDateField,
 } from "./document-detail-fields.presenter";
-import { useRelatedDocumentsPresenter } from "./related-documents.presenter";
-import { RelatedDocumentsView } from "./related-documents.view";
+import { RelatedDocumentsSection } from "./document-related-section.view";
 
 export type DocumentMetadataSidebarProps = {
   documentId: string;
   filename: string;
-  author: string | null;
+  author: DetailAuthorField;
   tags: DetailTagsField;
   category: DetailCategoryField;
   uploadDate: DetailUploadDateField;
+  /** AC-07.01: Dokumen Terkait hanya tampil untuk dokumen yang memiliki tag (dari presenter). */
+  showRelated: boolean;
 };
-
-// Hook pencarian Dokumen Terkait hanya dipanggil saat bagian ini ditampilkan.
-function RelatedDocumentsSection({ documentId }: { documentId: string }): React.JSX.Element {
-  const related = useRelatedDocumentsPresenter(documentId);
-  return <RelatedDocumentsView presenter={related} />;
-}
 
 export function DocumentMetadataSidebar({
   documentId,
@@ -30,11 +26,8 @@ export function DocumentMetadataSidebar({
   tags,
   category,
   uploadDate,
+  showRelated,
 }: DocumentMetadataSidebarProps): React.JSX.Element {
-  const displayAuthor = author ?? "Tidak terdeteksi";
-  // AC-07.01: Dokumen Terkait hanya ditampilkan untuk dokumen yang memiliki minimal satu tag.
-  const showRelated = tags.status === "ready";
-
   return (
     <aside aria-label="Informasi Dokumen" className="document-detail-page__sidebar space-y-7">
       {/* Section: Meta Data */}
@@ -72,10 +65,10 @@ export function DocumentMetadataSidebar({
               <span className="block text-sm text-gray-600 font-medium leading-snug">Penulis</span>
               <span
                 className={`block text-base leading-relaxed [overflow-wrap:anywhere] mt-0.5 ${
-                  author ? "text-gray-800 font-semibold" : "text-gray-600"
+                  author.isDetected ? "text-gray-800 font-semibold" : "text-gray-600"
                 }`}
               >
-                {displayAuthor}
+                {author.label}
               </span>
             </div>
           </div>

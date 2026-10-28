@@ -2,7 +2,8 @@ import type React from "react";
 import { useEffect } from "react";
 import { useNavigate, useLocation } from "react-router";
 import { useLoginPresenter, type UseLoginPresenterOptions } from "./login.presenter";
-import { PerkasaLogo, PerkasaBackgroundDecorations } from "./login-logo.view";
+import { PerkasaLogo } from "./perkasa-logo.view";
+import { PerkasaBackgroundDecorations } from "./perkasa-background-decorations.view";
 import { PerkasaLoginForm } from "./login-form.view";
 import { useOptionalAuthSession } from "./auth-session.context";
 

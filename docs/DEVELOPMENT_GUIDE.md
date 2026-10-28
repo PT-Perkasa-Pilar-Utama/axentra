@@ -38,7 +38,8 @@ Rebase on the target branch, update the relevant schema, generate one logical mi
 the SQL, apply it to a clean database, and document operational impact in the PR. Applied shared
 migrations are immutable; use a forward fix.
 
-Foundation intentionally contains no business tables.
+The committed migrations hold the Sprint 1-3 business tables and the auth session tables. Add
+further tables only through a reviewed sprint card.
 
 ## Infrastructure
 

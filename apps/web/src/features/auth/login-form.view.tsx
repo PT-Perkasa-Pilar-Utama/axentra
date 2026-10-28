@@ -1,6 +1,6 @@
 import type React from "react";
 import type { LoginPresenter } from "./login.presenter";
-import { PerkasaLogo } from "./login-logo.view";
+import { PerkasaLogo } from "./perkasa-logo.view";
 
 export type PerkasaLoginFormProps = {
   presenter: LoginPresenter;

@@ -8,6 +8,7 @@ import type {
 } from "@axentra/db";
 import type { StorageAdapter } from "@axentra/storage";
 import { documentSmartTagsResponseSchema } from "@axentra/shared";
+import { PROCESSING_FAILURE_MESSAGE } from "../apps/worker/src/processors/processing-failure";
 
 const runIntegrationTests = Bun.env.RUN_INTEGRATION_TESTS === "1";
 const integrationTest = runIntegrationTests ? test : test.skip;
@@ -383,9 +384,9 @@ trailer
           .from(documents)
           .where(inArray(documents.id, [failDocId]));
         expect(failedDoc?.processingStatus).toBe("failed");
-        expect(failedDoc?.errorMessage).toContain(
-          "Simulated PostgreSQL failure on document_smart_tags insert",
-        );
+        // The stored message is the fixed copy only; the driver error text (SQL and parameters) is never stored.
+        expect(failedDoc?.errorMessage).toBe(PROCESSING_FAILURE_MESSAGE);
+        expect(failedDoc?.errorMessage).not.toContain("Simulated PostgreSQL failure");
 
         // 5. PROVE TRANSACTION ROLLBACK: document_metadata write MUST be rolled back!
         const rolledBackMetadata = await database.db

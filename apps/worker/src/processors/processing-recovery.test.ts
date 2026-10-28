@@ -4,6 +4,7 @@ import { type RetainedProcessingJob, reconcileRetainedDocumentJob } from "@axent
 import { PROCESSING_ENQUEUE_FAILURE_MESSAGE, type DocumentProcessingJob } from "@axentra/shared";
 import type { StorageAdapter } from "@axentra/storage";
 import { InMemoryDocumentProcessingRepository, processDocumentJob } from "./document.processor";
+import type { RecoverableProcessingDocument } from "./document.processor.repository.types";
 import { recoverFailedProcessingJobs } from "./processing-recovery";
 
 const logger = createLogger({
@@ -19,11 +20,14 @@ describe("document processing recovery", () => {
     const count = await recoverFailedProcessingJobs({
       repository: {
         listRecoverableDocuments: async () => [
-          {
-            documentId: "11111111-1111-4111-8111-111111111111",
-            storageKey: "documents/11111111-1111-4111-8111-111111111111/laporan.pdf",
-          },
+          recoverableRow(
+            "11111111-1111-4111-8111-111111111111",
+            "documents/11111111-1111-4111-8111-111111111111/laporan.pdf",
+            "failed",
+          ),
         ],
+        recordRecoveryAttempt: async () => true,
+        markRecoveryExhausted: async () => false,
         markEnqueueRecovered: async () => undefined,
       },
       queue: {
@@ -44,15 +48,11 @@ describe("document processing recovery", () => {
     const count = await recoverFailedProcessingJobs({
       repository: {
         listRecoverableDocuments: async () => [
-          {
-            documentId: "11111111-1111-4111-8111-111111111111",
-            storageKey: "documents/one.pdf",
-          },
-          {
-            documentId: "22222222-2222-4222-8222-222222222222",
-            storageKey: "documents/two.pdf",
-          },
+          recoverableRow("11111111-1111-4111-8111-111111111111", "documents/one.pdf", "failed"),
+          recoverableRow("22222222-2222-4222-8222-222222222222", "documents/two.pdf", "failed"),
         ],
+        recordRecoveryAttempt: async () => true,
+        markRecoveryExhausted: async () => false,
         markEnqueueRecovered: async () => undefined,
       },
       queue: {
@@ -74,11 +74,10 @@ describe("document processing recovery", () => {
     const count = await recoverFailedProcessingJobs({
       repository: {
         listRecoverableDocuments: async () => [
-          {
-            documentId: "33333333-3333-4333-8333-333333333333",
-            storageKey: "documents/queued.pdf",
-          },
+          recoverableRow("33333333-3333-4333-8333-333333333333", "documents/queued.pdf", "failed"),
         ],
+        recordRecoveryAttempt: async () => true,
+        markRecoveryExhausted: async () => false,
         markEnqueueRecovered: async (documentId) => {
           recovered.push(documentId);
         },
@@ -165,6 +164,22 @@ describe("document processing recovery", () => {
     expect(repository.documents.get(secondId)?.processingStatus).toBe("completed");
   });
 });
+
+function recoverableRow(
+  documentId: string,
+  storageKey: string,
+  processingStatus: string,
+): RecoverableProcessingDocument {
+  const now = new Date();
+  return {
+    documentId,
+    storageKey,
+    processingStatus,
+    createdAt: now,
+    updatedAt: now,
+    recoveryAttempts: 0,
+  };
+}
 
 function queuedDocument(
   documentId: string,

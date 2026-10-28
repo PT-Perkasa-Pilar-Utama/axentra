@@ -1,7 +1,11 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
+import { createLogger, type Logger } from "@axentra/observability";
 import type { StorageAdapter } from "@axentra/storage";
-import type { DocumentDetailRecord } from "./documents.detail.repository";
+import type {
+  DocumentDetailRecord,
+  IDocumentDetailRepository,
+} from "./documents.detail.repository";
 import {
   DOCUMENT_COPY,
   DOCUMENT_ERROR_CODES,
@@ -43,6 +47,7 @@ function toDetailRecord(item: CreateDocumentBatchItem): DocumentDetailRecord {
       categoryId: null,
       processingStatus: "queued",
       errorMessage: null,
+      processingRecoveryAttempts: 0,
       createdAt: now,
       updatedAt: now,
       deletedAt: null,
@@ -61,14 +66,34 @@ function toDetailRecord(item: CreateDocumentBatchItem): DocumentDetailRecord {
   };
 }
 
+// Logger for a service built without one. Production always passes its own logger.
+export function createDefaultServiceLogger(): Logger {
+  return createLogger({
+    service: "axentra-api",
+    environment: "test",
+    version: "0.1.0",
+    level: "fatal",
+  });
+}
+
+// Repository and detail reader share one store, so a document saved through the repository is readable.
+export type InMemoryDocumentStore = {
+  repository: IDocumentRepository;
+  detailRepository: IDocumentDetailRepository;
+};
+
 export function createInMemoryRepository(): IDocumentRepository {
+  return createInMemoryDocumentStore().repository;
+}
+
+export function createInMemoryDocumentStore(): InMemoryDocumentStore {
   const existingHashes = new Set<string>();
   const hashToDocId = new Map<string, string>();
   const savedBatches: CreateDocumentBatchItem[][] = [];
   const recentDocuments: RecentDocument[] = [];
   const detailRecords = new Map<string, DocumentDetailRecord>();
   const documentTags = new Map<string, Set<string>>();
-  return {
+  const repository: IDocumentRepository = {
     findExistingHashes: async (hashes) => {
       const found = new Set<string>();
       for (const h of hashes) {
@@ -140,9 +165,12 @@ export function createInMemoryRepository(): IDocumentRepository {
     },
     findDocumentById: async () => null,
     findDocumentFileByDocumentId: async () => null,
-    findDocumentDetail: async (id) => detailRecords.get(id) ?? null,
     markProcessingEnqueueFailed: async () => undefined,
   };
+  const detailRepository: IDocumentDetailRepository = {
+    findDocumentDetail: async (id) => detailRecords.get(id) ?? null,
+  };
+  return { repository, detailRepository };
 }
 
 /**

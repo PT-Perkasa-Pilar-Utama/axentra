@@ -285,7 +285,6 @@ function createMockRepository(): IDocumentRepository & {
     },
     findDocumentById: async () => null,
     findDocumentFileByDocumentId: async () => null,
-    findDocumentDetail: async () => null,
     markProcessingEnqueueFailed: async () => undefined,
   };
   return repo;

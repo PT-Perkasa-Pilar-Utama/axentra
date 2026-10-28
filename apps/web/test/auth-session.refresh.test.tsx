@@ -6,7 +6,7 @@ import type { AuthUser, LoginResponse } from "@axentra/shared";
 import { z } from "zod";
 import { AuthSessionProvider, useAuthSession } from "../src/features/auth/auth-session.context";
 import { clearSession, getAuthToken, type AuthSession } from "../src/features/auth/session.storage";
-import { SessionBootstrapGate } from "../src/features/auth/session-loading.view";
+import { SessionBootstrapGate } from "../src/features/auth/session-bootstrap-gate.view";
 import { UserSessionBadge } from "../src/features/auth/user-session-badge.view";
 import {
   ApiClientError,
@@ -317,7 +317,7 @@ describe("logout (C5)", () => {
     expect(getAuthToken()).toBeNull();
   });
 
-  test("kegagalan endpoint logout tetap menghapus sesi lokal", async () => {
+  test("kegagalan endpoint logout mempertahankan sesi lokal agar pengguna bisa mencoba lagi", async () => {
     const logoutApiFn = mock(async (): Promise<{ message: string }> => {
       throw new ApiClientError("NETWORK_ERROR", "Tidak dapat terhubung ke server", 0);
     });
@@ -338,11 +338,13 @@ describe("logout (C5)", () => {
     );
 
     expect(screen.getByText("Logged In")).toBeTruthy();
+    let confirmed: boolean | undefined;
     await act(async () => {
-      await captured?.logoutSession();
+      confirmed = await captured?.logoutSession();
     });
     expect(logoutApiFn).toHaveBeenCalledTimes(1);
-    expect(getAuthToken()).toBeNull();
-    await waitFor(() => expect(screen.getByText("Logged Out")).toBeTruthy());
+    expect(confirmed).toBe(false);
+    expect(getAuthToken()).toBe("ax_offline_token");
+    expect(screen.getByText("Logged In")).toBeTruthy();
   });
 });

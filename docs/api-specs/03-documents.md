@@ -2,7 +2,7 @@
 
 Source: BA user stories US-01, US-02, US-03, US-07, US-08, US-09, US-10.
 
-Status: every route below is implemented in Foundation v1.0.0.
+Status: every route below is implemented on `dev` (Sprint 1-3). Foundation v1.0.0 contains only the health endpoints (`/api/v1/health` and `/api/v1/health/ready`); see [README.md](../../README.md).
 
 ## Endpoints
 
@@ -246,6 +246,10 @@ Query parameters and request headers do not select the content type or the filen
 - `401 UNAUTHORIZED`: Missing, forged, or expired token.
 - `404 NOT_FOUND`: Document not found, soft-deleted, stored file record not found, or stored type not
   servable (`"File dokumen tidak ditemukan"`).
+- `413 PAYLOAD_TOO_LARGE`: Stored `fileSize` exceeds 50 MiB (`MAX_DOCUMENT_FILE_SIZE_BYTES`). Checked before
+  any storage read (`"Ukuran berkas melebihi batas pratinjau (50 MB)"`).
+- `429 TOO_MANY_REQUESTS`: More than 4 preview reads are in flight and the queue of 16 is full, or a
+  queued request waited longer than 10 seconds. No storage read happens for the refused request.
 - `500 INTERNAL_ERROR`: Storage read failure, stored byte length different from the metadata `fileSize`,
   or unexpected server error (`"Terjadi kesalahan pada server"`). No file bytes are returned.
 
@@ -344,7 +348,7 @@ Accepts selected document IDs, validates existence, enforces category download p
 - Headers:
   - `Content-Type: application/zip`
   - `Content-Disposition: attachment; filename="axentra-documents.zip"; filename*=UTF-8''axentra-documents.zip`
-  - `Transfer-Encoding: chunked`: the archive is streamed as a chunked response, and no `Content-Length` is sent. Bun drops an explicit `Content-Length` on streamed bodies, so the size is not advertised (see the approver decision below).
+  - `Transfer-Encoding: chunked`: the archive is streamed as a chunked response, and no `Content-Length` is sent. Bun drops an explicit `Content-Length` on streamed bodies, so the size is not advertised (see decision F30 below).
 - Body: Binary ZIP archive bytes containing all requested files.
 
 **Error Responses:**
@@ -357,13 +361,15 @@ Accepts selected document IDs, validates existence, enforces category download p
 - `429 TOO_MANY_REQUESTS`: Concurrency queue capacity exceeded, or the in-flight byte budget would be exceeded (both use `"Terlalu banyak permintaan unduhan massal secara bersamaan, antrean penuh"`). Rejected requests write no audit record.
 - `500 INTERNAL_ERROR`: Storage retrieval failure, file size mismatch with metadata, the audit write failing, or unexpected server error (`"Terjadi kesalahan pada server"`). Requests encountering storage or audit failures do not write audit records, and no archive is returned.
 
-> **Approver Architectural Decision (Arya Isnaidi, Tech Lead — 21 Oktober 2026 / Disempurnakan 27 Oktober 2026):**
+> **Keputusan Arsitektur yang Diusulkan (status: Diusulkan, belum disetujui approver)**
+>
+> Blok ini mencatat keputusan bulk download yang diusulkan oleh tim pengembang. Repository ini tidak berisi persetujuan tertulis dari approver (Arya Isnaidi, Tech Lead). Sampai ada persetujuan tertulis, seluruh butir (1–5) berstatus Diusulkan. Butir 1–3 menjelaskan perilaku yang diimplementasikan saat ini, bukan persetujuan atas perilaku tersebut. ID keputusan dijelaskan di [DECISIONS.md](../DECISIONS.md).
 >
 > 1. **Prefetch Storage & Zero-Audit on Failure:** Endpoint memuat seluruh objek dokumen dari storage dan memverifikasi ukuran setiap objek terhadap metadata sebelum membuat ZIP archive, menulis audit event, atau mengirim response. Jika storage gagal atau ukuran tidak sesuai, endpoint mengembalikan `500 INTERNAL_ERROR` tanpa catatan audit dan tanpa archive.
-> 2. **Konkurensi & Siklus Hidup Respons:** Global async semaphore (`BulkDownloadSemaphore`, `maxConcurrency: 2`, `maxQueueLength: 10`) berlaku per instans proses API. Slot di-acquire sebelum prefetch dan tetap ditahan sampai body respons selesai dibaca, dibatalkan (`cancel`), dibatalkan oleh `abort` request, atau batas waktu transfer 60 detik tercapai. Pada saat itu slot dilepas dan referensi archive dibebaskan.
-> 3. **Batas Byte In-Flight:** Setelah ZIP archive dirakit dan sebelum audit ditulis, endpoint mencadangkan (reserve) jumlah byte archive terhadap budget per proses `BULK_DOWNLOAD_INFLIGHT_BYTES_LIMIT` (default 512 MiB). Reservasi tidak diantrekan: jika melebihi budget, endpoint mengembalikan `429 TOO_MANY_REQUESTS` tanpa catatan audit. Reservasi dilepas bersamaan dengan slot, yaitu saat body selesai dibaca, dibatalkan, dibatalkan oleh `abort`, atau saat batas waktu transfer 60 detik tercapai.
-> 4. **Respons Chunked Tanpa Content-Length:** Respons dikirim sebagai stream chunked tanpa header `Content-Length`, karena Bun 1.3.12 (versi yang dipin) menghapus `Content-Length` yang eksplisit pada body stream. Keputusan ini menggantikan opsi `Content-Length` sebelumnya dan memerlukan konfirmasi approver.
-> 5. **Batasan yang Diketahui:** Bun membaca body stream hingga akhir hampir seketika, sehingga reservasi byte dapat dilepas sebelum klien menerima seluruh byte. Budget ini membatasi tumpang-tindih antara perakitan dan streaming archive, bukan buffer socket di sisi Bun. Risiko ini perlu dikonfirmasi oleh approver.
+> 2. **Konkurensi & Siklus Hidup Respons:** Global async semaphore (`BulkDownloadSemaphore`, `maxConcurrency: 2`, `maxQueueLength: 10`) berlaku per instans proses API. Slot di-acquire sebelum prefetch dan ditahan sampai salah satu dari: body dibatalkan (`cancel`), request dibatalkan oleh `abort`, atau batas waktu transfer 60 detik dari pembuatan body tercapai. Body yang sudah habis dibaca tidak melepas slot lebih awal, karena Bun 1.3.12 membaca body stream hingga akhir hampir seketika (lihat butir 5). Akibatnya satu unduhan yang berhasil menahan slot hingga sekitar 60 detik, dan paling banyak dua unduhan berhasil per instans dalam jendela 60 detik. Permintaan lain masuk antrean (10 tempat, timeout 30 detik) lalu menerima `429`.
+> 3. **Batas Byte In-Flight:** Sebelum prefetch objek pertama, endpoint mencadangkan (reserve) byte yang dibatasi dari ukuran tersimpan (`fileSize`) dan overhead ZIP, terhadap budget per proses `BULK_DOWNLOAD_INFLIGHT_BYTES_LIMIT` (default 512 MiB). Reservasi tidak diantrekan: jika melebihi budget, endpoint mengembalikan `429 TOO_MANY_REQUESTS` tanpa membaca storage dan tanpa catatan audit. Reservasi dilepas bersamaan dengan slot: saat body dibatalkan, request dibatalkan oleh `abort`, atau batas waktu transfer 60 detik tercapai. Pembacaan body yang selesai tidak melepasnya.
+> 4. **Keputusan F30, respons chunked tanpa Content-Length. Status: Diusulkan (belum disetujui approver).** Respons dikirim sebagai stream chunked tanpa header `Content-Length`, karena Bun 1.3.12 (versi yang dipin) menghapus `Content-Length` yang eksplisit pada body stream. Keputusan ini membalik opsi `Content-Length` yang sebelumnya diusulkan. Yang perlu dikonfirmasi approver: menerima respons chunked tanpa `Content-Length`, atau mengembalikan opsi `Content-Length` dan menentukan cara mengatasi perilaku Bun 1.3.12.
+> 5. **Keputusan F24, risiko memori bulk download. Status: Diusulkan (belum disetujui approver).** Bun membaca body stream hingga akhir hampir seketika, sehingga reservasi byte dapat dilepas sebelum klien menerima seluruh byte. Budget ini membatasi tumpang-tindih antara perakitan dan streaming archive, bukan buffer socket di sisi Bun. Yang perlu dikonfirmasi approver: menerima risiko sisa ini sebagai Accepted Risk (dengan nama, tanggal, dan dampak), atau meminta perubahan ke streaming dengan backpressure beserta tes tingkat socket.
 
 ## Related Documents
 

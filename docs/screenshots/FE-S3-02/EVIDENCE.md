@@ -1,6 +1,10 @@
 # Evidence: FE-S3-02 - Single download from preview
 
 Run: 2026-10-27, branch FND-10-Resolve-sprint-1-3-partials-and-blockers, Playwright MCP (Chromium), manual flows per docs/E2E_TESTING.md sections 3-6.
+Diverifikasi pada SHA: belum (lihat catatan)
+
+Catatan SHA: run ini tidak mencatat SHA commit. Ulangi alur pada SHA final sebelum rilis, lalu catat SHA di sini.
+
 Setup deviations (recorded for the Tech Lead):
 
 - Web runs on port 5174 (Vite --strictPort). Port 5173 was already held by an unrelated bun process (not touched).
@@ -23,7 +27,7 @@ Note:        Before the precondition was set, the same click returned 403 (see B
 
 ## Re-check 2026-10-27: download control driven by canDownload
 
-Run: 2026-10-27, branch FND-10-Resolve-sprint-1-3-partials-and-blockers, worktree Axentra-BE-S3-04, Playwright MCP (Chromium). Stack started from the worktree root with the same DB, Redis, MinIO and identity setup as above. Web is reached at http://localhost:5174 (Vite listens on the IPv6 loopback). No application data was changed. Clicking Download on report-api.pdf is a read-only file GET.
+Run: 2026-10-27, branch FND-10-Resolve-sprint-1-3-partials-and-blockers, local worktree of that branch (no SHA recorded), Playwright MCP (Chromium). Stack started from the worktree root with the same DB, Redis, MinIO and identity setup as above. Web is reached at http://localhost:5174 (Vite listens on the IPv6 loopback). No application data was changed. Clicking Download on report-api.pdf is a read-only file GET.
 
 ```text
 AC:          AC-09.01 (download control follows canDownload)

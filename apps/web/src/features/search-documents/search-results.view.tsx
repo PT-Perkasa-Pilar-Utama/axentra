@@ -6,14 +6,12 @@ export type SearchResultsViewProps = {
 };
 
 export function SearchResultsView({ presenter }: SearchResultsViewProps): React.JSX.Element | null {
-  if (!presenter.keyword && !presenter.categoryId) return null;
+  if (!presenter.isActive) return null;
 
   return (
     <section aria-label="Hasil Pencarian">
       <div className="mb-3 flex items-center justify-between gap-4">
-        <h2 className="text-sm font-semibold text-gray-900">
-          {presenter.keyword ? `Hasil Pencarian: "${presenter.keyword}"` : "Dokumen dalam kategori"}
-        </h2>
+        <h2 className="text-sm font-semibold text-gray-900">{presenter.heading}</h2>
         <button
           type="button"
           onClick={presenter.clearSearch}
@@ -55,13 +53,7 @@ export function SearchResultsView({ presenter }: SearchResultsViewProps): React.
 
       {presenter.isEmpty && (
         <p className="flex min-h-48 items-center justify-center rounded-2xl border border-[#e1e5e9] bg-white px-4 py-12 text-center text-sm text-gray-500">
-          {presenter.keyword ? (
-            <span>
-              Tidak ada hasil yang ditemukan untuk <strong>"{presenter.keyword}"</strong>
-            </span>
-          ) : (
-            <span>Tidak ada dokumen dalam kategori ini</span>
-          )}
+          {presenter.emptyMessage}
         </p>
       )}
 

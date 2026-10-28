@@ -1,6 +1,12 @@
 # Evidence: FE-S2-03 - Automatic categories and download state
 
 Run: 2026-10-27, branch FND-10-Resolve-sprint-1-3-partials-and-blockers, Playwright MCP (Chromium), manual flows per docs/E2E_TESTING.md sections 3-6.
+Diverifikasi pada SHA: belum (lihat catatan)
+
+Catatan SHA: run ini tidak mencatat SHA commit. Ulangi alur pada SHA final sebelum rilis, lalu catat SHA di sini.
+
+Stale statements: the "AC-05.01 (download inactive)" Fail and the pagination note under "Dokumen Terkait" describe the app as it was during the run. The re-check section marks both as superseded. The first run is kept as history. Usang: perlu diverifikasi ulang pada SHA final.
+
 Setup deviations (recorded for the Tech Lead):
 
 - Web runs on port 5174 (Vite --strictPort). Port 5173 was already held by an unrelated bun process (not touched).
@@ -30,7 +36,7 @@ Expected:    Download inactive for a new category until Head of Team enables it
 Observed:    DB: Legal and Strategy download_enabled = false. Detail page: Download button ENABLED with note "Unduh dalam format asli". The button was not clicked for this document. Server denial was verified on report-api.pdf when its category was disabled (see BE-S3-02). The Web app does not read canDownload from the API.
 Result:      Fail
 Screenshot:  docs/screenshots/FE-S2-03/member-legal-category-download-enabled.png
-Note:        Bug B1 in the review notes. The API response for GET /documents/:id includes canDownload, but apps/web does not call that route.
+Note:        Defect at the time of this run: the API response for GET /documents/:id includes canDownload, but apps/web did not call that route, so the Download button ignored the category setting. The re-check below records the fix.
 ```
 
 ```text
@@ -46,24 +52,24 @@ Screenshot:  docs/screenshots/FE-S2-03/categories-menu.png
 Note:        Content with the word contract went to a category named Legal, not Contract. The AC requires only different categories.
 ```
 
-## Re-check 2026-10-27: Bug B1 and related section
+## Re-check 2026-10-27: download state from canDownload, and related section
 
-Run: 2026-10-27, branch FND-10-Resolve-sprint-1-3-partials-and-blockers, worktree Axentra-BE-S3-04, Playwright MCP (Chromium). Same stack and identity setup as the re-check in FE-S3-02/EVIDENCE.md. No application data was changed.
+Run: 2026-10-27, branch FND-10-Resolve-sprint-1-3-partials-and-blockers, local worktree of that branch (no SHA recorded), Playwright MCP (Chromium). Same stack and identity setup as the re-check in FE-S3-02/EVIDENCE.md. No application data was changed.
 
 ```text
 AC:          AC-05.01 (download inactive)
-Card:        FE-S2-03 (Bug B1 re-verification)
+Card:        FE-S2-03 (canDownload re-verification)
 Environment: local E2E stack: Web http://localhost:5174, API http://localhost:3001, worker queue axentra-jobs, DB axentra_e2e_test (127.0.0.1:15432), Redis 127.0.0.1:16379, MinIO 127.0.0.1:19000
 Role:        member_team (member@axentra.internal)
 Input:       contract-legal.pdf in category Legal (downloadEnabled=false in DB), the same case that failed in the earlier run
-Expected:    Download inactive while the category is disabled, with the denied note shown (Bug B1 fixed)
+Expected:    Download inactive while the category is disabled, with the denied note shown (the Web app now reads canDownload)
 Observed:    Web now reads canDownload from GET /api/v1/documents/:id (false). Download button disabled; note "Akses unduh tidak diizinkan untuk kategori dokumen ini" shown. The earlier Fail for this step no longer reproduces.
 Result:      Pass
 Screenshot:  docs/screenshots/FE-S3-02/detail-download-disabled-canDownload-false.png
 ```
 
 ```text
-AC:          Dokumen Terkait (FE-S2-05); AC ID not restated in this re-check, see docs/screenshots/FE-S2-05/EVIDENCE.md
+AC:          AC-07.01, AC-07.02 (Dokumen Terkait; first run in docs/screenshots/FE-S2-05/EVIDENCE.md)
 Card:        FE-S2-05 (re-check after fix)
 Environment: local E2E stack: Web http://localhost:5174, API http://localhost:3001, worker queue axentra-jobs, DB axentra_e2e_test (127.0.0.1:15432), Redis 127.0.0.1:16379, MinIO 127.0.0.1:19000
 Role:        member_team (member@axentra.internal)
@@ -72,5 +78,5 @@ Expected:    Dokumen Terkait section appears with the related documents and thei
 Observed:    Section shows strategy-legal.pdf (tag strategy), sample-a.docx, sample-b.docx and sample-c.docx (tag reporting). Full-page screenshot captured.
 Result:      Pass
 Screenshot:  docs/screenshots/FE-S2-05/detail-related-after-fix.png
-Note:        Observation, not part of this fix: the dashboard list requests page=1&limit=5 and gets meta.total=6, but the Next button is hard-disabled (title "Fitur navigasi halaman belum tersedia"). report-api.pdf is reachable only through search. This is an existing scope gap.
+Note:        Superseded. When this check ran, the dashboard list requested page=1&limit=5 and got meta.total=6, but the Next button was hard-disabled (title "Fitur navigasi halaman belum tersedia"), so report-api.pdf was reachable only through search. Pagination has since been added: the FE-S1-02 re-run records "Halaman 1 dari 2" with Next enabled, and the app no longer carries that title text. Repeat this check on the committed SHA. Usang: perlu diverifikasi ulang pada SHA final.
 ```

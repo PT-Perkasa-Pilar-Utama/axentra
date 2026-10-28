@@ -1,5 +1,5 @@
 {
-  "id": "54df5960-2435-4e61-8b28-b9ca0e04b771",
+  "id": "7cc160fa-5896-4f62-bc56-8ae24068b28a",
   "prevId": "c02b7218-ffc7-4bec-a662-676715f3ea22",
   "version": "7",
   "dialect": "postgresql",
@@ -8,10 +8,17 @@
       "name": "auth_login_attempts",
       "schema": "",
       "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
         "email_hash": {
           "name": "email_hash",
           "type": "text",
-          "primaryKey": true,
+          "primaryKey": false,
           "notNull": true
         },
         "failed_count": {
@@ -31,9 +38,39 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "auth_login_attempts_email_hash_unique_idx": {
+          "name": "auth_login_attempts_email_hash_unique_idx",
+          "columns": [
+            {
+              "expression": "email_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
@@ -45,10 +82,17 @@
       "name": "auth_rotated_refresh_tokens",
       "schema": "",
       "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
         "token_hash": {
           "name": "token_hash",
           "type": "text",
-          "primaryKey": true,
+          "primaryKey": false,
           "notNull": true
         },
         "session_id": {
@@ -66,6 +110,21 @@
         }
       },
       "indexes": {
+        "auth_rotated_refresh_tokens_token_hash_unique_idx": {
+          "name": "auth_rotated_refresh_tokens_token_hash_unique_idx",
+          "columns": [
+            {
+              "expression": "token_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "auth_rotated_refresh_tokens_session_id_idx": {
           "name": "auth_rotated_refresh_tokens_session_id_idx",
           "columns": [
@@ -166,6 +225,13 @@
         },
         "created_at": {
           "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true,
@@ -904,6 +970,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "processing_recovery_attempts": {
+          "name": "processing_recovery_attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
         },
         "created_at": {
           "name": "created_at",

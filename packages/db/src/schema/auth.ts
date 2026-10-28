@@ -11,6 +11,7 @@ import {
 import { users } from "./users";
 
 // Stores SHA-256 hashes of session tokens only. Raw access and refresh tokens are never persisted.
+// Rotation and revocation update a row, so updated_at records the last change.
 export const authSessions = pgTable(
   "auth_sessions",
   {
@@ -31,6 +32,7 @@ export const authSessions = pgTable(
       .notNull(),
     revokedAt: timestamp("revoked_at", { withTimezone: true, mode: "date" }),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => [
     uniqueIndex("auth_sessions_access_token_hash_unique_idx").on(table.accessTokenHash),
@@ -40,22 +42,35 @@ export const authSessions = pgTable(
 );
 
 // Hashes of refresh tokens that were rotated away from a session. Presenting one of them again is reuse.
+// Rows are only inserted, so rotated_at is their creation time.
 export const authRotatedRefreshTokens = pgTable(
   "auth_rotated_refresh_tokens",
   {
-    tokenHash: text("token_hash").primaryKey(),
+    id: uuid("id").defaultRandom().primaryKey(),
+    tokenHash: text("token_hash").notNull(),
     sessionId: uuid("session_id")
       .notNull()
       .references(() => authSessions.id, { onDelete: "cascade" }),
     rotatedAt: timestamp("rotated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
-  (table) => [index("auth_rotated_refresh_tokens_session_id_idx").on(table.sessionId)],
+  (table) => [
+    uniqueIndex("auth_rotated_refresh_tokens_token_hash_unique_idx").on(table.tokenHash),
+    index("auth_rotated_refresh_tokens_session_id_idx").on(table.sessionId),
+  ],
 );
 
-// One row per SHA-256 hash of a normalized login email. Deleted when a login succeeds.
-export const authLoginAttempts = pgTable("auth_login_attempts", {
-  emailHash: text("email_hash").primaryKey(),
-  failedCount: integer("failed_count").notNull(),
-  windowStartedAt: timestamp("window_started_at", { withTimezone: true, mode: "date" }).notNull(),
-  lockedUntil: timestamp("locked_until", { withTimezone: true, mode: "date" }),
-});
+// One row per SHA-256 hash of a normalized login email. Deleted when a login succeeds. The unique index on
+// email_hash is the conflict target of the login-attempt upsert.
+export const authLoginAttempts = pgTable(
+  "auth_login_attempts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    emailHash: text("email_hash").notNull(),
+    failedCount: integer("failed_count").notNull(),
+    windowStartedAt: timestamp("window_started_at", { withTimezone: true, mode: "date" }).notNull(),
+    lockedUntil: timestamp("locked_until", { withTimezone: true, mode: "date" }),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => [uniqueIndex("auth_login_attempts_email_hash_unique_idx").on(table.emailHash)],
+);

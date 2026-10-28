@@ -12,6 +12,10 @@
   "ignorePatterns": [
     ".git",
     ".kilo",
+    ".agents/skills/arx-be/**",
+    ".claude/skills/arx-be/**",
+    ".agents/skills/arx-ui-spec/**",
+    ".claude/skills/arx-ui-spec/**",
     "node_modules",
     "dist",
     "coverage",

@@ -846,7 +846,6 @@ describe("Task BE-S1-04: Duplicate Detection", () => {
             DOCUMENT_COPY.DUPLICATE_WARNING,
           );
         },
-        findDocumentDetail: async () => null,
         markProcessingEnqueueFailed: async (): Promise<void> => {},
       };
 

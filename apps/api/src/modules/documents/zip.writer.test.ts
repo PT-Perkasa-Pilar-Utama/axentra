@@ -8,8 +8,15 @@ import {
   toDosDateTime,
   type ZipEntry,
 } from "./zip.writer";
+import { ZIP_ENTRY_NAME_MAX_BYTES } from "./zip.writer.helpers";
 import { parseZipEntryNames } from "./documents.schema";
 import { PayloadTooLargeError } from "../../http/errors";
+
+const utf8 = new TextEncoder();
+
+function utf8Length(value: string): number {
+  return utf8.encode(value).byteLength;
+}
 
 /**
  * Reference ZIP archive builder used strictly within test fixtures
@@ -173,6 +180,31 @@ describe("zip.writer", () => {
       );
       expect(sanitizeZipEntryName("dokumen-rahasia_final.docx")).toBe("dokumen-rahasia_final.docx");
     });
+
+    it("strips C0 control characters and DEL from the name (Round 1 F36)", () => {
+      expect(sanitizeZipEntryName("lap\u0000or\u001fan\u007f.pdf")).toBe("laporan.pdf");
+      expect(sanitizeZipEntryName("a\tb\nc\r.pdf")).toBe("abc.pdf");
+    });
+
+    it("falls back to document when only control characters remain (Round 1 F36)", () => {
+      expect(sanitizeZipEntryName("\u0001\u0002\u007f")).toBe("document");
+    });
+
+    it("caps a long ASCII name at the byte limit and keeps the extension (Round 1 F36)", () => {
+      const name = sanitizeZipEntryName(`${"a".repeat(400)}.pdf`);
+
+      expect(utf8Length(name)).toBe(ZIP_ENTRY_NAME_MAX_BYTES);
+      expect(name.endsWith(".pdf")).toBe(true);
+    });
+
+    it("caps a long multi-byte name without splitting a character (Round 1 F36)", () => {
+      const name = sanitizeZipEntryName(`${"é".repeat(200)}.docx`);
+
+      expect(utf8Length(name)).toBeLessThanOrEqual(ZIP_ENTRY_NAME_MAX_BYTES);
+      expect(name.endsWith(".docx")).toBe(true);
+      expect(name).not.toContain("�");
+      expect(new TextDecoder("utf-8", { fatal: true }).decode(utf8.encode(name))).toBe(name);
+    });
   });
 
   describe("deduplicateEntryNames", () => {
@@ -215,6 +247,18 @@ describe("zip.writer", () => {
         "laporan (1).pdf",
         "laporan (2).pdf",
       ]);
+    });
+
+    it("keeps a deduplicated name of a capped entry within the byte limit (Round 1 F36)", () => {
+      const longName = `${"b".repeat(300)}.pdf`;
+
+      const result = deduplicateEntryNames([{ name: longName }, { name: longName }]);
+
+      const [first, second] = result.map((r) => r.name);
+      expect(utf8Length(first ?? "")).toBe(ZIP_ENTRY_NAME_MAX_BYTES);
+      expect(utf8Length(second ?? "")).toBe(ZIP_ENTRY_NAME_MAX_BYTES);
+      expect(second?.endsWith(" (1).pdf")).toBe(true);
+      expect(second).not.toBe(first);
     });
   });
 
@@ -277,6 +321,19 @@ describe("zip.writer", () => {
       expect(names.size).toBe(2);
       expect(names.has("laporan.pdf")).toBe(true);
       expect(names.has("laporan (1).pdf")).toBe(true);
+    });
+
+    it("writes a capped, control-free entry name into the 16-bit name fields (Round 1 F36)", () => {
+      const rawName = `\u0007${"c".repeat(70_000)}.pdf`;
+      const archive = createZipArchive([{ name: rawName, content: new Uint8Array([1, 2, 3]) }]);
+      const view = new DataView(archive.buffer, archive.byteOffset, archive.byteLength);
+
+      const localNameLength = view.getUint16(26, true);
+      const [entryName] = [...parseZipEntryNames(archive)];
+
+      expect(localNameLength).toBe(ZIP_ENTRY_NAME_MAX_BYTES);
+      expect(entryName).toBe(`${"c".repeat(ZIP_ENTRY_NAME_MAX_BYTES - 4)}.pdf`);
+      expect(archive.byteLength).toBe(calculateZipArchiveSize([{ name: rawName, size: 3 }]));
     });
 
     it("throws PayloadTooLargeError when entry count exceeds ZIP32 limit (65,535)", () => {

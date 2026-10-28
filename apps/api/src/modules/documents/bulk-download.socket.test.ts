@@ -91,10 +91,13 @@ describe("POST /api/v1/documents/bulk-download — Socket Concurrency & Header C
       queueTimeoutMs: 10_000,
     });
 
+    // The slot is held for the transfer window after the response starts. A short window stands in for the
+    // 60-second production value, so the held slots are released within the test.
     const documentService = createDocumentService({
       storage: mockStorage,
       downloadRepository: downloadRepo,
       bulkDownloadSemaphore: semaphore,
+      bulkDownloadTransferTimeoutMs: 150,
       logger: testLogger,
     });
 
@@ -189,7 +192,12 @@ describe("POST /api/v1/documents/bulk-download — Socket Concurrency & Header C
 
     await Promise.all(clientPromises);
 
-    // After all clients complete, all slots and queues must be released
+    // Slots are released when each transfer window ends, which can be after the client has read the
+    // response, so wait for the window of the last admitted request.
+    const drainAt = Date.now() + 5000;
+    while ((semaphore.activeCount > 0 || semaphore.queueLength > 0) && Date.now() < drainAt) {
+      await Bun.sleep(10);
+    }
     expect(semaphore.activeCount).toBe(0);
     expect(semaphore.queueLength).toBe(0);
 
@@ -206,5 +214,5 @@ describe("POST /api/v1/documents/bulk-download — Socket Concurrency & Header C
     for (const client of clients) {
       client.destroy();
     }
-  });
+  }, 15_000);
 });

@@ -195,7 +195,9 @@ APP_ENV=production
 APP_VERSION=0.1.0
 LOG_LEVEL=info
 API_PORT=3001
+WEB_ORIGIN=https://<web-origin>
 API_SHUTDOWN_TIMEOUT_MS=15000
+AUTH_LOCAL_IDENTITY_DIRECTORY=<non-empty placeholder>
 DATABASE_URL=postgres://<user>:<password>@<host>:5432/<database>
 REDIS_URL=redis://<host>:6379/0
 QUEUE_NAME=axentra-jobs
@@ -224,6 +226,12 @@ Rules:
   it.
 - API and Worker must share the same `DATABASE_URL`, `REDIS_URL`, `QUEUE_NAME`, `APP_VERSION`, and
   storage configuration.
+- `WEB_ORIGIN` is the one browser origin the API allows for credentialed requests. Set it to the
+  public Web origin in Test and Production. The default `http://localhost:5173` is a local
+  development value.
+- `AUTH_LOCAL_IDENTITY_DIRECTORY` is the development and test identity directory. Production
+  verifies credentials against the `users` table and does not read the directory, but the API
+  configuration still requires a non-empty value at startup.
 
 ### 5.3 Database Setup
 
@@ -237,8 +245,8 @@ bun --env-file=.env packages/db/src/migrate.ts
 
 For containerized runtime, the command must be exposed as an equivalent migration entrypoint.
 
-Foundation v1.0.0 has no business tables, but the migration gate still runs to verify the Drizzle
-boundary.
+The release artifact carries every committed migration, including the Sprint 1-3 business tables
+and the auth session tables. Run the migration gate before you start the API (section 5.5).
 
 ### 5.4 Object Storage Setup
 

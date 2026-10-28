@@ -12,16 +12,24 @@ function reserve(budget: BulkDownloadByteBudget, bytes: number): () => void {
 }
 
 describe("bulk download response body and slot lifetime (F24)", () => {
-  test("streams the complete archive and releases the slot after the body is fully read", async () => {
+  test("streams the complete archive and keeps the slot after the body is fully read", async () => {
     const semaphore = new BulkDownloadSemaphore({ maxConcurrency: 2 });
     const release = await semaphore.acquire();
-    const body = createBulkDownloadBody(ARCHIVE, { release, chunkBytes: 10_000 });
+    const body = createBulkDownloadBody(ARCHIVE, {
+      release,
+      chunkBytes: 10_000,
+      transferTimeoutMs: 60,
+    });
 
     expect(semaphore.activeCount).toBe(1);
     const received = new Uint8Array(await new Response(body).arrayBuffer());
 
     expect(received.byteLength).toBe(ARCHIVE.byteLength);
     expect(received.every((byte, index) => byte === ARCHIVE[index])).toBe(true);
+    // Bun drains the stream within milliseconds, before the client has received the bytes, so draining
+    // is not a release point. The slot is released only by cancel, abort, or the transfer window.
+    expect(semaphore.activeCount).toBe(1);
+    await Bun.sleep(120);
     expect(semaphore.activeCount).toBe(0);
   });
 
@@ -76,13 +84,16 @@ describe("bulk download response body and slot lifetime (F24)", () => {
     expect(semaphore.activeCount).toBe(0);
   });
 
-  test("a third request waits in the queue while two response bodies are unread", async () => {
+  test("a third request waits after both bodies are drained and is admitted when the first window ends", async () => {
     const semaphore = new BulkDownloadSemaphore({
       maxConcurrency: 2,
       maxQueueLength: 10,
       queueTimeoutMs: 5_000,
     });
-    const firstBody = createBulkDownloadBody(ARCHIVE, { release: await semaphore.acquire() });
+    const firstBody = createBulkDownloadBody(ARCHIVE, {
+      release: await semaphore.acquire(),
+      transferTimeoutMs: 60,
+    });
     const secondBody = createBulkDownloadBody(ARCHIVE, { release: await semaphore.acquire() });
 
     let thirdAcquired = false;
@@ -98,6 +109,9 @@ describe("bulk download response body and slot lifetime (F24)", () => {
     expect(semaphore.queueLength).toBe(1);
 
     await new Response(firstBody).arrayBuffer();
+    await Bun.sleep(10);
+    expect(thirdAcquired).toBe(false);
+
     const release = await thirdRelease;
 
     expect(thirdAcquired).toBe(true);
@@ -108,16 +122,19 @@ describe("bulk download response body and slot lifetime (F24)", () => {
 });
 
 describe("bulk download byte reservation lifetime (inflight byte budget)", () => {
-  test("holds the reservation while the body is unread and releases it when fully read", async () => {
+  test("holds the reservation while the body is unread and after it is drained, until the window ends", async () => {
     const budget = new BulkDownloadByteBudget(ARCHIVE.byteLength * 2);
     const body = createBulkDownloadBody(ARCHIVE, {
       release: reserve(budget, ARCHIVE.byteLength),
       chunkBytes: 10_000,
+      transferTimeoutMs: 60,
     });
 
     expect(budget.reservedBytes).toBe(ARCHIVE.byteLength);
     await new Response(body).arrayBuffer();
 
+    expect(budget.reservedBytes).toBe(ARCHIVE.byteLength);
+    await Bun.sleep(120);
     expect(budget.reservedBytes).toBe(0);
   });
 

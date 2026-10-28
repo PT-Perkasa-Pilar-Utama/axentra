@@ -19,7 +19,8 @@ import {
 import { buildPdfPreviewSrc } from "../src/features/document-detail/document-detail.presenter";
 import { usePreviewObjectUrl } from "../src/features/document-detail/document-preview-object-url";
 import { RecentDocumentsView } from "../src/features/recent-documents/recent-documents.view";
-import type { RecentDocumentsPresenter } from "../src/features/recent-documents/recent-documents.presenter";
+import type { RecentDocumentsPresenter } from "../src/features/recent-documents/recent-documents.types";
+import { buildDocx, buildZip, documentXml, paragraphXml } from "./docx-fixture";
 
 const documentId = "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22";
 const DOCX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -44,6 +45,10 @@ const pdfPreview: PreviewDocumentResponse = {
 
 function makePdfBlob(): Blob {
   return new Blob([new Uint8Array([0x25, 0x50, 0x44, 0x46])], { type: "application/pdf" });
+}
+
+function docxBlob(bodyXml: string): Blob {
+  return new Blob([buildDocx(bodyXml).slice()], { type: DOCX_MIME_TYPE });
 }
 
 // Mengganti URL.createObjectURL dan revokeObjectURL agar URL dan pencabutannya dapat diamati.
@@ -134,6 +139,7 @@ describe("Document preview entry (FE-S3-01 / AC-08.01)", () => {
       isLoading: false,
       isError: false,
       isEmpty: false,
+      hasItems: true,
       items: [
         {
           id: documentId,
@@ -162,16 +168,21 @@ describe("Document preview entry (FE-S3-01 / AC-08.01)", () => {
       selectedIds: new Set(),
       isDownloading: false,
       downloadError: null,
+      canDownloadSelected: false,
+      downloadDisabledReason: "Pilih minimal satu dokumen untuk mengunduh",
       toggleSelect: () => {},
       clearSelection: () => {},
       downloadSelected: async () => {},
       pagination: {
         page: 1,
         totalPages: 1,
-        hasPrevious: false,
-        hasNext: false,
+        pageLabel: "Halaman 1 dari 1",
+        canGoPrevious: false,
+        canGoNext: false,
         isChanging: false,
         goToPage: () => {},
+        goToPrevious: () => {},
+        goToNext: () => {},
       },
     };
     render(createElement(MemoryRouter, null, createElement(RecentDocumentsView, { presenter })));
@@ -348,7 +359,7 @@ describe("Document preview entry (FE-S3-01 / AC-08.01)", () => {
     }
   });
 
-  test("shows an explicit DOCX fallback without requesting or exposing the bytes", async () => {
+  test("renders DOCX paragraphs as plain text from the streamed bytes, without iframe or links", async () => {
     let contentRequests = 0;
     const docxPreview: PreviewDocumentResponse = {
       ...pdfPreview,
@@ -359,21 +370,72 @@ describe("Document preview entry (FE-S3-01 / AC-08.01)", () => {
       preview: docxPreview,
       contentFetchFn: () => {
         contentRequests += 1;
-        return Promise.resolve(makePdfBlob());
+        return Promise.resolve(docxBlob(paragraphXml("Pasal 1 <tanpa html>")));
+      },
+    });
+
+    const article = await screen.findByRole("article", { name: "Teks dokumen" });
+    expect(article.textContent).toContain("Pasal 1 <tanpa html>");
+    expect(article.querySelector("b, script, img")).toBeNull();
+    const canvas = screen.getByRole("main", { name: "Area Pratinjau Dokumen" });
+    expect(canvas.querySelector("iframe")).toBeNull();
+    expect(canvas.querySelector("a")).toBeNull();
+    expect(canvas.textContent).not.toContain("belum didukung");
+    expect(contentRequests).toBe(1);
+  });
+
+  test("shows the DOCX error state with retry, then renders the text after a successful retry", async () => {
+    let attempts = 0;
+    renderDetail({
+      preview: { ...pdfPreview, filename: "kontrak.docx", mimeType: DOCX_MIME_TYPE },
+      contentFetchFn: () => {
+        attempts += 1;
+        return Promise.resolve(
+          attempts === 1
+            ? new Blob([new Uint8Array([0x00, 0x01, 0x02])])
+            : docxBlob(paragraphXml("Isi setelah coba lagi")),
+        );
       },
     });
 
     expect(
-      await screen.findByRole("heading", { name: "Pratinjau belum tersedia untuk format ini" }),
+      await screen.findByRole("heading", { name: "Pratinjau DOCX gagal dimuat" }),
     ).toBeTruthy();
     const canvas = screen.getByRole("main", { name: "Area Pratinjau Dokumen" });
-    expect(canvas.textContent).toContain("kontrak.docx");
-    expect(canvas.textContent).toContain("format DOCX belum didukung");
-    expect(canvas.textContent).not.toContain("application/vnd.openxmlformats");
+    await act(async () => {
+      fireEvent.click(within(canvas).getByRole("button", { name: "Coba lagi" }));
+    });
 
-    expect(canvas.querySelector("iframe")).toBeNull();
-    expect(canvas.querySelector("a")).toBeNull();
-    expect(contentRequests).toBe(0);
+    expect(await screen.findByText("Isi setelah coba lagi")).toBeTruthy();
+    expect(attempts).toBe(2);
+  });
+
+  test("shows the DOCX error state for an unsupported compression method", async () => {
+    const unsupported = buildZip([
+      {
+        name: "word/document.xml",
+        data: new TextEncoder().encode(documentXml(paragraphXml("tidak terbaca"))),
+        method: 12,
+      },
+    ]);
+    renderDetail({
+      preview: { ...pdfPreview, filename: "kontrak.docx", mimeType: DOCX_MIME_TYPE },
+      contentFetchFn: () => Promise.resolve(new Blob([unsupported.slice()])),
+    });
+
+    expect(
+      await screen.findByRole("heading", { name: "Pratinjau DOCX gagal dimuat" }),
+    ).toBeTruthy();
+    expect(document.body.textContent).not.toContain("tidak terbaca");
+  });
+
+  test("shows the empty state when the DOCX has no text", async () => {
+    renderDetail({
+      preview: { ...pdfPreview, filename: "kosong.docx", mimeType: DOCX_MIME_TYPE },
+      contentFetchFn: () => Promise.resolve(docxBlob("<w:p/>")),
+    });
+
+    expect(await screen.findByText("Dokumen tidak memiliki teks")).toBeTruthy();
   });
 
   test("does not render invented page controls or a preview-triggered download", async () => {

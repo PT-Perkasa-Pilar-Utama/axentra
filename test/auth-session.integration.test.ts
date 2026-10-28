@@ -10,13 +10,26 @@ import {
   type createDatabaseClient as CreateDatabaseClient,
 } from "@axentra/db";
 import { createAuthService } from "../apps/api/src/modules/auth/auth.service";
-import { DrizzleAuthSessionStore } from "../apps/api/src/modules/auth/auth.session-store.drizzle";
-import { DrizzleLoginAttemptStore } from "../apps/api/src/modules/auth/auth.login-attempt-store.drizzle";
-import { DrizzleAuthUserRepository } from "../apps/api/src/modules/auth/auth.user-repository.drizzle";
+import { DrizzleAuthSessionStore } from "../apps/api/src/modules/auth/auth.session.repository";
+import { DrizzleLoginAttemptStore } from "../apps/api/src/modules/auth/auth.login-attempt.repository";
+import { DrizzleAuthUserRepository } from "../apps/api/src/modules/auth/auth.user.repository";
 import { normalizeEmail, sha256Hex } from "../apps/api/src/modules/auth/auth.tokens";
+import { createPasswordVerifier } from "../apps/api/src/modules/auth/auth.password";
 import { createDatabaseAuthenticator } from "../apps/api/src/modules/auth/runtime-authenticator";
+import { createLogger } from "@axentra/observability";
 
 const runIntegrationTests = Bun.env.RUN_INTEGRATION_TESTS === "1";
+
+// Bun 1.3.12 never settles `expect(promise).rejects` for these auth calls after a timestamp decode, while
+// the same rejection awaited through `.then` settles at once (see docs/DECISIONS.md, F2).
+// The assertion is unchanged: the promise must reject with the expected HTTP status.
+async function expectRejectionStatus(promise: Promise<unknown>, status: number): Promise<void> {
+  const failure = await promise.then(
+    () => undefined,
+    (error: unknown) => error,
+  );
+  expect(failure).toMatchObject({ status });
+}
 const integrationTest = runIntegrationTests ? test : test.skip;
 
 const PASSWORD = "integration-password";
@@ -84,7 +97,17 @@ describe("Durable auth sessions PostgreSQL integration (FND-10 A1-A6)", () => {
 
   function buildService(client: DatabaseClient, clock: Clock) {
     return createAuthService({
-      authenticator: createDatabaseAuthenticator(new DrizzleAuthUserRepository(client.db)),
+      authenticator: createDatabaseAuthenticator(
+        new DrizzleAuthUserRepository(client.db),
+        createPasswordVerifier({
+          logger: createLogger({
+            service: "axentra-api",
+            environment: "test",
+            version: "0.1.0",
+            level: "fatal",
+          }),
+        }),
+      ),
       sessionStore: new DrizzleAuthSessionStore(client.db),
       loginAttemptStore: new DrizzleLoginAttemptStore(client.db),
       clock: () => clock.now,
@@ -169,10 +192,10 @@ describe("Durable auth sessions PostgreSQL integration (FND-10 A1-A6)", () => {
       const first = await service.login({ email: fixture.email, password: PASSWORD });
       const second = await service.refresh(first.refreshToken);
 
-      await expect(service.refresh(first.refreshToken)).rejects.toMatchObject({ status: 401 });
+      await expectRejectionStatus(service.refresh(first.refreshToken), 401);
 
       expect((await sessionRowsFor(client, fixture))[0]?.revokedAt).not.toBeNull();
-      await expect(service.refresh(second.refreshToken)).rejects.toMatchObject({ status: 401 });
+      await expectRejectionStatus(service.refresh(second.refreshToken), 401);
       expect(await service.tokenVerifier.verifyToken(second.token)).toBeNull();
     } finally {
       await removeFixture(client, fixture);
@@ -231,9 +254,10 @@ describe("Durable auth sessions PostgreSQL integration (FND-10 A1-A6)", () => {
       try {
         const service = buildService(client, { now: new Date() });
 
-        await expect(
+        await expectRejectionStatus(
           service.login({ email: fixture.email, password: PASSWORD }),
-        ).rejects.toMatchObject({ status: 401 });
+          401,
+        );
         expect(await sessionRowsFor(client, fixture)).toHaveLength(0);
       } finally {
         await removeFixture(client, fixture);
@@ -253,13 +277,15 @@ describe("Durable auth sessions PostgreSQL integration (FND-10 A1-A6)", () => {
         const clock: Clock = { now: new Date() };
         const service = buildService(client, clock);
         for (let attempt = 0; attempt < 5; attempt += 1) {
-          await expect(
+          await expectRejectionStatus(
             service.login({ email: fixture.email, password: "wrong-password" }),
-          ).rejects.toMatchObject({ status: 401 });
+            401,
+          );
         }
-        await expect(
+        await expectRejectionStatus(
           service.login({ email: fixture.email, password: PASSWORD }),
-        ).rejects.toMatchObject({ status: 429 });
+          429,
+        );
 
         const emailHash = sha256Hex(normalizeEmail(fixture.email));
         const locked = await client.db

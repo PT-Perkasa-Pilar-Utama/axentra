@@ -288,7 +288,8 @@ describe("Search Documents Integration (FE-S2-04)", () => {
       submitSearch(searchInput);
     });
 
-    const emptyMessage = await screen.findByText(/Tidak ada hasil yang ditemukan untuk/i);
+    // Copy wajib BA (CODING_STANDARD §11) tanpa sufiks kata kunci, sehingga pencocokan harus persis.
+    const emptyMessage = await screen.findByText("Tidak ada hasil yang ditemukan");
     expect(emptyMessage).toBeTruthy();
     expect(screen.queryByText("laporan-keuangan-2026.pdf")).toBeNull();
   });

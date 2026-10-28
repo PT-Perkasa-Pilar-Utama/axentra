@@ -25,6 +25,15 @@ content specific to Axentra Foundation v1.0.0.
 | [business/textual-design-member-team.md](business/textual-design-member-team.md)   | Planned Member Team UI          |
 | [business/textual-design-head-of-team.md](business/textual-design-head-of-team.md) | Planned Head of Team UI         |
 
+## Proposals
+
+Proposals await approval. Code, tests, and acceptance evidence do not rely on them.
+
+| Document                                                             | Purpose                                                    |
+| -------------------------------------------------------------------- | ---------------------------------------------------------- |
+| [proposals/admin-role-proposal.md](proposals/admin-role-proposal.md) | Admin role proposal, not approved by the BA                |
+| [DECISIONS.md](DECISIONS.md)                                         | Proposed decision IDs (B1, B2, D8, F24, F30), not approved |
+
 ## Technical
 
 | Document                                                | Purpose                                        |

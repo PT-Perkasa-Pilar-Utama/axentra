@@ -435,11 +435,12 @@ describe("Document Detail Download Action (FE-S3-02, mocked HTTP)", () => {
 });
 
 describe("Document detail presenter helpers", () => {
-  test("derivePreviewView picks the PDF view only for application/pdf", () => {
+  test("derivePreviewView picks the PDF and DOCX text views and leaves other types unsupported", () => {
     expect(derivePreviewView("application/pdf")).toBe("pdf");
     expect(
       derivePreviewView("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
-    ).toBe("unsupported");
+    ).toBe("docx");
+    expect(derivePreviewView("application/msword")).toBe("unsupported");
   });
 
   test("formatMimeLabel returns readable labels", () => {

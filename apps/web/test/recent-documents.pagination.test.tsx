@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { useState } from "react";
 import type React from "react";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router";
 import { RecentDocumentsView } from "../src/features/recent-documents/recent-documents.view";
@@ -76,6 +77,40 @@ function renderPagedList(): void {
       </MemoryRouter>
     </QueryClientProvider>,
   );
+}
+
+const FILTER_TAG = "Keuangan";
+
+// Satu tag filter yang bisa dipilih dan dilepas, seperti chip Top Tags di dasbor.
+function FilteredDocuments(): React.JSX.Element {
+  const [tags, setTags] = useState<readonly string[]>([]);
+  const presenter = useRecentDocumentsPresenter(PAGE_SIZE, tags);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setTags((current) => (current.length > 0 ? [] : [FILTER_TAG]))}
+      >
+        Ganti filter tag
+      </button>
+      <RecentDocumentsView presenter={presenter} />
+    </>
+  );
+}
+
+function renderFilteredList(): void {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter>
+        <FilteredDocuments />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
+function toggleTagFilter(): void {
+  fireEvent.click(screen.getByRole("button", { name: "Ganti filter tag" }));
 }
 
 function clickNext(): void {
@@ -189,6 +224,35 @@ describe("Recent documents pagination", () => {
 
     clickPrevious();
     await screen.findByText("Halaman 1 dari 3");
+    expect(isChecked("Pilih dokumen-01.pdf")).toBe(false);
+    expect(isDisabled("Download Selected")).toBe(true);
+  });
+
+  test("changing the tag filter returns to page 1: page 2, select tag, deselect tag stays on page 1", async () => {
+    renderFilteredList();
+    await screen.findByText("Halaman 1 dari 3");
+    clickNext();
+    await screen.findByText("Halaman 2 dari 3");
+
+    toggleTagFilter();
+    expect(await screen.findByText("Halaman 1 dari 3")).toBeTruthy();
+    expect(listRequests).toContain(`?page=1&limit=5&tags=${FILTER_TAG}`);
+
+    toggleTagFilter();
+    await waitFor(() => expect(screen.getByText("Halaman 1 dari 3")).toBeTruthy());
+    expect(screen.queryByText("Halaman 2 dari 3")).toBeNull();
+    expect(screen.getByRole("checkbox", { name: "Pilih dokumen-01.pdf" })).toBeTruthy();
+    expect(isDisabled("Halaman sebelumnya")).toBe(true);
+  });
+
+  test("clears the bulk selection when the tag filter changes", async () => {
+    renderFilteredList();
+    await screen.findByText("Halaman 1 dari 3");
+    fireEvent.click(screen.getByRole("checkbox", { name: "Pilih dokumen-01.pdf" }));
+    expect(isDisabled("Download Selected")).toBe(false);
+
+    toggleTagFilter();
+    expect(await screen.findByRole("checkbox", { name: "Pilih dokumen-01.pdf" })).toBeTruthy();
     expect(isChecked("Pilih dokumen-01.pdf")).toBe(false);
     expect(isDisabled("Download Selected")).toBe(true);
   });

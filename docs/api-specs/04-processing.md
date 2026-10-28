@@ -201,6 +201,35 @@ When document exists but has no category assigned or is still processing:
 4. **Atomic Persistence & Completion:** Extracted metadata upsert into `document_metadata`, smart tags insertion into `smart_tags` and links in `document_smart_tags`, auto-created category insertion into `categories` and `category_download_permissions`, and the document status transition to `'completed'` with `category_id` execute inside a single atomic database transaction (`db.transaction`). If any write fails, all are rolled back, and the document is marked as `'failed'` with `error_message`.
 5. **Terminal State:** On successful completion, `documents.processing_status` becomes `'completed'` and `errorMessage` is cleared. On failure, status is updated to `'failed'` with `error_message`.
 
+### Stalled Document Recovery
+
+The worker runs a recovery cycle every 30 seconds (`RECOVERY_INTERVAL_MS`). Each cycle re-enqueues
+these documents:
+
+- `queued` documents. The job id is the document id, so reconciliation does not add a second
+  runnable job for the same document.
+- `failed` documents whose `error_message` is the enqueue-failure message
+  (`PROCESSING_ENQUEUE_FAILURE_MESSAGE`).
+- `processing` documents whose `updated_at` is older than 30 minutes
+  (`STALE_PROCESSING_THRESHOLD_MS`, 30 × 60 × 1000 ms). A worker that stops in the middle of a job
+  leaves its document in `processing` with no owner.
+
+Rules:
+
+- Soft-deleted documents (`deleted_at` is set) and documents without a `document_files` row are not
+  recovered.
+- Recovering a `failed` document (enqueue failure) returns it to `queued` and clears `error_message`.
+  Recovering a stranded `processing` document keeps its status and restarts the 30-minute clock.
+- **Attempt limit:** `MAX_PROCESSING_RECOVERY_ATTEMPTS` is 3. Each recovery of a `processing` or
+  `failed` document increments `documents.processing_recovery_attempts` (integer, NOT NULL, default
+  0). `queued` documents are not counted, so a queue backlog never fails them.
+- After three recoveries, a document that is still stale is set to `failed` with the fixed message
+  `PROCESSING_RECOVERY_EXHAUSTED_MESSAGE` ("Pemrosesan dokumen gagal setelah beberapa kali pemulihan
+  otomatis. Silakan unggah ulang dokumen."). The worker does not re-enqueue it after that.
+- If the queue call fails after an attempt is recorded, the attempt still counts. A document returned
+  to `queued` is retried in the next cycle; a `processing` document waits for the next 30-minute
+  window. The failure is logged with `summarizeError`.
+
 ---
 
 ## 5. Processing State Vocabulary

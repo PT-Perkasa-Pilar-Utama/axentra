@@ -1,43 +1,48 @@
 import type { ApiConfig } from "@axentra/config";
+import type { Logger } from "@axentra/observability";
+import { createPasswordVerifier, type PasswordVerifier } from "./auth.password";
 import type { UserAuthenticator } from "./auth.service";
 import { normalizeEmail } from "./auth.tokens";
 import type { AuthUserRepository } from "./auth.types";
-import { createLocalIdentityAuthenticator, verifyPasswordHash } from "./local-identity";
+import { createLocalIdentityAuthenticator } from "./local-identity";
 
 export type RuntimeAuthenticatorDependencies = {
-  userRepository: AuthUserRepository;
+  // Receives the warning when a stored password hash cannot be verified.
+  logger: Logger;
+  userRepository?: AuthUserRepository | undefined;
 };
 
 // Development and test verify against AUTH_LOCAL_IDENTITY_DIRECTORY. Production verifies against the users
-// table, so the role always comes from the stored row.
+// table, so the role always comes from the stored row. Both use the same password verifier.
 export function createRuntimeAuthenticator(
   config: ApiConfig,
-  dependencies?: RuntimeAuthenticatorDependencies,
+  dependencies: RuntimeAuthenticatorDependencies,
 ): UserAuthenticator {
+  const passwords = createPasswordVerifier({ logger: dependencies.logger });
   if (config.APP_ENV === "production") {
-    if (dependencies === undefined) {
+    if (dependencies.userRepository === undefined) {
       throw new Error("Production authentication requires a user repository");
     }
-    return createDatabaseAuthenticator(dependencies.userRepository);
+    return createDatabaseAuthenticator(dependencies.userRepository, passwords);
   }
-  return createLocalIdentityAuthenticator(config.AUTH_LOCAL_IDENTITY_DIRECTORY);
+  return createLocalIdentityAuthenticator(config.AUTH_LOCAL_IDENTITY_DIRECTORY, passwords);
 }
 
-export function createDatabaseAuthenticator(userRepository: AuthUserRepository): UserAuthenticator {
+export function createDatabaseAuthenticator(
+  userRepository: AuthUserRepository,
+  passwords: PasswordVerifier,
+): UserAuthenticator {
   return async (credentials) => {
     const record = await userRepository.findCredentialsByEmail(normalizeEmail(credentials.email));
-    if (record === null) return null;
+    if (record === null) {
+      await passwords.rejectUnknownAccount(credentials.password);
+      return null;
+    }
 
-    const matches = await verifyPasswordSafely(credentials.password, record.passwordHash);
+    const matches = await passwords.verify(credentials.password, {
+      userId: record.user.id,
+      passwordHash: record.passwordHash,
+    });
     return matches ? record.user : null;
   };
-}
-
-// Bun throws for a malformed or placeholder hash such as "dummy-hash". Such a user simply fails to log in.
-async function verifyPasswordSafely(password: string, passwordHash: string): Promise<boolean> {
-  try {
-    return await verifyPasswordHash(password, passwordHash);
-  } catch {
-    return false;
-  }
 }

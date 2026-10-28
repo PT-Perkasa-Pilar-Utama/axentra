@@ -68,6 +68,7 @@ export class DrizzleAuthSessionStore implements AuthSessionStore {
       refreshExpiresAt: input.refreshExpiresAt,
       lastUsedAt: input.now,
       createdAt: input.now,
+      updatedAt: input.now,
     });
     return {
       id: input.id,
@@ -110,6 +111,7 @@ export class DrizzleAuthSessionStore implements AuthSessionStore {
           accessExpiresAt: input.accessExpiresAt,
           refreshExpiresAt: input.refreshExpiresAt,
           lastUsedAt: input.now,
+          updatedAt: input.now,
         })
         .where(
           and(
@@ -133,7 +135,7 @@ export class DrizzleAuthSessionStore implements AuthSessionStore {
   public async revokeSession(sessionId: string, revokedAt: Date): Promise<void> {
     await this.db
       .update(authSessions)
-      .set({ revokedAt })
+      .set({ revokedAt, updatedAt: revokedAt })
       .where(and(eq(authSessions.id, sessionId), isNull(authSessions.revokedAt)));
   }
 

@@ -18,7 +18,8 @@ import {
 } from "../src/features/auth/session.storage";
 import { AuthSessionProvider, useAuthSession } from "../src/features/auth/auth-session.context";
 import { ProtectedRoute } from "../src/features/auth/protected-route.view";
-import { UserSessionBadge, USER_ROLE_LABELS } from "../src/features/auth/user-session-badge.view";
+import { UserSessionBadge } from "../src/features/auth/user-session-badge.view";
+import { USER_ROLE_LABELS } from "../src/features/auth/user-session-badge.presenter";
 import { LoginPage } from "../src/features/auth/login.view";
 import type { LoginPresenter } from "../src/features/auth/login.presenter";
 import { renderToString } from "react-dom/server";

@@ -1,12 +1,12 @@
 import type { AuthUser, CategorySummary, DocumentDetail } from "@axentra/shared";
 import { NotFoundError } from "../../http/errors";
 import type { IDocumentCategoryRepository } from "./category.repository";
-import type { IDocumentRepository } from "./documents.repository";
+import type { IDocumentDetailRepository } from "./documents.detail.repository";
 import type { IDocumentMetadataRepository } from "./metadata.repository";
 import type { IDocumentSmartTagsRepository } from "./smart-tags.repository";
 
 export type DocumentDetailDependencies = {
-  repository: Pick<IDocumentRepository, "findDocumentDetail">;
+  repository: Pick<IDocumentDetailRepository, "findDocumentDetail">;
   metadataRepository: Pick<IDocumentMetadataRepository, "findMetadataByDocumentId">;
   smartTagsRepository: Pick<IDocumentSmartTagsRepository, "findSmartTagsByDocumentId">;
   categoryRepository: Pick<IDocumentCategoryRepository, "findCategoryByDocumentId">;

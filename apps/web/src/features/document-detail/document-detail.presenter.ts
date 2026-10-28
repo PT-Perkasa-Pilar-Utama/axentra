@@ -13,20 +13,30 @@ import {
   type DocumentDetailFields,
 } from "./document-detail-fields.presenter";
 import { usePreviewObjectUrl } from "./document-preview-object-url";
+import {
+  deriveDownloadControlState,
+  type DownloadControlState,
+  type DownloadStatus,
+} from "./document-detail-download.presenter";
+import { deriveDocxPreviewState, type DocxPreviewState } from "./document-docx-preview.presenter";
+import { readDocxText, type DocxPreviewText } from "./docx-text";
 
-export type DownloadStatus = "idle" | "loading" | "success" | "denied" | "error";
-export type PreviewView = "pdf" | "unsupported";
+export type PreviewView = "pdf" | "docx" | "unsupported";
 
 const SUCCESS_RESET_MS = 3000;
+
+const DOCX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
 const MIME_LABELS: Readonly<Record<string, string>> = {
   "application/pdf": "PDF",
   "application/msword": "DOC",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "DOCX",
+  [DOCX_MIME_TYPE]: "DOCX",
 };
 
 export function derivePreviewView(mimeType: string): PreviewView {
-  return mimeType === "application/pdf" ? "pdf" : "unsupported";
+  if (mimeType === "application/pdf") return "pdf";
+  if (mimeType === DOCX_MIME_TYPE) return "docx";
+  return "unsupported";
 }
 
 export function formatMimeLabel(mimeType: string): string {
@@ -63,14 +73,17 @@ export type DocumentDetailPresenter = {
   previewFormatLabel: string | null;
   previewFrameSrc: string | null;
   downloadStatus: DownloadStatus;
+  downloadControl: DownloadControlState;
+  /** Teks DOCX hanya terisi saat previewView "docx"; null untuk format lain. */
+  docxPreview: DocxPreviewState | null;
   canDownload: boolean;
   document: DocumentDetail | undefined;
   preview: PreviewDocumentResponse | undefined;
-  author: string | null;
   filename: string;
   fields: DocumentDetailFields | null;
   retry: () => void;
   retryPreview: () => void;
+  retryDocxPreview: () => void;
   handleDownload: () => Promise<void>;
 };
 
@@ -118,8 +131,8 @@ export function useDocumentDetailPresenter(
   const previewView: PreviewView | null = preview ? derivePreviewView(preview.mimeType) : null;
   const contentEnabled = Boolean(documentId) && previewView === "pdf";
 
-  // Hanya PDF yang dirender inline, sehingga byte DOCX tidak diminta. Blob tidak disimpan di cache
-  // setelah komponen unmount; staleTime Infinity mencegah iframe dimuat ulang saat fokus jendela berubah.
+  // PDF dirender inline dari blob URL. Blob tidak disimpan di cache setelah komponen unmount;
+  // staleTime Infinity mencegah iframe dimuat ulang saat fokus jendela berubah.
   const contentQuery = useQuery({
     queryKey: ["document-preview-content", documentId],
     queryFn: () => previewContentFetchFn(documentId),
@@ -130,6 +143,19 @@ export function useDocumentDetailPresenter(
     refetchOnWindowFocus: false,
   });
   const previewObjectUrl = usePreviewObjectUrl(contentQuery.data);
+
+  // DOCX memakai endpoint byte yang sama, lalu hanya teks paragraf yang disimpan di cache.
+  const docxEnabled = Boolean(documentId) && previewView === "docx";
+  const docxQuery = useQuery({
+    queryKey: ["document-preview-docx", documentId],
+    queryFn: async (): Promise<DocxPreviewText> =>
+      readDocxText(await previewContentFetchFn(documentId)),
+    enabled: docxEnabled,
+    retry: false,
+    staleTime: Infinity,
+    gcTime: 0,
+    refetchOnWindowFocus: false,
+  });
 
   // Hanya nilai true dari server yang mengizinkan unduhan; nilai hilang diperlakukan ditolak.
   const canDownload = docQuery.data?.canDownload === true;
@@ -194,11 +220,12 @@ export function useDocumentDetailPresenter(
     previewFormatLabel: preview ? formatMimeLabel(preview.mimeType) : null,
     previewFrameSrc:
       contentEnabled && previewObjectUrl !== null ? buildPdfPreviewSrc(previewObjectUrl) : null,
+    docxPreview: docxEnabled ? deriveDocxPreviewState(docxQuery) : null,
     downloadStatus,
+    downloadControl: deriveDownloadControlState(downloadStatus, canDownload),
     canDownload,
     document: doc,
     preview,
-    author: doc?.metadata?.author?.trim() || null,
     filename: preview?.filename ?? "Nama berkas belum tersedia",
     fields: doc ? deriveDocumentDetailFields(doc) : null,
     retry: () => {
@@ -210,6 +237,9 @@ export function useDocumentDetailPresenter(
       } else {
         void contentQuery.refetch();
       }
+    },
+    retryDocxPreview: () => {
+      void docxQuery.refetch();
     },
     handleDownload,
   };

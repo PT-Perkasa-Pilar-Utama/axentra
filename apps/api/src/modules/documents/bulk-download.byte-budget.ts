@@ -1,10 +1,12 @@
 import { BULK_DOWNLOAD_INFLIGHT_BYTES_LIMIT } from "./bulk-download.semaphore";
+import { calculateZipArchiveSize } from "./zip.writer";
 
 /**
- * Per-process budget for archive bytes held by bulk download responses that are still streaming.
- * A reservation is taken once the ZIP is assembled and before the audit is written. It is released
- * when the response body finishes, is cancelled, or is aborted, or when the body's transfer timer
- * fires. Reservations are never queued: a request that would exceed the limit is refused.
+ * Per-process budget for the bytes that bulk downloads hold in memory. A reservation is taken after the
+ * concurrency slot and before the first storage read, so a request that does not fit is refused without
+ * reading storage. It is released when the request aborts, when prefetch, assembly, or the audit fails,
+ * when the consumer cancels the response body, or when the transfer window ends. Reservations are never
+ * queued: a request that would exceed the limit is refused.
  */
 export class BulkDownloadByteBudget {
   public readonly limitBytes: number;
@@ -34,6 +36,19 @@ export class BulkDownloadByteBudget {
   public get reservedBytes(): number {
     return this.reserved;
   }
+}
+
+/**
+ * Upper bound of the bytes one bulk download holds. The prefetched entry buffers and the archive that
+ * copies them are both alive while the archive is assembled, so the bound is the stored file sizes plus
+ * the exact archive size computed from metadata (file sizes, local and central headers, entry names, and
+ * the end record).
+ */
+export function calculateBulkDownloadReservationBytes(
+  entries: ReadonlyArray<{ name: string; size: number }>,
+): number {
+  const entryBytes = entries.reduce((total, entry) => total + entry.size, 0);
+  return entryBytes + calculateZipArchiveSize(entries);
 }
 
 /**

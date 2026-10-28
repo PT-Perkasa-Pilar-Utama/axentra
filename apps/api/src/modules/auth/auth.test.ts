@@ -14,6 +14,7 @@ import { jsonError, jsonSuccess } from "../../http/responses";
 import { requireAuth, requireRole } from "../../middleware/auth";
 import { requestContextMiddleware } from "../../middleware/request-context";
 import { createInMemoryAuthService } from "./auth.memory-stores";
+import { createPasswordVerifier } from "./auth.password";
 import {
   encodeDirectory,
   logger,
@@ -410,7 +411,10 @@ describe("Auth API Module", () => {
         ]),
       ).toString("base64");
       const authService = createInMemoryAuthService({
-        authenticator: createLocalIdentityAuthenticator(directory),
+        authenticator: createLocalIdentityAuthenticator(
+          directory,
+          createPasswordVerifier({ logger }),
+        ),
       });
       const app = createApp({
         logger,
@@ -458,6 +462,7 @@ describe("Auth API Module", () => {
         authService: createInMemoryAuthService({
           authenticator: createRuntimeAuthenticator(
             runtimeConfig("development", await memberDirectory()),
+            { logger },
           ),
         }),
       });
@@ -483,7 +488,9 @@ describe("Auth API Module", () => {
         ...runtimeEnvironment("development"),
         AUTH_LOCAL_IDENTITY_DIRECTORY: "not-a-directory",
       });
-      expect(() => createRuntimeAuthenticator(malformed)).toThrow("AUTH_LOCAL_IDENTITY_DIRECTORY");
+      expect(() => createRuntimeAuthenticator(malformed, { logger })).toThrow(
+        "AUTH_LOCAL_IDENTITY_DIRECTORY",
+      );
     });
 
     it("still requires AUTH_LOCAL_IDENTITY_DIRECTORY to be configured in production [BE-S1-01]", () => {

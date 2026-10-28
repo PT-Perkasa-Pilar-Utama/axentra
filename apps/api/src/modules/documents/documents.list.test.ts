@@ -55,7 +55,6 @@ function repositoryWith(page: RecentDocumentPage): IDocumentRepository {
     saveDocumentBatch: async () => [],
     findDocumentById: async () => null,
     findDocumentFileByDocumentId: async () => null,
-    findDocumentDetail: async () => null,
     markProcessingEnqueueFailed: async () => undefined,
   };
 }
@@ -206,7 +205,6 @@ describe("GET /api/v1/documents — BE-S1-06", () => {
         saveDocumentBatch: async () => [],
         findDocumentById: async () => null,
         findDocumentFileByDocumentId: async () => null,
-        findDocumentDetail: async () => null,
         markProcessingEnqueueFailed: async () => undefined,
       };
 
@@ -230,7 +228,6 @@ describe("GET /api/v1/documents — BE-S1-06", () => {
         saveDocumentBatch: async () => [],
         findDocumentById: async () => null,
         findDocumentFileByDocumentId: async () => null,
-        findDocumentDetail: async () => null,
         markProcessingEnqueueFailed: async () => undefined,
       };
 
@@ -254,7 +251,6 @@ describe("GET /api/v1/documents — BE-S1-06", () => {
         saveDocumentBatch: async () => [],
         findDocumentById: async () => null,
         findDocumentFileByDocumentId: async () => null,
-        findDocumentDetail: async () => null,
         markProcessingEnqueueFailed: async () => undefined,
       };
 
@@ -278,7 +274,6 @@ describe("GET /api/v1/documents — BE-S1-06", () => {
         saveDocumentBatch: async () => [],
         findDocumentById: async () => null,
         findDocumentFileByDocumentId: async () => null,
-        findDocumentDetail: async () => null,
         markProcessingEnqueueFailed: async () => undefined,
       };
 

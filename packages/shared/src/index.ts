@@ -89,7 +89,7 @@ export {
   systemHealthCheckJobName,
   systemHealthCheckJobSchema,
 } from "./queue";
-export type { TopTag, TopTagsQuery, TopTagsResponse } from "./tags";
+export type { TopTag, TopTagsContext, TopTagsQuery, TopTagsResponse } from "./tags";
 export {
   MAX_FILTER_TAGS,
   MAX_TAG_NAME_LENGTH,
@@ -99,6 +99,8 @@ export {
   TOP_TAGS_MIN_LIMIT,
   parseTagsQuery,
   topTagSchema,
+  topTagsContextSchema,
+  topTagsQuerySchema,
   topTagsResponseSchema,
 } from "./tags";
 export type { SearchDocument, SearchDocumentsQuery, SearchDocumentsResponse } from "./search";

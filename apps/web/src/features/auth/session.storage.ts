@@ -13,6 +13,17 @@ export type AuthSession = {
 export const AUTH_SESSION_STORAGE_KEY = "axentra_auth_session";
 
 let inMemorySession: AuthSession | null = null;
+// Naik setiap identitas sesi berganti (login, logout, sign-out paksa, pengguna lain). Disimpan di
+// modul bersama sesi agar refresh yang dimulai sebelum pergantian tidak bisa memasang ulang sesi.
+let sessionGeneration = 0;
+
+export function getSessionGeneration(): number {
+  return sessionGeneration;
+}
+
+export function advanceSessionGeneration(): void {
+  sessionGeneration += 1;
+}
 
 function purgeWebStorage(): void {
   try {

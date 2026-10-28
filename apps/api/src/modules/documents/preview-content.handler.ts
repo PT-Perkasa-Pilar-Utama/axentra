@@ -2,25 +2,16 @@ import type { Handler } from "hono";
 import { documentIdParamSchema } from "@axentra/shared";
 import type { ApiEnvironment } from "../../environment";
 import { ValidationError } from "../../http/errors";
+import { buildContentDisposition } from "./content-disposition";
 import type { DocumentRouteDependencies } from "./documents.routes";
-import { sanitizeFilename } from "./documents.service.helpers";
 import type { PreviewContentOperationResult } from "./preview-content.operations";
-
-// RFC 5987 attr-char excludes ' ( ) * which encodeURIComponent leaves unescaped.
-function encodeRfc5987(value: string): string {
-  return encodeURIComponent(value).replace(
-    /['()*]/g,
-    (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
-  );
-}
 
 export function buildPreviewContentHeaders(
   result: Pick<PreviewContentOperationResult, "filename" | "mimeType" | "bytes">,
 ): Record<string, string> {
-  const asciiFallback = sanitizeFilename(result.filename);
   return {
     "Content-Type": result.mimeType,
-    "Content-Disposition": `inline; filename="${asciiFallback}"; filename*=UTF-8''${encodeRfc5987(result.filename)}`,
+    "Content-Disposition": buildContentDisposition("inline", result.filename),
     "Content-Length": result.bytes.byteLength.toString(),
     "X-Content-Type-Options": "nosniff",
     "Cache-Control": "private, no-store",
@@ -42,6 +33,7 @@ export function createPreviewDocumentContentHandler(
       documentId: paramResult.data.id,
       requestId: context.get("requestId"),
       logger: context.get("logger"),
+      signal: context.req.raw.signal,
     });
 
     return new Response(result.bytes, {

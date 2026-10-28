@@ -38,15 +38,19 @@ OK      GET    /auth/me
 OK      GET    /documents
 OK      POST   /documents/upload
 OK      POST   /documents/check-duplicate
-PLANNED GET    /documents/:id
+OK      GET    /documents/:id
 OK      GET    /documents/:id/preview
+OK      GET    /documents/:id/preview/content
 OK      GET    /documents/:id/download
 OK      POST   /documents/bulk-download
 OK      GET    /documents/:id/related
 ```
 
-`GET /documents/:id` is not registered on `dev`. The Web detail page reads
-`GET /documents/:id/metadata`.
+`GET /documents/:id` returns the document detail that the Web detail page reads, including
+`canDownload`. `GET /documents/:id/preview` returns preview metadata only. The content route
+`GET /documents/:id/preview/content` streams the stored file through the API for inline rendering
+and issues no storage URL. The API registers `POST /documents/upload` only when the process enables
+the upload route, and `apps/api/src/server.ts` enables it.
 
 ### Processing
 

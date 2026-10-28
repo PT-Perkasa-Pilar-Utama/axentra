@@ -1,3 +1,4 @@
+// How long the concurrency slot and the byte reservation stay held after the response starts.
 export const BULK_DOWNLOAD_TRANSFER_TIMEOUT_MS = 60_000;
 const BULK_DOWNLOAD_CHUNK_BYTES = 64 * 1024;
 
@@ -10,13 +11,19 @@ export type BulkDownloadBodyOptions = {
 };
 
 /**
- * Streams an assembled archive as a response body. `release` runs exactly once, when the body is
- * fully read, cancelled, aborted through the request signal, or when the transfer timer fires. The
- * archive reference is dropped at that point so its memory can be reclaimed.
+ * Streams an assembled archive as a response body and owns the release of the slot and the byte
+ * reservation after hand-off. `release` runs exactly once: when the request signal aborts, when the
+ * consumer cancels the body, or when the transfer window (`transferTimeoutMs`) ends. If the body is
+ * still being read at that point, it is failed.
+ *
+ * Draining the stream releases nothing. On Bun 1.3.12, Bun.serve pulls the whole body into its own
+ * buffer within milliseconds, then writes it at the client's pace, and it reports neither the end of
+ * that write nor a later disconnect to the handler. The archive reference is dropped once drained, but
+ * Bun's copy stays in memory until the socket finishes; a client slower than the window keeps it after
+ * the release.
  *
  * The body is chunked: no Content-Length is set, because Bun drops an explicit Content-Length on
- * streamed bodies. Bun also reads a stream to its end almost at once, so `release` can run before the
- * client has received the bytes. The byte budget bounds streaming overlap, not socket-level buffering.
+ * streamed bodies.
  */
 export function createBulkDownloadBody(
   archive: Uint8Array,
@@ -26,7 +33,7 @@ export function createBulkDownloadBody(
   const chunkBytes = Math.max(1, options.chunkBytes ?? BULK_DOWNLOAD_CHUNK_BYTES);
   let pending: Uint8Array | null = archive;
   let offset = 0;
-  let finished = false;
+  let released = false;
   let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -35,13 +42,14 @@ export function createBulkDownloadBody(
   };
 
   function finish(error?: Error): void {
-    if (finished) return;
-    finished = true;
-    pending = null;
+    if (released) return;
+    released = true;
     if (timer !== undefined) clearTimeout(timer);
     options.signal?.removeEventListener("abort", onAbort);
     options.release();
-    if (error !== undefined) controller?.error(error);
+    // Only a body that has not been fully enqueued can still be failed.
+    if (error !== undefined && pending !== null) controller?.error(error);
+    pending = null;
   }
 
   return new ReadableStream<Uint8Array>({
@@ -57,13 +65,15 @@ export function createBulkDownloadBody(
       options.signal?.addEventListener("abort", onAbort, { once: true });
     },
     pull(streamController) {
-      if (finished || pending === null) return;
+      if (pending === null) return;
       const end = Math.min(offset + chunkBytes, pending.byteLength);
       streamController.enqueue(pending.subarray(offset, end));
       offset = end;
       if (offset >= pending.byteLength) {
         streamController.close();
-        finish();
+        // Enqueued is not delivered: the slot and reservation stay held until abort, cancel, or the
+        // end of the transfer window. Only this reference to the archive is dropped.
+        pending = null;
       }
     },
     cancel() {

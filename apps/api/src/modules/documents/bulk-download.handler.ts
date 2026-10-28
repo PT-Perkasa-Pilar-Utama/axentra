@@ -4,8 +4,9 @@ import type { ApiEnvironment } from "../../environment";
 import { PayloadTooLargeError, ValidationError } from "../../http/errors";
 import { getAuthenticatedUser } from "../../middleware/auth";
 import { createBulkDownloadBody } from "./bulk-download.body";
+import { bulkDownloadValidationMessage } from "./bulk-download.validation";
+import { buildContentDisposition } from "./content-disposition";
 import type { DocumentRouteDependencies } from "./documents.routes";
-import { sanitizeFilename } from "./documents.service.helpers";
 
 // A valid request names at most 100 UUIDs (about 4 KiB), so larger bodies are rejected unparsed.
 export const BULK_DOWNLOAD_MAX_BODY_BYTES = 16 * 1024;
@@ -18,13 +19,12 @@ export function createBulkDownloadHandler(
     const user = getAuthenticatedUser(context);
     const requestId = context.get("requestId");
     const logger = context.get("logger");
+    const signal = context.req.raw.signal;
 
     const rawBody = await readJsonBody(context.req.raw);
     const parsed = bulkDownloadRequestSchema.safeParse(rawBody);
     if (!parsed.success) {
-      throw new ValidationError(
-        parsed.error.issues[0]?.message ?? "Payload unduhan massal tidak valid",
-      );
+      throw new ValidationError(bulkDownloadValidationMessage(parsed.error.issues));
     }
 
     const result = await dependencies.documentService.bulkDownloadDocuments({
@@ -32,23 +32,23 @@ export function createBulkDownloadHandler(
       user,
       logger,
       requestId,
-      signal: context.req.raw.signal,
+      signal,
     });
 
-    // The concurrency slot and byte reservation are released when this body ends, not when the archive
-    // is ready. No Content-Length is sent: Bun drops it on streamed bodies, so the response is chunked.
+    // From here the body owns the slot and the byte reservation: it releases them on abort, cancel, or
+    // the end of the transfer window, not when Bun drains it. No Content-Length is sent: Bun drops it on
+    // streamed bodies, so the response is chunked.
     const body = createBulkDownloadBody(result.bytes, {
       release: result.release,
-      signal: context.req.raw.signal,
+      signal,
+      transferTimeoutMs: result.transferTimeoutMs,
     });
-    const asciiFallback = sanitizeFilename(result.filename);
-    const utf8Filename = encodeURIComponent(result.filename);
 
     return new Response(body, {
       status: 200,
       headers: {
         "Content-Type": "application/zip",
-        "Content-Disposition": `attachment; filename="${asciiFallback}"; filename*=UTF-8''${utf8Filename}`,
+        "Content-Disposition": buildContentDisposition("attachment", result.filename),
       },
     });
   };

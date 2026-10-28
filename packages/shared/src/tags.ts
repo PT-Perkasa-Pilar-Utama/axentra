@@ -28,14 +28,34 @@ export function parseTagsQuery(value: unknown): string[] | undefined {
   return normalized.length > 0 ? Array.from(new Set(normalized)) : undefined;
 }
 
-export type TopTagsContext = "dashboard" | "search";
+export const topTagsContextSchema = z.enum(["dashboard", "search"]);
 
-// Request shape used by the Web client. Runtime validation lives in apps/api (tags.schema.ts).
-export type TopTagsQuery = {
-  context: TopTagsContext;
-  limit: number;
-  documentIds?: ReadonlyArray<string> | undefined;
-};
+export type TopTagsContext = z.infer<typeof topTagsContextSchema>;
+
+// Dipakai API untuk validasi runtime dan Web untuk tipe request, sehingga kedua sisi tidak
+// bisa berbeda tanpa kompilasi gagal.
+export const topTagsQuerySchema = z
+  .object({
+    context: topTagsContextSchema,
+    limit: z.coerce
+      .number()
+      .int()
+      .min(TOP_TAGS_MIN_LIMIT)
+      .max(TOP_TAGS_MAX_LIMIT)
+      .default(TOP_TAGS_DEFAULT_LIMIT),
+    documentIds: z.array(z.string().uuid()).max(TOP_TAGS_MAX_CONTEXT_DOCUMENTS).optional(),
+  })
+  .superRefine((query, context) => {
+    if (query.context === "dashboard" && query.documentIds !== undefined) {
+      context.addIssue({
+        code: "custom",
+        path: ["documentIds"],
+        message: "documentIds hanya berlaku untuk konteks search",
+      });
+    }
+  });
+
+export type TopTagsQuery = z.infer<typeof topTagsQuerySchema>;
 
 export const topTagSchema = z.object({
   id: z.string().uuid(),

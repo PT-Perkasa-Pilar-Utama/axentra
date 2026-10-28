@@ -15,6 +15,7 @@ import type {
 } from "@axentra/shared";
 import type { RawUploadFile } from "./documents.schema";
 import type { IDocumentRepository } from "./documents.repository";
+import type { IDocumentDetailRepository } from "./documents.detail.repository";
 import type { IDocumentContentHashRepository } from "./duplicate.repository";
 import type { CheckDuplicateInput } from "./duplicate.operations";
 import type { IMetadataExtractor } from "./metadata.extractor";
@@ -29,6 +30,7 @@ import type {
   ExecuteBulkDownloadInput,
 } from "./bulk-download.operations";
 import type { BulkDownloadSemaphore } from "./bulk-download.semaphore";
+import type { BulkDownloadByteBudget } from "./bulk-download.byte-budget";
 import type { IPreviewRepository } from "./preview.repository";
 import type { ExecutePreviewInput, PreviewOperationResult } from "./preview.operations";
 import type {
@@ -49,7 +51,11 @@ export type DocumentServiceDependencies = {
   categoryRepository?: IDocumentCategoryRepository | undefined;
   downloadRepository?: IDownloadRepository | undefined;
   previewRepository?: IPreviewRepository | undefined;
+  detailRepository?: IDocumentDetailRepository | undefined;
   bulkDownloadSemaphore?: BulkDownloadSemaphore | undefined;
+  bulkDownloadByteBudget?: BulkDownloadByteBudget | undefined;
+  bulkDownloadTransferTimeoutMs?: number | undefined;
+  storageTimeoutMs?: number | undefined;
 };
 
 export type RecentDocumentList = {

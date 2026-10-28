@@ -3,11 +3,17 @@ import { useQuery } from "@tanstack/react-query";
 import { searchDocuments, type SearchResultItem } from "./search-documents.api";
 
 export const SEARCH_DOCUMENTS_QUERY_KEY = ["search-documents"] as const;
+const SEARCH_EMPTY_MESSAGE = "Tidak ada hasil yang ditemukan";
 
 export type SearchDocumentsPresenter = {
   inputValue: string;
   keyword: string;
   categoryId?: string | undefined;
+  /** true bila ada kata kunci atau kategori; tanpa keduanya panel hasil tidak ditampilkan. */
+  isActive: boolean;
+  heading: string;
+  /** Copy wajib BA untuk pencarian kosong (CODING_STANDARD §11). */
+  emptyMessage: string;
   isLoading: boolean;
   isError: boolean;
   isEmpty: boolean;
@@ -73,11 +79,15 @@ export function useSearchDocumentsPresenter(
   const isEmpty =
     query.isSuccess && results.length === 0 && (keyword.length > 0 || categoryId !== undefined);
   const hasResults = !isLoading && !isError && results.length > 0;
+  const isActive = keyword.length > 0 || categoryId !== undefined;
 
   return {
     inputValue,
     keyword,
     categoryId,
+    isActive,
+    heading: keyword ? `Hasil Pencarian: "${keyword}"` : "Dokumen dalam kategori",
+    emptyMessage: keyword ? SEARCH_EMPTY_MESSAGE : "Tidak ada dokumen dalam kategori ini",
     isLoading,
     isError,
     isEmpty,

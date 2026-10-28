@@ -1,5 +1,4 @@
 import type { Logger } from "@axentra/observability";
-import { createLogger } from "@axentra/observability";
 import type { QueueProducer } from "@axentra/queue";
 import type { StorageAdapter } from "@axentra/storage";
 import {
@@ -20,6 +19,7 @@ import type {
 } from "./documents.service.types";
 import type { RawUploadFile } from "./documents.schema";
 import type { IDocumentRepository } from "./documents.repository";
+import type { IDocumentDetailRepository } from "./documents.detail.repository";
 import type { IDocumentContentHashRepository } from "./duplicate.repository";
 import type { IMetadataExtractor } from "./metadata.extractor";
 import { DeterministicMetadataExtractor } from "./metadata.extractor";
@@ -29,7 +29,11 @@ import type { IDocumentSmartTagsRepository } from "./smart-tags.repository";
 import { InMemoryDocumentSmartTagsRepository } from "./smart-tags.repository";
 import type { IDocumentCategoryRepository } from "./category.repository";
 import { InMemoryDocumentCategoryRepository } from "./category.repository";
-import { createInMemoryRepository, createInMemoryStorage } from "./documents.service.helpers";
+import {
+  createDefaultServiceLogger,
+  createInMemoryDocumentStore,
+  createInMemoryStorage,
+} from "./documents.service.helpers";
 import { NotFoundError } from "../../http/errors";
 import { persistUploadedDocuments } from "./documents.upload.operations";
 import { checkDuplicateOperation, type CheckDuplicateInput } from "./duplicate.operations";
@@ -42,49 +46,26 @@ import {
 import { readDocumentSmartTags, storeDocumentSmartTags } from "./smart-tags.operations";
 import { readDocumentCategory } from "./category.operations";
 import { readDocumentDetail } from "./documents.detail.operations";
-import type { IDownloadRepository } from "./download.repository";
+import { DocumentFileAccessService } from "./documents.file-access.service";
 import { InMemoryDownloadRepository } from "./download.repository";
-import {
-  executeDownloadOperation,
-  type DownloadOperationResult,
-  type ExecuteDownloadInput,
-} from "./download.operations";
-import {
-  executeBulkDownloadOperation,
-  type BulkDownloadOperationResult,
-  type ExecuteBulkDownloadInput,
-} from "./bulk-download.operations";
-import type { BulkDownloadSemaphore } from "./bulk-download.semaphore";
-import type { IPreviewRepository } from "./preview.repository";
 import { InMemoryPreviewRepository } from "./preview.repository";
-import {
-  executePreviewOperation,
-  type PreviewOperationResult,
-  type ExecutePreviewInput,
-} from "./preview.operations";
-import {
-  executePreviewContentOperation,
-  type ExecutePreviewContentInput,
-  type PreviewContentOperationResult,
+import type { DownloadOperationResult, ExecuteDownloadInput } from "./download.operations";
+import type {
+  BulkDownloadOperationResult,
+  ExecuteBulkDownloadInput,
+} from "./bulk-download.operations";
+import type { ExecutePreviewInput, PreviewOperationResult } from "./preview.operations";
+import type {
+  ExecutePreviewContentInput,
+  PreviewContentOperationResult,
 } from "./preview-content.operations";
 
-export type {
-  BulkDownloadOperationResult,
-  CheckDuplicateInput,
-  DownloadOperationResult,
-  ExecuteBulkDownloadInput,
-  ExecuteDownloadInput,
-  ExecutePreviewContentInput,
-  ExecutePreviewInput,
-  ExtractMetadataOptions,
-  PreviewContentOperationResult,
-  PreviewOperationResult,
-};
-
+export type { CheckDuplicateInput, ExtractMetadataOptions };
 export type { DocumentServiceDependencies, IDocumentService, RecentDocumentList };
 
 export class DocumentService implements IDocumentService {
   private readonly repository: IDocumentRepository;
+  private readonly detailRepository: IDocumentDetailRepository;
   private readonly storage: StorageAdapter;
   private readonly queue?: QueueProducer | undefined;
   private readonly logger: Logger;
@@ -94,23 +75,16 @@ export class DocumentService implements IDocumentService {
   private readonly contentHashRepository?: IDocumentContentHashRepository | undefined;
   private readonly smartTagsRepository: IDocumentSmartTagsRepository;
   private readonly categoryRepository: IDocumentCategoryRepository;
-  private readonly downloadRepository: IDownloadRepository;
-  private readonly previewRepository: IPreviewRepository;
-  private readonly bulkDownloadSemaphore?: BulkDownloadSemaphore | undefined;
+  private readonly fileAccess: DocumentFileAccessService;
 
   public constructor(dependencies: DocumentServiceDependencies = {}) {
-    this.repository = dependencies.repository ?? createInMemoryRepository();
+    const inMemory = createInMemoryDocumentStore();
+    this.repository = dependencies.repository ?? inMemory.repository;
+    this.detailRepository = dependencies.detailRepository ?? inMemory.detailRepository;
     this.storage = dependencies.storage ?? createInMemoryStorage();
     this.queue = dependencies.queue ?? dependencies.queueProducer;
     this.queueProducer = dependencies.queueProducer ?? dependencies.queue;
-    this.logger =
-      dependencies.logger ??
-      createLogger({
-        service: "axentra-api",
-        environment: "test",
-        version: "0.1.0",
-        level: "fatal",
-      });
+    this.logger = dependencies.logger ?? createDefaultServiceLogger();
     this.metadataRepository =
       dependencies.metadataRepository ?? new InMemoryDocumentMetadataRepository();
     this.metadataExtractor = dependencies.metadataExtractor ?? new DeterministicMetadataExtractor();
@@ -119,9 +93,16 @@ export class DocumentService implements IDocumentService {
       dependencies.smartTagsRepository ?? new InMemoryDocumentSmartTagsRepository();
     this.categoryRepository =
       dependencies.categoryRepository ?? new InMemoryDocumentCategoryRepository();
-    this.downloadRepository = dependencies.downloadRepository ?? new InMemoryDownloadRepository();
-    this.previewRepository = dependencies.previewRepository ?? new InMemoryPreviewRepository();
-    this.bulkDownloadSemaphore = dependencies.bulkDownloadSemaphore;
+    this.fileAccess = new DocumentFileAccessService({
+      downloadRepository: dependencies.downloadRepository ?? new InMemoryDownloadRepository(),
+      previewRepository: dependencies.previewRepository ?? new InMemoryPreviewRepository(),
+      storage: this.storage,
+      logger: this.logger,
+      bulkDownloadSemaphore: dependencies.bulkDownloadSemaphore,
+      bulkDownloadByteBudget: dependencies.bulkDownloadByteBudget,
+      bulkDownloadTransferTimeoutMs: dependencies.bulkDownloadTransferTimeoutMs,
+      storageTimeoutMs: dependencies.storageTimeoutMs,
+    });
   }
 
   public async validateUpload(
@@ -191,7 +172,7 @@ export class DocumentService implements IDocumentService {
   ): Promise<DocumentDetail> {
     return readDocumentDetail(
       {
-        repository: this.repository,
+        repository: this.detailRepository,
         metadataRepository: this.metadataRepository,
         smartTagsRepository: this.smartTagsRepository,
         categoryRepository: this.categoryRepository,
@@ -239,50 +220,23 @@ export class DocumentService implements IDocumentService {
   }
 
   public async downloadDocument(input: ExecuteDownloadInput): Promise<DownloadOperationResult> {
-    return executeDownloadOperation(
-      {
-        downloadRepository: this.downloadRepository,
-        storage: this.storage,
-        logger: this.logger,
-      },
-      input,
-    );
+    return this.fileAccess.downloadDocument(input);
   }
 
   public async bulkDownloadDocuments(
     input: ExecuteBulkDownloadInput,
   ): Promise<BulkDownloadOperationResult> {
-    return executeBulkDownloadOperation(
-      {
-        downloadRepository: this.downloadRepository,
-        storage: this.storage,
-        logger: this.logger,
-        bulkDownloadSemaphore: this.bulkDownloadSemaphore,
-      },
-      input,
-    );
+    return this.fileAccess.bulkDownloadDocuments(input);
   }
 
   public async previewDocument(input: ExecutePreviewInput): Promise<PreviewOperationResult> {
-    return executePreviewOperation(
-      {
-        previewRepository: this.previewRepository,
-      },
-      input,
-    );
+    return this.fileAccess.previewDocument(input);
   }
 
   public async previewDocumentContent(
     input: ExecutePreviewContentInput,
   ): Promise<PreviewContentOperationResult> {
-    return executePreviewContentOperation(
-      {
-        previewRepository: this.previewRepository,
-        storage: this.storage,
-        logger: this.logger,
-      },
-      input,
-    );
+    return this.fileAccess.previewDocumentContent(input);
   }
 }
 
