@@ -12,11 +12,10 @@
 
 ## Project Overview
 
-**Axentra** is an internal Document Management System (DMS). The repository delivers
-**Foundation v1.0.0** (engineering infrastructure and a platform-status surface) and the Sprint 1-3
-business routes and tables (US-01 to US-10) on `dev`. The Sprint 4 flows (US-11 to US-13) are
-documented and planned; they are not implemented unless an assigned sprint card explicitly brings
-them into scope.
+**Axentra** is an internal Document Management System (DMS). The repository currently delivers
+**Foundation v1.0.0**: engineering infrastructure and a platform-status surface. The BA flows
+US-01 through US-13 are documented and planned; they are not implemented unless an assigned sprint
+card explicitly brings them into scope.
 
 | Layer         | Technology                                                                    |
 | ------------- | ----------------------------------------------------------------------------- |
@@ -74,7 +73,7 @@ resources below.
 | Add an API endpoint                     | `add-api-endpoint`                    | `add-audit-log`, `add-shared-schema`                                 |
 | Change database schema                  | `add-drizzle-migration`               | `add-audit-log`, `docs/CODING_STANDARD.md`                           |
 | Add a cross-process contract            | `add-shared-schema`                   | relevant API and technical specs                                     |
-| Run an acceptance E2E flow              | `add-playwright-mcp-flow`             | `docs/E2E_TESTING.md`                                                |
+| Add an acceptance E2E flow              | `add-maestro-flow`                    | `docs/E2E_TESTING.md`                                                |
 | Refactor safely                         | `refactor-large-file`                 | `.claude/commands/refactor-safely.md`                                |
 | Review a change set                     | `developer-pre-pr-checklist`          | `.claude/commands/review-changes.md`                                 |
 | Prepare a commit                        | `git-commit`                          | `.claude/commands/commit-and-push.md`                                |
@@ -83,9 +82,6 @@ resources below.
 
 If no resource fits, use the standard Axentra workflow: read the linked docs, inspect the smallest
 relevant code path, make a scoped change, and run the appropriate verification.
-
-Installed project skills: `arx-be` (backend workflow) and `arx-ui-spec` (UI spec from Figma links or
-exports).
 
 ## Repository Layout
 
@@ -144,8 +140,7 @@ axentra/
   endpoints, requirements, or third-party provider behavior.
 - OCR/AI and hosted infrastructure integrations remain behind an internal interface until an
   approved provider and card exist.
-- Sprint 1-3 business routes and tables exist on `dev`. Foundation v1.0.0 stays documented as the
-  bootstrap scope, and Sprint 4 (analytics, audit trail, permission categories) is planned.
+- Foundation v1.0.0 contains no business tables or partial mock business workflows.
 
 ### Code Quality
 
@@ -281,45 +276,6 @@ bun run infra:down
 
 Local PostgreSQL is exposed on port `5432`. The full environment and recovery procedures are in
 `docs/ONBOARDING_GUIDE.md`, `docs/DEPLOYMENT_PLAN.md`, and `docs/TROUBLESHOOTING_GUIDE.md`.
-
-## E2E: Playwright MCP (instalasi lokal)
-
-E2E for this repository runs through the Playwright MCP. Developers do not install a separate E2E
-framework for it.
-
-- Requirement: Node.js 20 or newer ([playwright.dev/mcp/installation](https://playwright.dev/mcp/installation)).
-  Browsers download automatically on first use. Optional: add `--headless` after
-  `@playwright/mcp@latest` to run without a visible browser window.
-- Claude Code:
-
-  ```powershell
-  claude mcp add playwright npx @playwright/mcp@latest
-  ```
-
-- Codex CLI:
-
-  ```powershell
-  codex mcp add playwright npx "@playwright/mcp@latest"
-  ```
-
-  Or in `~/.codex/config.toml`:
-
-  ```toml
-  [mcp_servers.playwright]
-  command = "npx"
-  args = ["@playwright/mcp@latest"]
-  ```
-
-- Gemini CLI: add an `mcpServers` entry to `~/.gemini/settings.json`, or to the project
-  `.gemini/settings.json`, using the JSON below.
-- Any other MCP client: use the JSON below.
-
-  ```json
-  { "mcpServers": { "playwright": { "command": "npx", "args": ["@playwright/mcp@latest"] } } }
-  ```
-
-Acceptance evidence for E2E flows is recorded under `docs/screenshots/<CARD-ID>/` (screenshot plus
-observed result). See [docs/E2E_TESTING.md](docs/E2E_TESTING.md).
 
 ## Context Recovery Checklist
 

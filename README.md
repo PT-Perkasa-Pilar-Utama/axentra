@@ -4,8 +4,8 @@ Axentra is an internal Document Management System. This repository currently con
 **Axentra Foundation v1.0.0**: the approved engineering base for the Web, API, Worker,
 database, queue, storage, observability, documentation, and CI workflow.
 
-Sprint 1-3 business routes and tables (AC-01.01 to AC-10.01) exist on `dev`. Sprint 4
-(AC-11.01 to AC-13.01) is still planned. Foundation v1.0.0 remains the documented bootstrap scope.
+Business features from US-01 through US-13 are intentionally not implemented in this
+foundation release.
 
 ## Delivery Team
 
@@ -57,8 +57,8 @@ This starts PostgreSQL, Redis, and MinIO.
 bun run db:migrate
 ```
 
-Sprint 1-3 business tables are in the committed migrations on `dev`: documents, metadata, tags,
-categories, users, and download audit events.
+Foundation v1.0.0 intentionally has no business tables, so migration generation reports no
+schema changes until a reviewed sprint task adds a domain schema.
 
 ### 5. Start the application processes
 
@@ -193,16 +193,15 @@ bun run db:migrate
 
 ## API Surface
 
-Foundation v1.0.0 operational endpoints:
+Foundation v1.0.0 exposes only operational health endpoints:
 
 | Method | Path                   | Purpose                                            |
 | ------ | ---------------------- | -------------------------------------------------- |
 | `GET`  | `/api/v1/health`       | Process liveness without dependency I/O            |
 | `GET`  | `/api/v1/health/ready` | Readiness check for PostgreSQL, Redis, and Storage |
 
-Sprint 1-3 business routes (auth, documents, search, tags, categories, and bulk download) exist on
-`dev`. The endpoint status tracker is [docs/api-specs/\_index.md](docs/api-specs/_index.md).
-Sprint 4 routes (analytics, audit trail, permission categories) remain planned.
+Business APIs for authentication, document upload, OCR, AI, search, audit behavior, RBAC, and
+domain workflows are excluded until their sprint scope is reviewed and approved.
 
 ---
 
@@ -224,7 +223,7 @@ Sprint 4 routes (analytics, audit trail, permission categories) remain planned.
 | [docs/DEVELOPMENT_SCENARIO_GUIDE.md](docs/DEVELOPMENT_SCENARIO_GUIDE.md)     | Day 1 and task pickup scenarios                                       |
 | [docs/ONBOARDING_GUIDE.md](docs/ONBOARDING_GUIDE.md)                         | First-hour onboarding guide                                           |
 | [docs/DEPLOYMENT_PLAN.md](docs/DEPLOYMENT_PLAN.md)                           | Deployment plan draft                                                 |
-| [docs/E2E_TESTING.md](docs/E2E_TESTING.md)                                   | E2E guide: manual Playwright MCP runs with evidence                   |
+| [docs/E2E_TESTING.md](docs/E2E_TESTING.md)                                   | Future E2E testing guide                                              |
 | [docs/GLOSSARY.md](docs/GLOSSARY.md)                                         | Axentra terminology                                                   |
 | [docs/TASK_BREAKDOWN.md](docs/TASK_BREAKDOWN.md)                             | Foundation and planned sprint cards                                   |
 | [docs/TROUBLESHOOTING_GUIDE.md](docs/TROUBLESHOOTING_GUIDE.md)               | Local troubleshooting runbook                                         |
