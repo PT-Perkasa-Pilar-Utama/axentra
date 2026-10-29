@@ -22,8 +22,8 @@ export type BulkDownloadBodyOptions = {
  * Bun's copy stays in memory until the socket finishes; a client slower than the window keeps it after
  * the release.
  *
- * The body is chunked: no Content-Length is set, because Bun drops an explicit Content-Length on
- * streamed bodies.
+ * The body is chunked: no Content-Length is set. On Bun 1.3.12, Bun drops an explicit Content-Length
+ * on streamed bodies; Bun 1.4.3 keeps it (probe), so this choice depends on D30.
  */
 export function createBulkDownloadBody(
   archive: Uint8Array,

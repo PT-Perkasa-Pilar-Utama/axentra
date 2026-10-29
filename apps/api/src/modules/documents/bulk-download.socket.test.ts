@@ -202,7 +202,8 @@ describe("POST /api/v1/documents/bulk-download — Socket Concurrency & Header C
     expect(semaphore.queueLength).toBe(0);
 
     // The archive is sent as a ReadableStream body (createBulkDownloadBody). Bun frames stream bodies with
-    // chunked transfer encoding and drops Content-Length, so 200 OK responses carry no Content-Length.
+    // chunked transfer encoding and drops Content-Length on 1.3.12. This app sets none (D30), so 200 OK
+    // responses carry no Content-Length.
     const okResponses = completedResponses.filter((r) => r.includes("200 OK"));
     expect(okResponses.length).toBe(12);
     for (const res of okResponses) {

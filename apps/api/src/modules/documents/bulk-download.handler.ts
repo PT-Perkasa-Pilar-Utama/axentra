@@ -36,8 +36,8 @@ export function createBulkDownloadHandler(
     });
 
     // From here the body owns the slot and the byte reservation: it releases them on abort, cancel, or
-    // the end of the transfer window, not when Bun drains it. No Content-Length is sent: Bun drops it on
-    // streamed bodies, so the response is chunked.
+    // the end of the transfer window, not when Bun drains it. No Content-Length is sent (D30): on Bun
+    // 1.3.12 Bun drops it on streamed bodies, so the response is chunked.
     const body = createBulkDownloadBody(result.bytes, {
       release: result.release,
       signal,
