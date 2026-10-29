@@ -108,7 +108,7 @@ The Admin role is a proposal that the BA has not approved. Its proposal IDs (PRO
 
 ## Sprint 1: Upload, Duplicate Detection, Metadata
 
-**Status:** Done
+**Status:** Done. FND-10, which closes the Sprint 1-3 partials, is still awaiting Tech Lead approval.
 
 Goal: Member Team can upload supported documents, see duplicate warnings, and view extracted
 metadata.
@@ -147,7 +147,7 @@ metadata.
 
 ## Sprint 2: Smart Tags, Auto Category, Search, Related Documents
 
-**Status:** Done
+**Status:** Done. FND-10, which closes the Sprint 1-3 partials, is still awaiting Tech Lead approval.
 
 Goal: uploaded documents become discoverable through AI-generated tags, auto categories, search,
 and related-document suggestions.
@@ -189,7 +189,7 @@ and related-document suggestions.
 
 ## Sprint 3: Preview, Download, Bulk Download
 
-**Status:** Done
+**Status:** Done. FND-10, which closes the Sprint 1-3 partials, is still awaiting Tech Lead approval.
 
 Goal: Member Team can preview documents without downloading, download one permitted document, and
 download selected documents as a `.zip`.
