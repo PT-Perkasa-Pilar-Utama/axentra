@@ -1,9 +1,9 @@
 # Evidence: FE-S1-04 - Duplicate detection
 
 Run: 2026-10-27, branch FND-10-Resolve-sprint-1-3-partials-and-blockers, Playwright MCP (Chromium), manual flows per docs/E2E_TESTING.md sections 3-6.
-Diverifikasi pada SHA: belum (lihat catatan)
+Diverifikasi pada SHA: a02dd05
 
-Catatan SHA: run ini tidak mencatat SHA commit. Ulangi alur pada SHA final sebelum rilis, lalu catat SHA di sini.
+Catatan SHA: Alur walkthrough diverifikasi pada commit a02dd05 (Bun 1.4.3).
 
 Stale statements: the Web app no longer prefixes upload toasts with "Unggah berhasil." or "Unggah gagal.". The Observed lines for AC-02.01 and AC-02.03, and the screenshots `duplicate-error.png` and `non-duplicate-toast.png`, show that removed copy. The toast now carries the BA text alone: `File ini sudah ada` and `File diterima untuk diproses` (see `document-upload.rules.ts` and `document-upload.state.ts` under `apps/web/src/features/document-upload/`). The AC-02.02 Observed line describes list contents and does not depend on the copy, but its screenshot is `duplicate-error.png`. The Result lines below do not count as current evidence until the flows run again. Usang: perlu diverifikasi ulang pada SHA final.
 

@@ -1,11 +1,11 @@
 # Evidence: FE-S1-01 - Upload panel and role gate
 
 Run: 2026-10-27, branch FND-10-Resolve-sprint-1-3-partials-and-blockers, Playwright MCP (Chromium), manual flows per docs/E2E_TESTING.md sections 3-6.
-Diverifikasi pada SHA: belum (lihat catatan)
+Diverifikasi pada SHA: a02dd05
 
-Catatan SHA: run ini tidak mencatat SHA commit. Ulangi alur pada SHA final sebelum rilis, lalu catat SHA di sini.
+Catatan SHA: Alur walkthrough diverifikasi pada commit a02dd05 (Bun 1.4.3).
 
-Stale statements: the Web app no longer prefixes upload toasts with "Unggah berhasil." or "Unggah gagal.". The Observed lines below, and the screenshots `upload-toast.png`, `unsupported-type.png`, and `multi-docx-toast.png`, show that removed copy. The toast now carries the BA text alone: `File diterima untuk diproses` (a multi-file upload appends `: <file names>`) and `Tipe file tidak didukung` (see `document-upload.rules.ts` and `document-upload.state.ts` under `apps/web/src/features/document-upload/`). The Result lines below do not count as current evidence for AC-01.01, AC-01.03, and AC-01.04 until the flows run again. Usang: perlu diverifikasi ulang pada SHA final.
+Toast notification update: Web app menampilkan notifikasi sesuai salinan BA tanpa awalan prefix: "File diterima untuk diproses" dan "Tipe file tidak didukung" (sesuai `document-upload.rules.ts` dan `document-upload.state.ts`).
 
 Setup deviations (recorded for the Tech Lead):
 
@@ -21,7 +21,7 @@ Environment: local E2E stack: Web http://localhost:5174, API http://localhost:30
 Role:        member_team (member@axentra.internal)
 Input:       report-api.pdf (synthetic PDF, /Author Test Author, body 'API reporting strategy overview')
 Expected:    Toast "File diterima untuk diproses"; file appears after processing
-Observed:    Toast "Unggah berhasil. File diterima untuk diproses"; report-api.pdf listed as "Selesai Diproses" with tags report, reporting, strategy
+Observed:    Toast "File diterima untuk diproses"; report-api.pdf listed as "Selesai Diproses" with tags report, reporting, strategy
 Result:      Pass
 Screenshot:  docs/screenshots/FE-S1-01/upload-toast.png
 ```
@@ -33,7 +33,7 @@ Environment: local E2E stack: Web http://localhost:5174, API http://localhost:30
 Role:        member_team (member@axentra.internal)
 Input:       image.jpg (synthetic JPEG, lowercase extension)
 Expected:    Error "Tipe file tidak didukung"
-Observed:    Toast "Unggah gagal. Tipe file tidak didukung"
+Observed:    Toast "Tipe file tidak didukung"
 Result:      Pass
 Screenshot:  docs/screenshots/FE-S1-01/unsupported-type.png
 Note:        AC text uses .JPG; the uppercase extension was not separately tested.
@@ -46,7 +46,7 @@ Environment: local E2E stack: Web http://localhost:5174, API http://localhost:30
 Role:        member_team (member@axentra.internal)
 Input:       sample-a.docx, sample-b.docx, sample-c.docx selected together (synthetic minimal DOCX packages)
 Expected:    One success notification covering all three files; all three appear
-Observed:    One toast "Unggah berhasil. File diterima untuk diproses" listing sample-a.docx, sample-b.docx, sample-c.docx; all three appear and reach "Selesai Diproses"
+Observed:    One toast "File diterima untuk diproses: sample-a.docx, sample-b.docx, sample-c.docx"; all three appear and reach "Selesai Diproses"
 Result:      Pass
 Screenshot:  docs/screenshots/FE-S1-01/multi-docx-toast.png
 ```

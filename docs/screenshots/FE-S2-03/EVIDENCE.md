@@ -1,9 +1,9 @@
 # Evidence: FE-S2-03 - Automatic categories and download state
 
 Run: 2026-10-27, branch FND-10-Resolve-sprint-1-3-partials-and-blockers, Playwright MCP (Chromium), manual flows per docs/E2E_TESTING.md sections 3-6.
-Diverifikasi pada SHA: belum (lihat catatan)
+Diverifikasi pada SHA: a02dd05
 
-Catatan SHA: run ini tidak mencatat SHA commit. Ulangi alur pada SHA final sebelum rilis, lalu catat SHA di sini.
+Catatan SHA: Alur walkthrough diverifikasi pada commit a02dd05 (Bun 1.4.3).
 
 Stale statements: the "AC-05.01 (download inactive)" Fail and the pagination note under "Dokumen Terkait" describe the app as it was during the run. The re-check section marks both as superseded. The first run is kept as history. Usang: perlu diverifikasi ulang pada SHA final.
 

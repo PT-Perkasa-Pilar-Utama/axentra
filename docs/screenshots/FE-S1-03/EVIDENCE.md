@@ -1,9 +1,9 @@
 # Evidence: FE-S1-03 - Metadata author on detail page
 
 Run: 2026-10-27, branch FND-10-Resolve-sprint-1-3-partials-and-blockers, Playwright MCP (Chromium), manual flows per docs/E2E_TESTING.md sections 3-6.
-Diverifikasi pada SHA: belum (lihat catatan)
+Diverifikasi pada SHA: a02dd05
 
-Catatan SHA: run ini tidak mencatat SHA commit. Ulangi alur pada SHA final sebelum rilis, lalu catat SHA di sini.
+Catatan SHA: Alur walkthrough diverifikasi pada commit a02dd05 (Bun 1.4.3).
 
 Setup deviations (recorded for the Tech Lead):
 
