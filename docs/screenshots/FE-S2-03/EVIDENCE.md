@@ -1,7 +1,7 @@
 # Evidence: FE-S2-03 - Automatic categories and download state
 
 Run: 2026-10-27, branch FND-10-Resolve-sprint-1-3-partials-and-blockers, Playwright MCP (Chromium), manual flows per docs/E2E_TESTING.md sections 3-6.
-Diverifikasi pada SHA: belum (lihat catatan)
+Diverifikasi pada SHA: 2b5152cdcff4b971e032db648cce3a264780e74d (re-run 2026-10-29, bagian di bawah; record 2026-10-27 tidak mencatat SHA)
 
 Catatan SHA: run ini tidak mencatat SHA commit. Ulangi alur pada SHA final sebelum rilis, lalu catat SHA di sini.
 
@@ -79,4 +79,55 @@ Observed:    Section shows strategy-legal.pdf (tag strategy), sample-a.docx, sam
 Result:      Pass
 Screenshot:  docs/screenshots/FE-S2-05/detail-related-after-fix.png
 Note:        Superseded. When this check ran, the dashboard list requested page=1&limit=5 and got meta.total=6, but the Next button was hard-disabled (title "Fitur navigasi halaman belum tersedia"), so report-api.pdf was reachable only through search. Pagination has since been added: the FE-S1-02 re-run records "Halaman 1 dari 2" with Next enabled, and the app no longer carries that title text. Repeat this check on the committed SHA. Usang: perlu diverifikasi ulang pada SHA final.
+```
+
+## Re-run 2026-10-29
+
+Run: 2026-10-29, detached worktree at commit 2b5152cdcff4b971e032db648cce3a264780e74d, built-in Chromium browser pane of the Claude desktop app, manual flows per docs/E2E_TESTING.md sections 3-6. The code at this commit is identical to a66aef0, 3605cbe, and a02dd05; the evidence commit that adds this section changes only docs/screenshots.
+
+Setup deviations (recorded for the Tech Lead):
+
+- The Playwright MCP server failed to connect, so the built-in browser pane (Chromium) drove the Web UI.
+- The browser pane has no file chooser tool. Files were attached to the upload input with a DataTransfer object; the app's change handler, client validation, and upload request ran as for a chosen file.
+- Disposable stack on offset ports. Web ran on 5174 because 5173 was held by an unrelated process. Test accounts come from a generated local identity directory; passwords are not recorded.
+- For AC-09.01 and AC-10.01, `category_download_permissions.download_enabled` for Reporting was set to true in the disposable DB. The Head of Team toggle is Sprint 4 scope (AC-13.01).
+- Screenshots are JPEG captures of the browser pane.
+
+```text
+AC:          AC-05.01 (category)
+Card:        FE-S2-03
+Commit:      2b5152cdcff4b971e032db648cce3a264780e74d
+Environment: local E2E stack: Web http://localhost:5174, API http://localhost:3001, DB axentra_test (127.0.0.1:15432), Redis 127.0.0.1:16379, MinIO 127.0.0.1:19000
+Role:        member_team (member.r2@local.test)
+Input:       report-api.pdf and sample-a/b/c.docx with reporting content
+Expected:    New category "Reporting" in the category menu holding the documents
+Observed:    Category menu shows Reporting; documents carry category Reporting
+Result:      Pass
+Screenshot:  docs/screenshots/FE-S2-03/categories-rerun-2026-10-29.jpg
+```
+
+```text
+AC:          AC-05.01 (download inactive)
+Card:        FE-S2-03
+Commit:      2b5152cdcff4b971e032db648cce3a264780e74d
+Environment: local E2E stack: Web http://localhost:5174, API http://localhost:3001, DB axentra_test (127.0.0.1:15432), Redis 127.0.0.1:16379, MinIO 127.0.0.1:19000
+Role:        member_team (member.r2@local.test)
+Input:       report-api.pdf detail page before any permission change
+Expected:    Download inactive for a new category until Head of Team enables it
+Observed:    Download button disabled with "Akses unduh tidak diizinkan untuk kategori dokumen ini"; DB shows download_enabled = false for Contract, Reporting, Strategy
+Result:      Pass
+Screenshot:  docs/screenshots/FE-S2-03/download-inactive-rerun-2026-10-29.jpg
+```
+
+```text
+AC:          AC-05.02
+Card:        FE-S2-03
+Commit:      2b5152cdcff4b971e032db648cce3a264780e74d
+Environment: local E2E stack: Web http://localhost:5174, API http://localhost:3001, DB axentra_test (127.0.0.1:15432), Redis 127.0.0.1:16379, MinIO 127.0.0.1:19000
+Role:        member_team (member.r2@local.test)
+Input:       contract-legal.pdf (legal contract content) and strategy-legal.pdf next to the reporting documents
+Expected:    Documents land in different categories by content
+Observed:    Categories Contract, Reporting, and Strategy hold different documents
+Result:      Pass
+Screenshot:  docs/screenshots/FE-S2-03/categories-rerun-2026-10-29.jpg
 ```
