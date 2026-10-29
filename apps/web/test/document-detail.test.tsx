@@ -3,9 +3,11 @@ import { createElement } from "react";
 import { renderToString } from "react-dom/server";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { documentMetadataResultSchema, type DocumentMetadataResult } from "@axentra/shared";
+import { documentDetailSchema, type DocumentDetail } from "@axentra/shared";
 import { getDocumentDetail } from "../src/features/document-detail/document-detail.api";
 import { DocumentDetailView } from "../src/features/document-detail/document-detail.view";
+
+const documentId = "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22";
 
 function createMockFetch(
   handler: (input: RequestInfo | URL, init?: RequestInit | undefined) => Promise<Response>,
@@ -18,10 +20,7 @@ function createMockFetch(
   });
 }
 
-function renderDetail(
-  client: QueryClient,
-  path = "/documents/b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22",
-): string {
+function renderDetail(client: QueryClient, path = `/documents/${documentId}`): string {
   return renderToString(
     createElement(
       QueryClientProvider,
@@ -42,146 +41,119 @@ function renderDetail(
   );
 }
 
-describe("Document Detail Feature (FE-S1-03 / AC-03.01)", () => {
-  const sampleProcessedDoc: DocumentMetadataResult = {
+const sampleDetail: DocumentDetail = {
+  id: documentId,
+  title: "laporan.pdf",
+  processingStatus: "completed",
+  category: null,
+  tags: [],
+  file: {
     id: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
-    documentId: "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22",
-    author: "Bessie Cooper",
-    rawMetadata: {
-      extractor: "worker-deterministic",
-      method: "pdf_info_dict",
-      detected: true,
-      filename: "decoy-file-should-not-render.pdf",
-    },
-    extractedAt: "2025-12-16T10:05:00.000Z",
+    originalName: "laporan.pdf",
+    mimeType: "application/pdf",
+    fileSize: 1024,
+    fileExtension: "pdf",
     createdAt: "2025-12-16T10:00:00.000Z",
-    updatedAt: "2025-12-16T10:05:00.000Z",
-  };
+  },
+  // Tanggal ekstraksi berbeda dari tanggal unggah; tampilan harus memakai createdAt.
+  metadata: { author: "Bessie Cooper", extractedAt: "2025-12-20T10:05:00.000Z" },
+  canDownload: true,
+  createdAt: "2025-12-16T10:00:00.000Z",
+  updatedAt: "2025-12-20T10:05:00.000Z",
+};
 
-  test("AC-03.01: parses and validates author metadata from extraction result", () => {
-    const parsed = documentMetadataResultSchema.safeParse(sampleProcessedDoc);
+function seedClient(detail: DocumentDetail): QueryClient {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  queryClient.setQueryData(["document-detail", documentId], detail);
+  return queryClient;
+}
+
+describe("Document Detail Feature (FE-S1-03 / AC-03.01)", () => {
+  test("AC-03.01: the detail schema parses the response and exposes author metadata", () => {
+    const parsed = documentDetailSchema.safeParse(sampleDetail);
     expect(parsed.success).toBe(true);
     if (parsed.success) {
-      expect(parsed.data.author).toBe("Bessie Cooper");
-      expect(parsed.data.documentId).toBe("b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22");
-      expect(parsed.data.extractedAt).toBeDefined();
+      expect(parsed.data.metadata?.author).toBe("Bessie Cooper");
+      expect(parsed.data.id).toBe(documentId);
+      expect(parsed.data.canDownload).toBe(true);
     }
   });
 
-  test("AC-03.01: getDocumentDetail fetches from /documents/:id/metadata", async () => {
+  test("getDocumentDetail requests GET /documents/:id and not the metadata sub-resource", async () => {
     const originalFetch = globalThis.fetch;
+    const requested: string[] = [];
     try {
       globalThis.fetch = createMockFetch(async (url) => {
-        expect(String(url)).toContain(
-          "/api/v1/documents/b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22/metadata",
-        );
-        return new Response(JSON.stringify({ success: true, data: sampleProcessedDoc }), {
+        requested.push(String(url));
+        return new Response(JSON.stringify({ success: true, data: sampleDetail }), {
           status: 200,
           headers: { "content-type": "application/json" },
         });
       });
 
-      const data = await getDocumentDetail("b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22");
-      expect(data.author).toBe("Bessie Cooper");
-      expect(data.documentId).toBe("b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22");
+      const data = await getDocumentDetail(documentId);
+
+      expect(requested).toHaveLength(1);
+      expect(requested[0]?.endsWith(`/api/v1/documents/${documentId}`)).toBe(true);
+      expect(requested[0]?.includes("/metadata")).toBe(false);
+      expect(data.metadata?.author).toBe("Bessie Cooper");
+      expect(data.canDownload).toBe(true);
     } finally {
       globalThis.fetch = originalFetch;
     }
   });
 
-  test("AC-03.01: renders document detail view and displays author metadata", async () => {
-    const queryClient = new QueryClient({
-      defaultOptions: {
-        queries: {
-          retry: false,
-        },
-      },
-    });
+  test("AC-03.01: renders the author and the upload date from the single detail response", () => {
+    const html = renderDetail(seedClient(sampleDetail));
 
-    // Seed only the metadata-by-ID query; detail must not depend on recent-document pagination.
-    queryClient.setQueryData(
-      ["document-detail", "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22"],
-      sampleProcessedDoc,
-    );
-
-    const html = renderDetail(queryClient);
-
-    // Assert AC-03.01 author is rendered correctly in the UI.
     expect(html).toContain('data-testid="metadata-author"');
     expect(html).toContain("Bessie Cooper");
     expect(html).toContain("Nama berkas belum tersedia");
-    expect(html).not.toContain("decoy-file-should-not-render.pdf");
     expect(html).toContain("Metadata");
     expect(html).toContain("Tanggal unggah");
-    expect(html).toContain("Belum tersedia");
+    // Tanggal unggah dari createdAt (16/12/2025), bukan tanggal ekstraksi metadata (20/12/2025).
+    expect(html).toContain("16/12/2025");
+    expect(html).not.toContain("20/12/2025");
+    expect(html).not.toContain("Memuat tanggal...");
+    expect(html).not.toContain("Memuat tag...");
+    expect(html).not.toContain("Memuat kategori...");
+    expect(html).not.toContain("Belum tersedia");
+    // AC-07.01: Dokumen Terkait baru muncul setelah dokumen terbukti memiliki tag.
+    expect(html).not.toContain("Dokumen Terkait");
     expect(html).toContain("Memuat pratinjau dokumen...");
-    expect(html).toContain("Dokumen Terkait");
-    expect(html).toContain("Unduh");
+    expect(html).toContain("Download");
     expect(html).not.toContain('disabled=""');
     expect(html).toContain('aria-describedby="download-note"');
     expect(html).toContain('id="download-note"');
     expect(html).toContain("Unduh dalam format asli");
-    expect(html).not.toContain("10/12/2025");
-    expect(html).not.toContain("16/12/2025");
     expect(html).not.toContain("Halaman 1");
-    expect(html).not.toContain("CustomerAdvise");
   });
 
   test("AC-03.01: renders 'Tidak terdeteksi' when author metadata is null", () => {
-    const queryClient = new QueryClient({
-      defaultOptions: {
-        queries: {
-          retry: false,
-        },
-      },
-    });
-
-    const docWithoutAuthor: DocumentMetadataResult = {
-      ...sampleProcessedDoc,
-      author: null,
-    };
-
-    queryClient.setQueryData(
-      ["document-detail", "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22"],
-      docWithoutAuthor,
+    const html = renderDetail(
+      seedClient({ ...sampleDetail, metadata: { author: null, extractedAt: null } }),
     );
 
-    const html = renderDetail(queryClient);
     expect(html).toContain("Tidak terdeteksi");
     expect(html).not.toContain("Bessie Cooper");
   });
 
-  test("F1 regression: renders author metadata successfully even when document is absent from recent list", () => {
-    const queryClient = new QueryClient({
-      defaultOptions: {
-        queries: {
-          retry: false,
-        },
-      },
-    });
+  test("AC-03.01: renders author and upload date when the document is older than any recent list", () => {
+    // Tidak ada kueri daftar dokumen terbaru; tanggal tetap tampil dari respons detail.
+    const olderDetail: DocumentDetail = {
+      ...sampleDetail,
+      createdAt: "2019-03-04T08:00:00.000Z",
+      updatedAt: "2019-03-04T08:00:00.000Z",
+    };
+    const html = renderDetail(seedClient(olderDetail));
 
-    // Only document-detail metadata query is available; recent query is not executed or empty.
-    queryClient.setQueryData(
-      ["document-detail", "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22"],
-      sampleProcessedDoc,
-    );
-
-    const html = renderDetail(queryClient);
-    expect(html).toContain('data-testid="metadata-author"');
     expect(html).toContain("Bessie Cooper");
-    expect(html).toContain("Nama berkas belum tersedia");
-    expect(html).toContain("Belum tersedia");
-    expect(html).not.toContain("Gagal memuat metadata");
+    expect(html).toContain("04/03/2019");
+    expect(html).not.toContain("Tidak tersedia");
   });
 
-  test("renders an announced loading state while metadata is pending", () => {
-    const queryClient = new QueryClient({
-      defaultOptions: {
-        queries: {
-          retry: false,
-        },
-      },
-    });
+  test("renders an announced loading state while the detail is pending", () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
     // A valid query without seeded data remains pending during server render.
     const html = renderDetail(queryClient, "/documents/doc-not-found");
@@ -190,12 +162,12 @@ describe("Document Detail Feature (FE-S1-03 / AC-03.01)", () => {
     expect(html).not.toContain("Pratinjau belum tersedia");
   });
 
-  test("renders metadata failure and a retry action", async () => {
+  test("renders the detail failure and a retry action", async () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, retryOnMount: false } },
     });
     await queryClient.prefetchQuery({
-      queryKey: ["document-detail", sampleProcessedDoc.documentId],
+      queryKey: ["document-detail", documentId],
       queryFn: async () => {
         throw new Error("test unavailable");
       },
@@ -207,13 +179,8 @@ describe("Document Detail Feature (FE-S1-03 / AC-03.01)", () => {
     queryClient.clear();
   });
 
-  test("normalizes blank authors and handles long author values securely", () => {
-    const queryClient = new QueryClient();
-    queryClient.setQueryData(["document-detail", sampleProcessedDoc.documentId], {
-      ...sampleProcessedDoc,
-      author: "  ",
-    });
-    const html = renderDetail(queryClient);
+  test("normalizes blank authors", () => {
+    const html = renderDetail(seedClient({ ...sampleDetail, metadata: { author: "  " } }));
     expect(html).toContain("Tidak terdeteksi");
   });
 });

@@ -3,7 +3,7 @@ import { createLogger } from "@axentra/observability";
 import type { ApiErrorEnvelope, ApiSuccessEnvelope, DocumentMetadataResult } from "@axentra/shared";
 import { createApp } from "../../app";
 import type { TokenVerifier } from "../../middleware/auth";
-import { createAuthService } from "../auth/auth.service";
+import { createInMemoryAuthService } from "../auth/auth.memory-stores";
 import { createDocumentService } from "./documents.service";
 import { InMemoryDocumentMetadataRepository } from "./metadata.repository";
 import { DeterministicMetadataExtractor } from "./metadata.extractor";
@@ -249,7 +249,7 @@ describe("GET /api/v1/documents/:id/metadata - Task BE-S1-05 (AC-03.01)", () => 
   describe("Production Server Composition (Findings F1 & F6)", () => {
     it("proves metadata endpoint is registered (returns 401 not 404) while unpersisted upload route is disabled (returns 404)", async () => {
       // Replicate the exact dependency composition used in server.ts (enableUploadRoute defaults to false)
-      const prodAuthService = createAuthService({
+      const prodAuthService = createInMemoryAuthService({
         authenticator: (creds) => {
           if (creds.email === "member@axentra.local") {
             return {

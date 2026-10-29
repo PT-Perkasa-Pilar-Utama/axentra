@@ -11,15 +11,16 @@ packages/db/src/schema/index.ts
 
 ## Implemented Database Boundary
 
-| Concern           | Status               | Description                                                                          |
-| ----------------- | -------------------- | ------------------------------------------------------------------------------------ |
-| PostgreSQL client | Implemented          | `postgres` connection pool via `createDatabaseClient`                                |
-| Drizzle boundary  | Implemented          | Type-safe schema definitions and relation mappings in `@axentra/db`                  |
-| Migration runner  | Implemented          | Standalone runner in `src/migrate.ts` executing committed SQL                        |
-| Health check      | Implemented          | Ping query (`SELECT 1`) validating database readiness                                |
-| Document core     | Implemented          | 8 domain tables covering documents, files, metadata, categories, tags (DB-S1-01)     |
-| Identity/Users    | Implemented (Schema) | `users` table schema & migration added (DB-S1-01); runtime auth integration deferred |
-| Audit trail       | Implemented          | `download_audit_events` schema and migration added (BE-S3-02)                        |
+| Concern           | Status      | Description                                                                                |
+| ----------------- | ----------- | ------------------------------------------------------------------------------------------ |
+| PostgreSQL client | Implemented | `postgres` connection pool via `createDatabaseClient`                                      |
+| Drizzle boundary  | Implemented | Type-safe schema definitions and relation mappings in `@axentra/db`                        |
+| Migration runner  | Implemented | Standalone runner in `src/migrate.ts` executing committed SQL                              |
+| Health check      | Implemented | Ping query (`SELECT 1`) validating database readiness                                      |
+| Document core     | Implemented | 8 domain tables covering documents, files, metadata, categories, tags (DB-S1-01)           |
+| Identity/Users    | Implemented | `users` table (DB-S1-01) is read by the production authenticator                           |
+| Auth sessions     | Implemented | `auth_sessions`, `auth_rotated_refresh_tokens`, and `auth_login_attempts` (sections 11-13) |
+| Audit trail       | Implemented | `download_audit_events` schema and migration added (BE-S3-02)                              |
 
 ## Table Conventions
 
@@ -51,16 +52,17 @@ documents (1) <--- (1)    document_files
 
 The central business record for an uploaded document.
 
-| Column              | Type                | Constraints                              | Description                                     |
-| ------------------- | ------------------- | ---------------------------------------- | ----------------------------------------------- |
-| `id`                | `uuid`              | Primary Key, default random              | Document identifier                             |
-| `title`             | `text`              | NOT NULL                                 | Document title (defaults to filename on upload) |
-| `category_id`       | `uuid`              | FK -> `categories.id` ON DELETE SET NULL | Assigned category (null if uncategorized)       |
-| `processing_status` | `processing_status` | NOT NULL, DEFAULT `'queued'`             | Current processing status                       |
-| `error_message`     | `text`              | Nullable                                 | Error message if processing fails               |
-| `created_at`        | `timestamptz`       | NOT NULL, default now()                  | Creation timestamp                              |
-| `updated_at`        | `timestamptz`       | NOT NULL, default now()                  | Last modification timestamp                     |
-| `deleted_at`        | `timestamptz`       | Nullable                                 | Soft-delete timestamp (null when active)        |
+| Column                         | Type                | Constraints                              | Description                                                                                                                                                    |
+| ------------------------------ | ------------------- | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                           | `uuid`              | Primary Key, default random              | Document identifier                                                                                                                                            |
+| `title`                        | `text`              | NOT NULL                                 | Document title (defaults to filename on upload)                                                                                                                |
+| `category_id`                  | `uuid`              | FK -> `categories.id` ON DELETE SET NULL | Assigned category (null if uncategorized)                                                                                                                      |
+| `processing_status`            | `processing_status` | NOT NULL, DEFAULT `'queued'`             | Current processing status                                                                                                                                      |
+| `error_message`                | `text`              | Nullable                                 | Error message if processing fails                                                                                                                              |
+| `processing_recovery_attempts` | `integer`           | NOT NULL, DEFAULT `0`                    | Recovery attempts counted for this document. After `MAX_PROCESSING_RECOVERY_ATTEMPTS` (3), the document is marked `failed` (see `api-specs/04-processing.md`). |
+| `created_at`                   | `timestamptz`       | NOT NULL, default now()                  | Creation timestamp                                                                                                                                             |
+| `updated_at`                   | `timestamptz`       | NOT NULL, default now()                  | Last modification timestamp                                                                                                                                    |
+| `deleted_at`                   | `timestamptz`       | Nullable                                 | Soft-delete timestamp (null when active)                                                                                                                       |
 
 **Indexes:**
 
@@ -83,7 +85,7 @@ The physical binary object reference in S3-compatible storage.
 | `storage_key`    | `text`        | NOT NULL                               | S3/MinIO object key                              |
 | `original_name`  | `text`        | NOT NULL                               | Original uploaded filename                       |
 | `mime_type`      | `text`        | NOT NULL                               | MIME type (e.g., `application/pdf`)              |
-| `file_size`      | `bigint`      | NOT NULL                               | Size in bytes                                    |
+| `file_size`      | `bigint`      | NOT NULL, CHECK `file_size >= 0`       | Size in bytes                                    |
 | `file_extension` | `text`        | NOT NULL                               | File extension without dot (e.g., `pdf`, `docx`) |
 | `created_at`     | `timestamptz` | NOT NULL, default now()                | Creation timestamp                               |
 | `updated_at`     | `timestamptz` | NOT NULL, default now()                | Modification timestamp                           |
@@ -93,6 +95,10 @@ The physical binary object reference in S3-compatible storage.
 - `document_files_document_id_unique_idx` UNIQUE on `(document_id)` — enforces 1:1 invariant.
 - `document_files_storage_key_idx` on `(storage_key)`
 - `document_files_original_name_trgm_idx` GIN on `(original_name gin_trgm_ops)` for substring search acceleration (BE-S2-05)
+
+**Constraints:**
+
+- `document_files_file_size_non_negative_check` CHECK `file_size >= 0`.
 
 #### 3. `document_content_hashes`
 
@@ -233,6 +239,74 @@ Point-in-time facts recording authorized file downloads (AC-09.01, AC-12.01).
 - `download_audit_events_user_id_idx` on `(user_id)`
 - `download_audit_events_document_id_idx` on `(document_id)`
 - `download_audit_events_downloaded_at_idx` on `(downloaded_at)`
+
+### Auth Tables
+
+The auth tables, the `processing_recovery_attempts` column, and the `file_size` CHECK are created by
+the migration `packages/db/drizzle/0004_add_auth_tables_and_processing_recovery.sql`, which follows
+`0003_add_download_audit_events`. The definitions below follow `packages/db/src/schema`. The migration
+SQL must create the same tables, columns, and constraints.
+
+#### 11. `auth_sessions`
+
+Login sessions. Only SHA-256 hashes of the access and refresh tokens are stored; raw tokens are never
+persisted. Rotation and revocation update the row, so `updated_at` records the last change.
+
+| Column               | Type          | Constraints                        | Description                                        |
+| -------------------- | ------------- | ---------------------------------- | -------------------------------------------------- |
+| `id`                 | `uuid`        | Primary Key, default random        | Session identifier                                 |
+| `user_id`            | `uuid`        | NOT NULL, FK -> `users.id` CASCADE | Owning user                                        |
+| `access_token_hash`  | `text`        | NOT NULL                           | SHA-256 hash of the access token                   |
+| `refresh_token_hash` | `text`        | NOT NULL                           | SHA-256 hash of the current refresh token          |
+| `remember_me`        | `boolean`     | NOT NULL, DEFAULT `false`          | Whether the session was created with "remember me" |
+| `access_expires_at`  | `timestamptz` | NOT NULL                           | Access token expiry                                |
+| `refresh_expires_at` | `timestamptz` | NOT NULL                           | Refresh token expiry                               |
+| `last_used_at`       | `timestamptz` | NOT NULL, default now()            | Last use of the session                            |
+| `revoked_at`         | `timestamptz` | Nullable                           | Revocation time (null when active)                 |
+| `created_at`         | `timestamptz` | NOT NULL, default now()            | Creation timestamp                                 |
+| `updated_at`         | `timestamptz` | NOT NULL, default now()            | Last change (rotation or revocation)               |
+
+**Indexes:**
+
+- `auth_sessions_access_token_hash_unique_idx` UNIQUE on `(access_token_hash)`
+- `auth_sessions_refresh_token_hash_unique_idx` UNIQUE on `(refresh_token_hash)`
+- `auth_sessions_user_id_idx` on `(user_id)`
+
+#### 12. `auth_rotated_refresh_tokens`
+
+SHA-256 hashes of refresh tokens that were rotated away from a session. Presenting one of them again
+is reuse, and the session is revoked. Rows are insert-only, so `rotated_at` is the creation time.
+
+| Column       | Type          | Constraints                                | Description                             |
+| ------------ | ------------- | ------------------------------------------ | --------------------------------------- |
+| `id`         | `uuid`        | Primary Key, default random                | Record identifier                       |
+| `token_hash` | `text`        | NOT NULL                                   | SHA-256 hash of a rotated refresh token |
+| `session_id` | `uuid`        | NOT NULL, FK -> `auth_sessions.id` CASCADE | Session that held the token             |
+| `rotated_at` | `timestamptz` | NOT NULL, default now()                    | Rotation time                           |
+
+**Indexes:**
+
+- `auth_rotated_refresh_tokens_token_hash_unique_idx` UNIQUE on `(token_hash)`
+- `auth_rotated_refresh_tokens_session_id_idx` on `(session_id)`
+
+#### 13. `auth_login_attempts`
+
+Failed login attempts per normalized email, keyed by the SHA-256 hash of the email. The fifth failed
+attempt in the window sets `locked_until` 15 minutes ahead. A successful login deletes the row.
+
+| Column              | Type          | Constraints                 | Description                                |
+| ------------------- | ------------- | --------------------------- | ------------------------------------------ |
+| `id`                | `uuid`        | Primary Key, default random | Record identifier                          |
+| `email_hash`        | `text`        | NOT NULL                    | SHA-256 hash of the normalized login email |
+| `failed_count`      | `integer`     | NOT NULL                    | Failed attempts in the current window      |
+| `window_started_at` | `timestamptz` | NOT NULL                    | Start of the current window                |
+| `locked_until`      | `timestamptz` | Nullable                    | Lockout end (null when not locked)         |
+| `created_at`        | `timestamptz` | NOT NULL, default now()     | Creation timestamp                         |
+| `updated_at`        | `timestamptz` | NOT NULL, default now()     | Last update                                |
+
+**Indexes:**
+
+- `auth_login_attempts_email_hash_unique_idx` UNIQUE on `(email_hash)` (conflict target of the attempt upsert)
 
 ---
 

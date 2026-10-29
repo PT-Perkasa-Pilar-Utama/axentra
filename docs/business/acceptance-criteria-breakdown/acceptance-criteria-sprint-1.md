@@ -1,6 +1,6 @@
 # Acceptance Criteria - Sprint 1
 
-Sprint 1 is planned. Source: BA workbook, sheet `Acceptance Criteria`.
+Sprint 1 scope. Source: BA workbook (DMS Versi 1, approved), sheet `Acceptance Criteria`.
 
 ## AC-01.01 - Mengunggah satu file yang valid
 
@@ -15,10 +15,10 @@ Then saya melihat pesan sukses: "File diterima untuk diproses"
 ## AC-01.02 - Memastikan file yang diunggah tersimpan
 
 ```gherkin
-Given saya berhasil mengunggah file "laporan.pdf"
+Given saya berhasil mengunggah file 'laporan.pdf'
 When saya menunggu proses selesai
 And saya me-refresh halaman daftar dokumen
-Then saya melihat "laporan.pdf" muncul di daftar dokumen terbaru
+Then saya melihat 'laporan.pdf' muncul di daftar dokumen terbaru
 ```
 
 ## AC-01.03 - Mencoba mengunggah file yang tidak didukung
@@ -26,7 +26,7 @@ Then saya melihat "laporan.pdf" muncul di daftar dokumen terbaru
 ```gherkin
 Given saya seorang Member Team
 And saya berada di halaman Dasbor
-When saya menyeret file gambar .JPG ke area unggah
+When saya menyeret file gambar (.JPG) ke area unggah
 Then saya melihat pesan error: "Tipe file tidak didukung"
 ```
 
@@ -43,7 +43,7 @@ Then saya melihat notifikasi sukses untuk ketiga file tersebut
 
 ```gherkin
 Given saya seorang Member Team
-And file "laporan-keuangan.pdf" sudah ada di sistem
+And file 'laporan-keuangan.pdf' sudah ada di sistem
 When saya mencoba mengunggah file lain dengan konten yang sama persis
 Then saya melihat pesan error: "File ini sudah ada"
 ```
@@ -60,8 +60,8 @@ Then saya tidak melihat file duplikat yang baru diunggah tersebut
 
 ```gherkin
 Given saya seorang Member Team
-And file "laporan-keuangan.pdf" sudah ada di sistem
-When saya mengunggah file "presentasi-baru.pdf" dengan konten yang berbeda
+And file 'laporan-keuangan.pdf' sudah ada di sistem
+When saya mengunggah file 'presentasi-baru.pdf' dengan konten yang berbeda
 Then saya melihat pesan sukses: "File diterima untuk diproses"
 ```
 

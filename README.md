@@ -23,7 +23,7 @@ and acceptance verification are documented in [docs/TASK_BREAKDOWN.md](docs/TASK
 
 ## Quick Onboard Guide
 
-Prerequisites: Bun 1.3.12, Docker Desktop with Docker Compose, and Git.
+Prerequisites: Bun 1.4.3, Docker Desktop with Docker Compose, and Git.
 
 ### 1. Install dependencies
 
@@ -85,7 +85,7 @@ Open:
 
 | Layer    | Technology                                                                     |
 | -------- | ------------------------------------------------------------------------------ |
-| Runtime  | Bun 1.3.12                                                                     |
+| Runtime  | Bun 1.4.3                                                                      |
 | Language | TypeScript strict                                                              |
 | Frontend | React, Vite, React Router, TanStack Query, React Hook Form, Zod, Tailwind CSS  |
 | API      | Hono REST API on Bun                                                           |

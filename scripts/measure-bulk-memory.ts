@@ -212,7 +212,7 @@ async function runSingleIteration(_iteration: number): Promise<{
 }
 
 async function main(): Promise<void> {
-  console.log("=== Axentra Bulk Download Memory Benchmark (Bun 1.3.12) ===");
+  console.log(`=== Axentra Bulk Download Memory Benchmark (Bun ${Bun.version}) ===`);
   console.log("Measuring executeBulkDownloadOperation with In-Process Buffer Lifecycle\n");
 
   const iterations = 3;

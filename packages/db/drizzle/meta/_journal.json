@@ -29,6 +29,13 @@
       "when": 1792033869710,
       "tag": "0003_add_download_audit_events",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793181514786,
+      "tag": "0004_add_auth_tables_and_processing_recovery",
+      "breakpoints": true
     }
   ]
 }

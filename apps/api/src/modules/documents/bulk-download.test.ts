@@ -12,6 +12,7 @@ import { createDocumentService } from "./documents.service";
 import { InMemoryDownloadRepository, type IDownloadRepository } from "./download.repository";
 import { parseZipEntryNames } from "./documents.schema";
 import { BulkDownloadSemaphore, globalBulkDownloadSemaphore } from "./bulk-download.semaphore";
+import { BulkDownloadByteBudget } from "./bulk-download.byte-budget";
 import { executeBulkDownloadOperation } from "./bulk-download.operations";
 
 const ENABLED_DOC_1 = "11111111-1111-4111-8111-111111111111";
@@ -386,6 +387,48 @@ describe("POST /api/v1/documents/bulk-download — BE-S3-03", () => {
     });
   });
 
+  describe("Request Size Limits (B7, F16)", () => {
+    test("returns 400 when more than 100 documents are requested", async () => {
+      const { app } = createSetup();
+      const documentIds = Array.from(
+        { length: 101 },
+        (_, index) => `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+      );
+      const response = await app.request("/api/v1/documents/bulk-download", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer member-token",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ documentIds }),
+      });
+
+      expect(response.status).toBe(400);
+      const parsed = apiErrorSchema.safeParse(await response.json());
+      expect(parsed.data?.error.code).toBe("VALIDATION_ERROR");
+      expect(parsed.data?.error.message).toBe("Maksimal 100 dokumen per unduhan massal");
+    });
+
+    test("returns 413 when the JSON body exceeds 16 KiB before it is parsed", async () => {
+      const { app } = createSetup();
+      const response = await app.request("/api/v1/documents/bulk-download", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer member-token",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          documentIds: [ENABLED_DOC_1],
+          padding: "x".repeat(17 * 1024),
+        }),
+      });
+
+      expect(response.status).toBe(413);
+      const parsed = apiErrorSchema.safeParse(await response.json());
+      expect(parsed.data?.error.code).toBe("PAYLOAD_TOO_LARGE");
+    });
+  });
+
   describe("Document and File Not Found", () => {
     test("returns 404 when one or more documents do not exist", async () => {
       const { app } = createSetup();
@@ -730,22 +773,6 @@ describe("POST /api/v1/documents/bulk-download — BE-S3-03", () => {
         ),
       ).rejects.toThrow(/melebihi batas 32-bit \(4 GiB\)/);
     });
-
-    test("throws PayloadTooLargeError when document count exceeds 65,535 entries", async () => {
-      const { downloadRepo } = createSetup();
-      const fakeIds = Array.from({ length: 65536 }, (_, i) => `doc-${i}`);
-
-      const { executeBulkDownloadOperation } = await import("./bulk-download.operations");
-      await expect(
-        executeBulkDownloadOperation(
-          { downloadRepository: downloadRepo, storage: createMockStorage() },
-          {
-            documentIds: fakeIds,
-            user: { id: "u1", email: "u1@test.local", role: "admin", name: "Admin" },
-          },
-        ),
-      ).rejects.toThrow(/melebihi batas maksimum arsip ZIP \(65\.535\)/);
-    });
   });
 
   describe("Prefetch & Failure Semantics (Opsi A: F7, F12, F15, F17, F18, F20)", () => {
@@ -777,13 +804,11 @@ describe("POST /api/v1/documents/bulk-download — BE-S3-03", () => {
       expect(getObjectCalls[0]).toBe("storage/doc1.pdf");
       expect(getObjectCalls[1]).toBe("storage/doc2.docx");
 
-      const contentLengthHeader = response.headers.get("content-length");
-      expect(contentLengthHeader).not.toBeNull();
-      const expectedLength = Number(contentLengthHeader);
-      expect(expectedLength).toBeGreaterThan(0);
+      // Streamed bodies are chunked; Bun drops Content-Length, so none is sent.
+      expect(response.headers.get("content-length")).toBeNull();
 
       const arrayBuffer = await response.arrayBuffer();
-      expect(arrayBuffer.byteLength).toBe(expectedLength);
+      expect(arrayBuffer.byteLength).toBeGreaterThan(0);
 
       const names = parseZipEntryNames(new Uint8Array(arrayBuffer));
       expect(names.size).toBe(2);
@@ -1003,7 +1028,7 @@ describe("POST /api/v1/documents/bulk-download — BE-S3-03", () => {
       ).rejects.toThrow("Terlalu banyak permintaan unduhan massal secara bersamaan, antrean penuh");
     });
 
-    test("holds semaphore slot during operation execution and releases automatically upon completion", async () => {
+    test("holds semaphore slot during storage prefetch and keeps it until the result is released", async () => {
       const { downloadRepo } = createSetup();
 
       const semaphore = new BulkDownloadSemaphore({ maxConcurrency: 1 });
@@ -1017,11 +1042,13 @@ describe("POST /api/v1/documents/bulk-download — BE-S3-03", () => {
         },
       };
 
+      const byteBudget = new BulkDownloadByteBudget(1024 * 1024);
       const result = await executeBulkDownloadOperation(
         {
           downloadRepository: downloadRepo,
           storage: customStorage,
           bulkDownloadSemaphore: semaphore,
+          bulkDownloadByteBudget: byteBudget,
         },
         {
           documentIds: [ENABLED_DOC_1],
@@ -1031,8 +1058,65 @@ describe("POST /api/v1/documents/bulk-download — BE-S3-03", () => {
 
       expect(activeDuringExecution).toBe(1);
       expect(result.bytes).toBeDefined();
-      expect(result.contentLength).toBe(result.bytes.byteLength);
+      // The reservation is taken before any read, from stored sizes: the prefetched entry buffers and the
+      // archive that copies them are alive together, so it is the stored file size plus the archive size.
+      expect(byteBudget.reservedBytes).toBe(pdfBytes1.byteLength + result.bytes.byteLength);
+      expect(semaphore.activeCount).toBe(1);
+      result.release();
       expect(semaphore.activeCount).toBe(0);
+      expect(byteBudget.reservedBytes).toBe(0);
+    });
+
+    test("refuses an archive that exceeds the in-flight byte budget with 429 before any audit record", async () => {
+      const { downloadRepo } = createSetup();
+      const semaphore = new BulkDownloadSemaphore({ maxConcurrency: 1 });
+      const byteBudget = new BulkDownloadByteBudget(1);
+
+      await expect(
+        executeBulkDownloadOperation(
+          {
+            downloadRepository: downloadRepo,
+            storage: createMockStorage(),
+            bulkDownloadSemaphore: semaphore,
+            bulkDownloadByteBudget: byteBudget,
+          },
+          {
+            documentIds: [ENABLED_DOC_1],
+            user: { id: "usr-member-1", email: "member@axentra.local", role: "member_team" },
+          },
+        ),
+      ).rejects.toThrow("Terlalu banyak permintaan unduhan massal secara bersamaan, antrean penuh");
+
+      expect(downloadRepo.getRecordedAuditEvents()).toHaveLength(0);
+      expect(semaphore.activeCount).toBe(0);
+      expect(byteBudget.reservedBytes).toBe(0);
+    });
+
+    test("releases the byte reservation when the audit write fails after assembly", async () => {
+      const { downloadRepo } = createSetup();
+      downloadRepo.transaction = async () => {
+        throw new Error("audit write failed");
+      };
+      const semaphore = new BulkDownloadSemaphore({ maxConcurrency: 1 });
+      const byteBudget = new BulkDownloadByteBudget(1024 * 1024);
+
+      await expect(
+        executeBulkDownloadOperation(
+          {
+            downloadRepository: downloadRepo,
+            storage: createMockStorage(),
+            bulkDownloadSemaphore: semaphore,
+            bulkDownloadByteBudget: byteBudget,
+          },
+          {
+            documentIds: [ENABLED_DOC_1],
+            user: { id: "usr-member-1", email: "member@axentra.local", role: "member_team" },
+          },
+        ),
+      ).rejects.toThrow("Terjadi kesalahan pada server");
+
+      expect(semaphore.activeCount).toBe(0);
+      expect(byteBudget.reservedBytes).toBe(0);
     });
 
     test("releases semaphore slot when operation throws an error", async () => {

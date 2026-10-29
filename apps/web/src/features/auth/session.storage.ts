@@ -1,18 +1,29 @@
-import { authUserSchema } from "@axentra/shared";
-import { z } from "zod";
+import type { AuthUser } from "@axentra/shared";
 
-export const authSessionSchema = z.object({
-  user: authUserSchema,
-  token: z.string().min(1),
-  refreshToken: z.string().min(1).optional(),
-  rememberMe: z.boolean(),
-});
-
-export type AuthSession = z.infer<typeof authSessionSchema>;
+/**
+ * Sesi aktif. Ini satu-satunya penyimpan token di Web: access token hidup di memori tab.
+ * Refresh token hanya ada di cookie HttpOnly `axentra_refresh` dan tidak pernah dibaca JS.
+ */
+export type AuthSession = {
+  user: AuthUser;
+  token: string;
+  rememberMe?: boolean;
+};
 
 export const AUTH_SESSION_STORAGE_KEY = "axentra_auth_session";
 
 let inMemorySession: AuthSession | null = null;
+// Naik setiap identitas sesi berganti (login, logout, sign-out paksa, pengguna lain). Disimpan di
+// modul bersama sesi agar refresh yang dimulai sebelum pergantian tidak bisa memasang ulang sesi.
+let sessionGeneration = 0;
+
+export function getSessionGeneration(): number {
+  return sessionGeneration;
+}
+
+export function advanceSessionGeneration(): void {
+  sessionGeneration += 1;
+}
 
 function purgeWebStorage(): void {
   try {
@@ -33,8 +44,7 @@ function purgeWebStorage(): void {
 }
 
 export function saveSession(session: AuthSession): void {
-  // Sensitive bearer and refresh tokens MUST remain in memory only per security specs
-  // (docs/technical-specs/09-authentication.md & docs/api-specs/02-authentication.md).
+  // Access token wajib tetap di memori (docs/technical-specs/09-authentication.md).
   inMemorySession = session;
   purgeWebStorage();
 }

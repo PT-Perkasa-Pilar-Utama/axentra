@@ -37,3 +37,10 @@ Goal: Member Team can preview, download one document, and download selected docu
 
 Goal: Head of Team can monitor adoption, view download audit logs, and control download
 permission by category.
+
+## Admin (usulan, belum ada sprint)
+
+The Admin role is not in the BA workbook, and the BA has not approved it. Its proposal IDs
+(PROP-ADM-01 to PROP-ADM-05 and PROP-ADM-AC-01.01 to PROP-ADM-AC-05.01) are not BA IDs. They appear
+only in the proposal [proposals/admin-role-proposal.md](../proposals/admin-role-proposal.md), which
+is not a BA source. No sprint covers them.

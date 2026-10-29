@@ -19,7 +19,6 @@ import {
   downloadDocumentQuerySchema,
   downloadDocumentResponseSchema,
   downloadDocumentSuccessResponseSchema,
-  PREVIEW_URL_TTL_SECONDS,
   previewDocumentResponseSchema,
   previewDocumentSuccessResponseSchema,
   processingStatusSchema,
@@ -520,13 +519,11 @@ describe("document shared schemas", () => {
   });
 
   describe("previewDocumentResponseSchema and success response", () => {
-    it("accepts valid preview response data", () => {
+    it("accepts valid preview metadata without a storage URL", () => {
       const valid = {
-        previewUrl: "https://storage.local/bucket/documents/uuid/file.pdf?sig=abc",
         filename: "laporan.pdf",
         mimeType: "application/pdf",
         fileSize: 1048576,
-        expiresInSeconds: PREVIEW_URL_TTL_SECONDS,
       };
       expect(previewDocumentResponseSchema.parse(valid)).toEqual(valid);
 
@@ -537,24 +534,22 @@ describe("document shared schemas", () => {
       expect(previewDocumentSuccessResponseSchema.parse(envelope)).toEqual(envelope);
     });
 
-    it("rejects invalid previewUrl or negative fileSize", () => {
-      expect(() =>
-        previewDocumentResponseSchema.parse({
-          previewUrl: "not-a-url",
-          filename: "laporan.pdf",
-          mimeType: "application/pdf",
-          fileSize: 1048576,
-          expiresInSeconds: PREVIEW_URL_TTL_SECONDS,
-        }),
-      ).toThrow();
+    it("drops any legacy previewUrl field instead of passing it through", () => {
+      const parsed = previewDocumentResponseSchema.parse({
+        previewUrl: "https://storage.local/bucket/documents/uuid/file.pdf?sig=abc",
+        filename: "laporan.pdf",
+        mimeType: "application/pdf",
+        fileSize: 1048576,
+      });
+      expect(Object.keys(parsed).sort()).toEqual(["fileSize", "filename", "mimeType"]);
+    });
 
+    it("rejects negative fileSize", () => {
       expect(() =>
         previewDocumentResponseSchema.parse({
-          previewUrl: "https://storage.local/file.pdf",
           filename: "laporan.pdf",
           mimeType: "application/pdf",
           fileSize: -1,
-          expiresInSeconds: PREVIEW_URL_TTL_SECONDS,
         }),
       ).toThrow();
     });

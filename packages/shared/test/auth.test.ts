@@ -125,21 +125,23 @@ describe("auth shared schemas", () => {
           name: "Sami",
         },
         token: "mock-token-xyz",
+        expiresAt: "2026-10-27T08:15:00.000Z",
       };
       expect(loginResponseSchema.parse(valid)).toEqual(valid);
     });
 
-    it("accepts login response with refreshToken", () => {
-      const valid = {
+    it("strips a refreshToken field from the login response", () => {
+      const parsed = loginResponseSchema.parse({
         user: {
           id: "11111111-1111-4111-8111-111111111111",
           email: "sami@axentra.internal",
           role: "member_team" as const,
         },
         token: "mock-token-xyz",
+        expiresAt: "2026-10-27T08:15:00.000Z",
         refreshToken: "mock-refresh-token",
-      };
-      expect(loginResponseSchema.parse(valid)).toEqual(valid);
+      });
+      expect(parsed).not.toHaveProperty("refreshToken");
     });
 
     it("rejects empty token", () => {

@@ -3,7 +3,7 @@
 ## Axentra: Document Management System
 
 **Version:** 1.0.0<br>
-**Date:** 2026-09-16  
+**Date:** 2026-10-27<br>
 **Author:** Arya Isnaidi (Tech Lead)  
 **Status:** Draft for Sprint Planning
 
@@ -97,11 +97,18 @@ overall release.
 
 ## Foundation Maintenance
 
-| Card ID | Board Card Title             | Task Description                                                              | AC        | PIC  | Est  | Docs                                                   |
-| ------- | ---------------------------- | ----------------------------------------------------------------------------- | --------- | ---- | ---- | ------------------------------------------------------ |
-| FND-09  | Add database studio shortcut | Expose a root command for local PostgreSQL inspection through Drizzle Studio. | AC-FND-07 | Arya | 0.2d | ONBOARDING_GUIDE.md, acceptance-criteria-foundation.md |
+| Card ID | Board Card Title                         | Task Description                                                                                                                                                                                                                                                                                                                                                                               | AC                                   | PIC  | Est               | Docs                                                                                                                                  |
+| ------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ | ---- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| FND-09  | Add database studio shortcut             | Expose a root command for local PostgreSQL inspection through Drizzle Studio.                                                                                                                                                                                                                                                                                                                  | AC-FND-07                            | Arya | 0.2d              | ONBOARDING_GUIDE.md, acceptance-criteria-foundation.md                                                                                |
+| FND-10  | Resolve Sprint 1-3 partials and blockers | Closes PARTIAL items and release blockers from the Sprint 1-3 status review of 2026-10-27 (a local report that is not committed; this row lists its scope): production login, durable sessions with refresh cookie, login rate limit, stuck processing recovery, search wildcard escape, bulk download memory hold, spec drift, and the FE gaps for upload, search, tags, detail, and bulk UI. | AC-01.01 to AC-10.01 (as applicable) | Arya | tracked by branch | api-specs/\_index.md, api-specs/02-authentication.md, api-specs/03-documents.md, technical-specs/09-authentication.md, E2E_TESTING.md |
+
+Decision IDs used by FND-10 (B1, B2, D8, D24, D30) are defined in [DECISIONS.md](DECISIONS.md). They are proposals until the Tech Lead records a decision.
+
+The Admin role is a proposal that the BA has not approved. Its proposal IDs (PROP-ADM-01 to PROP-ADM-05 and PROP-ADM-AC-01.01 to PROP-ADM-AC-05.01) are not BA IDs, and no sprint card covers them. See [proposals/admin-role-proposal.md](proposals/admin-role-proposal.md).
 
 ## Sprint 1: Upload, Duplicate Detection, Metadata
+
+**Status:** Done. FND-10, which closes the Sprint 1-3 partials, is still awaiting Tech Lead approval.
 
 Goal: Member Team can upload supported documents, see duplicate warnings, and view extracted
 metadata.
@@ -120,25 +127,27 @@ metadata.
 
 ### Frontend
 
-| Card ID  | Board Card Title                            | Task Description                                                                                                                                                                                                                                                                                                                    | AC                              | PIC   | Est  | Docs                                                                                         |
-| -------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- | ----- | ---- | -------------------------------------------------------------------------------------------- |
-| FE-S1-01 | Build Member Team dashboard upload area     | Drag-and-drop upload panel for one PDF or multiple DOCX files; success, unsupported type, duplicate, processing, and retry states.                                                                                                                                                                                                  | AC-01.01, AC-01.03, AC-01.04    | Azis  | 1.3d | business/textual-design-member-team.md, api-specs/03-documents.md                            |
-| FE-S1-02 | Show recent uploaded documents              | Recent documents section refreshes after processing and shows uploaded filename such as `laporan.pdf`.                                                                                                                                                                                                                              | AC-01.02                        | Azis  | 0.8d | business/textual-design-member-team.md                                                       |
-| FE-S1-03 | Render document metadata in detail view     | Detail page shows extracted author metadata after processing completes.                                                                                                                                                                                                                                                             | AC-03.01                        | Aiman | 0.8d | business/textual-design-member-team.md, api-specs/04-processing.md                           |
-| FE-S1-04 | Wire upload API client and presenter states | Feature files follow API -> Presenter -> View; handles accepted, rejected, duplicate, loading, empty, and error states.                                                                                                                                                                                                             | AC-01.01 to AC-03.01            | Aiman | 0.7d | CODING_STANDARD.md                                                                           |
-| FE-S1-05 | Build Perkasa login UI and form presenter   | Implementasi kartu login sesuai mockup Perkasa (logo, input email dengan icon, input password dengan toggle lihat password, checkbox Ingat saya, tombol submit hijau dengan indikator loading). Terapkan Zod validation (`loginRequestSchema`), penanganan error credential (_alert envelope_), dan arsitektur _Presenter -> View_. | Prasyarat F-A1 & Desain Perkasa | Aiman | 1.0d | api-specs/02-authentication.md, CODING_STANDARD.md                                           |
-| FE-S1-06 | Wire auth session and Bearer token client   | Manajemen sesi Web (penyimpanan token, dukungan remember me), injeksi otomatis `Authorization: Bearer <token>` pada api-client.ts, route protection & redirect 401 ke /login (menutup blocker F-A1).                                                                                                                                | Prasyarat Proteksi API Dokumen  | Aiman | 0.8d | api-specs/02-authentication.md, audits/SPRINT-1_STATUS_AUDIT_AIMAN_AND_BACKEND_2026-09-22.md |
-| FE-S1-07 | Update application font to Exo 2            | Update application typography to Exo 2 across web shell (index.html, styles.css), configure Tailwind font token, and inherit global form controls.                                                                                                                                                                                  | Desain Perkasa                  | Aiman | 0.2d | CODING_STANDARD.md                                                                           |
+| Card ID  | Board Card Title                            | Task Description                                                                                                                                                                                                                                                                                                                    | AC                              | PIC   | Est  | Docs                                                               |
+| -------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- | ----- | ---- | ------------------------------------------------------------------ |
+| FE-S1-01 | Build Member Team dashboard upload area     | Drag-and-drop upload panel for one PDF or multiple DOCX files; success, unsupported type, duplicate, processing, and retry states.                                                                                                                                                                                                  | AC-01.01, AC-01.03, AC-01.04    | Azis  | 1.3d | business/textual-design-member-team.md, api-specs/03-documents.md  |
+| FE-S1-02 | Show recent uploaded documents              | Recent documents section refreshes after processing and shows uploaded filename such as `laporan.pdf`.                                                                                                                                                                                                                              | AC-01.02                        | Azis  | 0.8d | business/textual-design-member-team.md                             |
+| FE-S1-03 | Render document metadata in detail view     | Detail page shows extracted author metadata after processing completes.                                                                                                                                                                                                                                                             | AC-03.01                        | Aiman | 0.8d | business/textual-design-member-team.md, api-specs/04-processing.md |
+| FE-S1-04 | Wire upload API client and presenter states | Feature files follow API -> Presenter -> View; handles accepted, rejected, duplicate, loading, empty, and error states.                                                                                                                                                                                                             | AC-01.01 to AC-03.01            | Aiman | 0.7d | CODING_STANDARD.md                                                 |
+| FE-S1-05 | Build Perkasa login UI and form presenter   | Implementasi kartu login sesuai mockup Perkasa (logo, input email dengan icon, input password dengan toggle lihat password, checkbox Ingat saya, tombol submit hijau dengan indikator loading). Terapkan Zod validation (`loginRequestSchema`), penanganan error credential (_alert envelope_), dan arsitektur _Presenter -> View_. | Prasyarat F-A1 & Desain Perkasa | Aiman | 1.0d | api-specs/02-authentication.md, CODING_STANDARD.md                 |
+| FE-S1-06 | Wire auth session and Bearer token client   | Manajemen sesi Web (penyimpanan token, dukungan remember me), injeksi otomatis `Authorization: Bearer <token>` pada api-client.ts, route protection & redirect 401 ke /login (menutup blocker F-A1).                                                                                                                                | Prasyarat Proteksi API Dokumen  | Aiman | 0.8d | api-specs/02-authentication.md                                     |
+| FE-S1-07 | Update application font to Exo 2            | Update application typography to Exo 2 across web shell (index.html, styles.css), configure Tailwind font token, and inherit global form controls.                                                                                                                                                                                  | Desain Perkasa                  | Aiman | 0.2d | CODING_STANDARD.md                                                 |
 
 ### Acceptance Verification
 
 | Card ID  | Board Card Title                 | Task Description                                                                                  | AC                   | PIC  | Est  | Docs                                                                   |
 | -------- | -------------------------------- | ------------------------------------------------------------------------------------------------- | -------------------- | ---- | ---- | ---------------------------------------------------------------------- |
-| QA-S1-01 | Verify upload and duplicate flow | Manual and automated coverage for valid PDF, multiple DOCX, unsupported JPG, duplicate, metadata. | AC-01.01 to AC-03.01 | Sami | 0.8d | business/acceptance-criteria-breakdown/acceptance-criteria-sprint-1.md |
+| QA-S1-01 | Verify upload and duplicate flow | Manual and automated coverage for valid PDF, multiple DOCX, unsupported JPG, duplicate, metadata. | AC-01.01 to AC-03.01 | Arya | 0.8d | business/acceptance-criteria-breakdown/acceptance-criteria-sprint-1.md |
 
 ---
 
 ## Sprint 2: Smart Tags, Auto Category, Search, Related Documents
+
+**Status:** Done. FND-10, which closes the Sprint 1-3 partials, is still awaiting Tech Lead approval.
 
 Goal: uploaded documents become discoverable through AI-generated tags, auto categories, search,
 and related-document suggestions.
@@ -164,21 +173,23 @@ and related-document suggestions.
 | FE-S2-04 | Build search results experience | Search bar, Enter submission, filename/snippet result cards, under-3-second visible state, and no-result message. | AC-06.01, AC-06.02, AC-06.03, AC-06.04 | Azis  | 1.0d | business/textual-design-member-team.md                                         |
 | FE-S2-05 | Build related documents section | Detail page includes `Dokumen Terkait` with relevant tag-overlap suggestions.                                     | AC-07.01, AC-07.02                     | Aiman | 0.6d | business/textual-design-member-team.md                                         |
 
-### FE-S2-03 delivery status (updated 2026-10-19)
+### FE-S2-03 delivery status (updated 2026-10-27)
 
 - **Implementation complete in PR #42** ([FE-S2-03 category navigation and document integration](https://github.com/PT-Perkasa-Pilar-Utama/axentra/pull/42)); category listing, auto-assignment, and category-filtered document search are integrated with the real APIs.
-- **Acceptance walkthrough verified on the local real stack** at PR head `e1d94cccff62222f8614979194bfbefd3e9a4657` (application tree is identical to rebased code commit `8637f41`; API, Worker, PostgreSQL, Redis, MinIO, and Web): as `member_team`, uploaded synthetic `reporting.pdf` containing `Reporting` and `contract.pdf` containing `Contract`. The worker created separate categories and associated each document; selecting each category displayed only its matching document. Evidence screenshots are committed in [`docs/screenshots/FE-S2-03/`](screenshots/FE-S2-03/). `origin/dev` was unchanged at `1ba24d6` during this walkthrough.
+- **Acceptance walkthrough verified on the local real stack** at PR head `e1d94cccff62222f8614979194bfbefd3e9a4657` (PR #42 merge `54fa15b`, head `c7a01c9`; API, Worker, PostgreSQL, Redis, MinIO, and Web): as `member_team`, uploaded synthetic `reporting.pdf` containing `Reporting` and `contract.pdf` containing `Contract`. The worker created separate categories and associated each document; selecting each category displayed only its matching document. Evidence screenshots are committed in [`docs/screenshots/FE-S2-03/`](screenshots/FE-S2-03/). `origin/dev` was unchanged at `1ba24d6` during this walkthrough.
 - `QA-S2-01` remains responsible for sprint-level acceptance coverage and Tech Lead sign-off. This entry records FE-S2-03 evidence and does not replace that verification.
 
 ### Acceptance Verification
 
 | Card ID  | Board Card Title                            | Task Description                                                                                      | AC                   | PIC  | Est  | Docs                                                                   |
 | -------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------- | -------------------- | ---- | ---- | ---------------------------------------------------------------------- |
-| QA-S2-01 | Verify discovery, tag, category, and search | Coverage for Smart Tags, Top Tags, single/multi-tag filter, auto category, fast search, related docs. | AC-04.01 to AC-07.02 | Azis | 1.0d | business/acceptance-criteria-breakdown/acceptance-criteria-sprint-2.md |
+| QA-S2-01 | Verify discovery, tag, category, and search | Coverage for Smart Tags, Top Tags, single/multi-tag filter, auto category, fast search, related docs. | AC-04.01 to AC-07.02 | Arya | 1.0d | business/acceptance-criteria-breakdown/acceptance-criteria-sprint-2.md |
 
 ---
 
 ## Sprint 3: Preview, Download, Bulk Download
+
+**Status:** Done. FND-10, which closes the Sprint 1-3 partials, is still awaiting Tech Lead approval.
 
 Goal: Member Team can preview documents without downloading, download one permitted document, and
 download selected documents as a `.zip`.
@@ -200,21 +211,21 @@ download selected documents as a `.zip`.
 | FE-S3-02 | Build single download action    | Download button starts original-format download when permission allows it; handles denied and expired states. | AC-09.01 | Azis  | 0.7d | business/textual-design-member-team.md |
 | FE-S3-03 | Build selected bulk download UI | Dashboard supports multi-select and `Download Selected`; starts one `.zip` download.                          | AC-10.01 | Aiman | 0.9d | business/textual-design-member-team.md |
 
-### FE-S3-01 delivery evidence (verified 2026-10-20)
+### FE-S3-01 delivery evidence (2026-10-20 walkthrough, superseded)
 
-- **AC-08.01 manual walkthrough:** Environment: local Axentra stack (Web, Hono API, PostgreSQL, Redis, MinIO); Chrome on Windows 11; target branch `FE-S3-01-Build-document-preview-viewer` rebased on `origin/dev` `54fa15b`. Role: `member_team` (`member@axentra.local`) authenticated through the real login UI. Input: existing local-stack `sample-reporting.pdf`, whose rendered page contains “Dokumen ini merupakan laporan kinerja dan reporting keuangan tahunan perusahaan.” Expected: selecting the finance-content document from Dashboard displays the whole PDF inline without triggering file download. Observed: Dashboard row opened `/documents/71fb4ebd-e19d-4db0-bad3-87716681fa7e`; browser rendered the one-page PDF inline; no application download/navigation occurred; `Unduh` remained disabled and described as “Fitur unduh belum tersedia pada versi ini.” Screenshot: [`document-preview-round3-live.png`](screenshots/FE-S3-01/document-preview-round3-live.png). The API used an ephemeral local-only identity directory for this run; no credentials or bearer tokens were persisted.
-- **F8:** Disabled `Unduh` button now references the visible explanation via `aria-describedby`; focused tests verify the target exists and text is present.
-- This is manual acceptance evidence only; automated AC-08.01 E2E remains `Planned` in `docs/E2E_TESTING.md`; QA-S3-01 and Arya retain sprint acceptance sign-off.
+Walkthrough 2026-10-20 sudah usang. Screenshot pertama dari run FND-10, `inline-preview.png`, juga digantikan: iframe pada run itu memuat presigned URL penyimpanan, dan pratinjau kini mengalir lewat API. Run ulang 2026-10-27 dan catatannya ada di [EVIDENCE.md](screenshots/FE-S3-01/EVIDENCE.md). Ulangi run tersebut pada SHA yang di-commit sebelum rilis.
 
 ### Acceptance Verification
 
-| Card ID  | Board Card Title               | Task Description                                                                       | AC                   | PIC   | Est  | Docs                                                                   |
-| -------- | ------------------------------ | -------------------------------------------------------------------------------------- | -------------------- | ----- | ---- | ---------------------------------------------------------------------- |
-| QA-S3-01 | Verify preview and download AC | Coverage for preview, single download original format, bulk `.zip`, permission denial. | AC-08.01 to AC-10.01 | Aiman | 0.8d | business/acceptance-criteria-breakdown/acceptance-criteria-sprint-3.md |
+| Card ID  | Board Card Title               | Task Description                                                                       | AC                   | PIC  | Est  | Docs                                                                   |
+| -------- | ------------------------------ | -------------------------------------------------------------------------------------- | -------------------- | ---- | ---- | ---------------------------------------------------------------------- |
+| QA-S3-01 | Verify preview and download AC | Coverage for preview, single download original format, bulk `.zip`, permission denial. | AC-08.01 to AC-10.01 | Arya | 0.8d | business/acceptance-criteria-breakdown/acceptance-criteria-sprint-3.md |
 
 ---
 
 ## Sprint 4: Analytics, Audit Trail, Category Permissions
+
+**Status:** Planned
 
 Goal: Head of Team can monitor document usage, inspect download logs, and control Member Team
 download permission by category.
@@ -240,7 +251,7 @@ download permission by category.
 
 | Card ID  | Board Card Title             | Task Description                                                                                    | AC                   | PIC  | Est  | Docs                                                                   |
 | -------- | ---------------------------- | --------------------------------------------------------------------------------------------------- | -------------------- | ---- | ---- | ---------------------------------------------------------------------- |
-| QA-S4-01 | Verify Head of Team controls | Coverage for analytics cards, audit trail fields, category toggle, and Member Team download access. | AC-11.01 to AC-13.01 | Azis | 0.8d | business/acceptance-criteria-breakdown/acceptance-criteria-sprint-4.md |
+| QA-S4-01 | Verify Head of Team controls | Coverage for analytics cards, audit trail fields, category toggle, and Member Team download access. | AC-11.01 to AC-13.01 | Arya | 0.8d | business/acceptance-criteria-breakdown/acceptance-criteria-sprint-4.md |
 
 ---
 
@@ -259,10 +270,10 @@ Applies to every BE, FE, DB, FND, and shared verification card:
 
 ## Summary
 
-| Sprint     | Focus                                                | BE/DB cards | FE cards | Verification cards | Est total |
-| ---------- | ---------------------------------------------------- | ----------- | -------- | ------------------ | --------- |
-| Foundation | Runtime, infrastructure, docs, CI                    | Done        | Done     | Done               | Done      |
-| Sprint 1   | Upload, duplicate detection, metadata, auth          | 6           | 6        | 1                  | 10.5d     |
-| Sprint 2   | Smart Tags, category, search, related documents      | 6           | 5        | 1                  | 8.4d      |
-| Sprint 3   | Preview, single download, bulk download              | 4           | 3        | 1                  | 7.1d      |
-| Sprint 4   | Analytics, audit trail, category download permission | 4           | 3        | 1                  | 5.8d      |
+| Sprint     | Focus                                                | BE/DB cards | FE cards | Verification cards | Est total | Status  |
+| ---------- | ---------------------------------------------------- | ----------- | -------- | ------------------ | --------- | ------- |
+| Foundation | Runtime, infrastructure, docs, CI                    | Done        | Done     | Done               | Done      | Done    |
+| Sprint 1   | Upload, duplicate detection, metadata, auth          | 6           | 6        | 1                  | 10.5d     | Done    |
+| Sprint 2   | Smart Tags, category, search, related documents      | 6           | 5        | 1                  | 8.4d      | Done    |
+| Sprint 3   | Preview, single download, bulk download              | 4           | 3        | 1                  | 7.1d      | Done    |
+| Sprint 4   | Analytics, audit trail, category download permission | 4           | 3        | 1                  | 5.8d      | Planned |

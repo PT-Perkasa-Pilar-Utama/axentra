@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import type { StorageAdapter } from "@axentra/storage";
 import type { DocumentProcessingJob } from "@axentra/shared";
 import { InMemoryDocumentProcessingRepository, processDocumentJob } from "./document.processor";
+import { PROCESSING_FAILURE_MESSAGE } from "./processing-failure";
 
 function createMockStorage(filesMap: Map<string, Uint8Array>): StorageAdapter {
   return {
@@ -167,11 +168,11 @@ describe("Document Worker Processor (Task BE-S1-05 / F2 & F7)", () => {
         repository,
         storage: emptyStorage,
       }),
-    ).rejects.toThrow("Object not found in mock storage");
+    ).rejects.toThrow(PROCESSING_FAILURE_MESSAGE);
 
     const doc = repository.documents.get(validJob.documentId);
     expect(doc?.processingStatus).toBe("failed");
-    expect(doc?.errorMessage).toBe("Object not found in mock storage");
+    expect(doc?.errorMessage).toBe(PROCESSING_FAILURE_MESSAGE);
   });
 
   it("handles failure in completeWithMetadata atomically and marks document as failed (Finding F7)", async () => {
@@ -205,15 +206,15 @@ describe("Document Worker Processor (Task BE-S1-05 / F2 & F7)", () => {
         repository,
         storage,
       }),
-    ).rejects.toThrow("Simulated transaction failure in completeWithMetadata");
+    ).rejects.toThrow(PROCESSING_FAILURE_MESSAGE);
 
     // Atomicity assertion: metadata must NOT be persisted if completion fails
     expect(repository.metadata.has(validJob.documentId)).toBe(false);
 
-    // Document status must be marked as failed
+    // Document status must be marked as failed, with the fixed copy rather than the raw error text
     const doc = repository.documents.get(validJob.documentId);
     expect(doc?.processingStatus).toBe("failed");
-    expect(doc?.errorMessage).toBe("Simulated transaction failure in completeWithMetadata");
+    expect(doc?.errorMessage).toBe(PROCESSING_FAILURE_MESSAGE);
   });
 
   it("extracts and persists up to 3 smart tags during processing (Task BE-S2-01 / AC-04.02)", async () => {

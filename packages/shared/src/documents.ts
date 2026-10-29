@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { processingStatusSchema } from "./document";
 
 export const SUPPORTED_DOCUMENT_EXTENSIONS = [".pdf", ".docx"] as const;
 export type SupportedDocumentExtension = (typeof SUPPORTED_DOCUMENT_EXTENSIONS)[number];
@@ -125,12 +126,8 @@ export const uploadDocumentSuccessResponseSchema = z.object({
 });
 export type UploadDocumentSuccessResponse = z.infer<typeof uploadDocumentSuccessResponseSchema>;
 
-export const documentProcessingStatusSchema = z.enum([
-  "queued",
-  "processing",
-  "processed",
-  "failed",
-]);
+// Reuses the document status contract so the DB enum, worker, and Web share one literal list.
+export const documentProcessingStatusSchema = processingStatusSchema;
 
 export type DocumentProcessingStatus = z.infer<typeof documentProcessingStatusSchema>;
 

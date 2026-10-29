@@ -2,6 +2,7 @@ import type React from "react";
 import { Navigate, Outlet, useLocation } from "react-router";
 import type { UserRole } from "@axentra/shared";
 import { useAuthSession } from "./auth-session.context";
+import { SessionLoadingView } from "./session-loading.view";
 
 export type ProtectedRouteProps = {
   allowedRoles?: UserRole[];
@@ -13,20 +14,7 @@ export function ProtectedRoute({ allowedRoles, children }: ProtectedRouteProps):
   const location = useLocation();
 
   if (isLoading) {
-    return (
-      <div
-        className="flex min-h-[50vh] items-center justify-center p-8"
-        role="status"
-        aria-live="polite"
-      >
-        <div className="flex flex-col items-center gap-3">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-[#214e30]" />
-          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            Memuat sesi...
-          </span>
-        </div>
-      </div>
-    );
+    return <SessionLoadingView />;
   }
 
   if (!isAuthenticated) {

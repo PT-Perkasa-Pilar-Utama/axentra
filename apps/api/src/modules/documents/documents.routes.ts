@@ -9,9 +9,11 @@ import { createGetDocumentMetadataHandler } from "./metadata.handler";
 import { createGetDocumentSmartTagsHandler } from "./smart-tags.handler";
 import { createGetDocumentCategoryHandler } from "./category.handler";
 import { createListRelatedDocumentsHandler } from "./related.handler";
+import { createGetDocumentDetailHandler } from "./documents.detail.handler";
 import { createDownloadDocumentHandler } from "./download.handler";
 import { createBulkDownloadHandler } from "./bulk-download.handler";
 import { createPreviewDocumentHandler } from "./preview.handler";
+import { createPreviewDocumentContentHandler } from "./preview-content.handler";
 import type { DocumentService } from "./documents.service";
 
 export type DocumentRouteDependencies = {
@@ -52,6 +54,13 @@ export function createDocumentRoutes(
   );
 
   routes.get(
+    "/:id",
+    requireAuth(verifier),
+    requireRole(["member_team", "head_of_team"]),
+    createGetDocumentDetailHandler(dependencies),
+  );
+
+  routes.get(
     "/:id/related",
     requireAuth(verifier),
     requireRole(["member_team", "head_of_team"]),
@@ -84,6 +93,13 @@ export function createDocumentRoutes(
     requireAuth(verifier),
     requireRole(["member_team", "head_of_team", "admin"]),
     createPreviewDocumentHandler(dependencies),
+  );
+
+  routes.get(
+    "/:id/preview/content",
+    requireAuth(verifier),
+    requireRole(["member_team", "head_of_team", "admin"]),
+    createPreviewDocumentContentHandler(dependencies),
   );
 
   routes.get(

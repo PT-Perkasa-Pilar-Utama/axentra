@@ -1,4 +1,5 @@
 import type { Logger } from "@axentra/observability";
+import { summarizeError } from "@axentra/observability";
 import type { DocumentProcessingJob } from "@axentra/shared";
 import type { StorageAdapter } from "@axentra/storage";
 import { extractMetadataFromBuffer } from "./metadata.extractor";
@@ -6,6 +7,7 @@ import { extractDocumentBodyText } from "./document-text.extractor";
 import { extractSmartTagsFromBuffer } from "./smart-tags.extractor";
 import { extractCategoryFromBuffer } from "./category.extractor";
 import type { DocumentProcessingRepository } from "./document.processor.repository";
+import { DocumentProcessingFailedError, PROCESSING_FAILURE_MESSAGE } from "./processing-failure";
 
 export * from "./document.processor.repository";
 
@@ -101,17 +103,14 @@ export async function processDocumentJob(
       "Document metadata, smart tags, and category processing completed successfully",
     );
   } catch (error: unknown) {
-    const causeMsg = (error as { cause?: { message?: string } })?.cause?.message;
-    const baseMessage =
-      error instanceof Error ? error.message : "Terjadi kesalahan saat memproses dokumen";
-    const errorMessage =
-      typeof causeMsg === "string" && causeMsg.length > 0 && !baseMessage.includes(causeMsg)
-        ? `${baseMessage}: ${causeMsg}`
-        : baseMessage;
+    // Only the fixed copy is stored or rethrown. Driver errors carry SQL text and parameters, and
+    // storage errors can carry object keys, so their messages never leave this function.
+    await repository.markAsFailed(documentId, PROCESSING_FAILURE_MESSAGE);
 
-    await repository.markAsFailed(documentId, errorMessage);
-
-    logger?.error({ jobId, documentId, error }, "Document processing failed");
-    throw error;
+    logger?.error(
+      { jobId, documentId, error: summarizeError(error) },
+      "Document processing failed",
+    );
+    throw new DocumentProcessingFailedError();
   }
 }

@@ -17,6 +17,10 @@ export type UploadStatus =
   | "unsupported_error"
   | "error";
 
+/**
+ * Teks notifikasi sama persis dengan BA (AC-01.01, AC-01.03, AC-02.01). Tanpa awalan
+ * "Unggah berhasil/gagal"; status dibedakan lewat warna dan ikon.
+ */
 export type UploadNotification = {
   type: "success" | "error";
   message: string;
@@ -105,10 +109,7 @@ export function classifyUploadError(error: unknown): {
     }
 
     if (error.code === DOCUMENT_ERROR_CODES.UNSUPPORTED_FILE_TYPE || error.status === 415) {
-      return {
-        status: "unsupported_error",
-        message: error.message || UPLOAD_MESSAGES.UNSUPPORTED,
-      };
+      return { status: "unsupported_error", message: UPLOAD_MESSAGES.UNSUPPORTED };
     }
   }
 

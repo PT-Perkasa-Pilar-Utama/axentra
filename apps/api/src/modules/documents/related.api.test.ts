@@ -39,6 +39,7 @@ const sourceDocument: SourceDocument = {
   categoryId: null,
   processingStatus: "completed" as const,
   errorMessage: null,
+  processingRecoveryAttempts: 0,
   createdAt: new Date("2026-09-20T00:00:00.000Z"),
   updatedAt: new Date("2026-09-20T00:00:00.000Z"),
   deletedAt: null,

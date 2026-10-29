@@ -1,6 +1,6 @@
 # Acceptance Criteria - Sprint 2
 
-Sprint 2 is planned. Source: BA workbook, sheet `Acceptance Criteria`.
+Sprint 2 scope. Source: BA workbook (DMS Versi 1, approved), sheet `Acceptance Criteria`.
 
 ## AC-04.01 - Menampilkan filter tag yang tersedia
 
@@ -16,10 +16,10 @@ Then saya melihat panel filter "Top Tags" yang berisi daftar tag yang relevan de
 ```gherkin
 Given saya seorang Member Team
 And saya berada di halaman Dasbor
-And dokumen berhasil diunggah dan diproses oleh sistem AI
+And dokumen berhasil diunggah dan diproses oleh sistem (AI)
 When saya membuka daftar dokumen yang telah diupload
 Then saya melihat "Smart Tags" yang relevan dengan isi dokumen secara otomatis pada dokumen dengan maks 3 tag
-And bar "Top Tags" otomatis bertambah apabila tag yang ada di dokumen belum ada sama sekali di tag bar
+And bar "Top Tags" (tags yang paling sering muncul) otomatis bertambah apabila tag yang ada di dokumen belum ada sama sekali di tag bar
 ```
 
 ## AC-04.03 - Melakukan filtering dokumen dengan menggunakan single tag
@@ -29,7 +29,7 @@ Given saya seorang Member Team
 And saya berada di halaman Dasbor
 When saya menekan bar Top Tags "Strategy"
 Then daftar hasil pencarian diperbarui untuk hanya menampilkan dokumen dengan tag "Strategy"
-And tag yang sedang aktif berubah warna highlighted untuk menunjukkan filter yang sedang berjalan
+And tag yang sedang aktif akan berubah warna (Highighted) untuk menunjukkan filter mana yang sedang berjalan
 ```
 
 ## AC-04.04 - Melakukan filtering dokumen dengan menggunakan multi-tag
@@ -49,7 +49,7 @@ And saya berada di halaman Dasbor
 When saya mengunggah dokumen dengan isi konten "Reporting"
 Then saya melihat kategori baru "Reporting" muncul di list menu kategori utama
 And dokumen tersebut masuk ke dalam menu kategori "Reporting"
-And setiap kategori baru yang dibentuk tidak mendapat perizinan download dan harus disetting dari Head of Team
+And setiap kategori baru yang dibentuk tidak mendapat perizinan download, harus disetting dari Head of Team
 ```
 
 ## AC-05.02 - Mengkategorikan beberapa dokumen secara otomatis

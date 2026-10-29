@@ -11,44 +11,31 @@ export type LoggerConfiguration = {
   destination?: pino.DestinationStream;
 };
 
-const redactPaths = [
-  "**.password",
-  "**.token",
-  "**.accessToken",
-  "**.refreshToken",
-  "**.authorization",
-  "**.cookie",
-  "**.DATABASE_URL",
-  "**.REDIS_URL",
-  "**.S3_ACCESS_KEY_ID",
-  "**.S3_SECRET_ACCESS_KEY",
-  "**.signedUrl",
-  "**.documentContent",
-  "*.password",
-  "*.token",
-  "*.accessToken",
-  "*.refreshToken",
-  "*.authorization",
-  "*.cookie",
-  "*.DATABASE_URL",
-  "*.REDIS_URL",
-  "*.S3_ACCESS_KEY_ID",
-  "*.S3_SECRET_ACCESS_KEY",
-  "*.signedUrl",
-  "*.documentContent",
+// Keys whose values never reach a log line.
+const SENSITIVE_LOG_KEYS = [
   "password",
+  "passwordHash",
   "token",
   "accessToken",
   "refreshToken",
+  "authorization",
+  "cookie",
+  "DATABASE_URL",
+  "REDIS_URL",
   "S3_ACCESS_KEY_ID",
   "S3_SECRET_ACCESS_KEY",
   "signedUrl",
+  "downloadUrl",
+  "previewUrl",
+  "storageKey",
+  "objectKey",
   "documentContent",
-  "req.headers.authorization",
-  "req.headers.cookie",
-  "headers.authorization",
-  "headers.cookie",
-];
+] as const;
+
+// pino has no recursive wildcard: "*" matches exactly one level and "**" is read as a literal key name. Each
+// key is therefore redacted at the root of the log object and one and two levels below it, which also
+// covers req.headers.authorization and child-logger bindings.
+const redactPaths = SENSITIVE_LOG_KEYS.flatMap((key) => [key, `*.${key}`, `*.*.${key}`]);
 
 export function summarizeError(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object") return { type: typeof value };

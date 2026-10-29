@@ -1,7 +1,6 @@
 import { useState, useCallback } from "react";
 import type { FormEvent } from "react";
-import { useForm, type UseFormReturn } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm, type FieldErrors, type Resolver, type UseFormReturn } from "react-hook-form";
 import { z } from "zod";
 import { loginRequestSchema } from "@axentra/shared";
 import type { LoginRequest, LoginResponse } from "@axentra/shared";
@@ -23,24 +22,29 @@ export const LOGIN_MESSAGES = {
   GENERIC_ERROR: "Terjadi kesalahan saat masuk",
 } as const;
 
+/**
+ * Aturan email dan kata sandi berasal dari loginRequestSchema (@axentra/shared). Form hanya
+ * menambahkan checkbox "Ingat saya" yang selalu bernilai boolean.
+ */
 export const loginFormSchema = loginRequestSchema.extend({
-  email: z
-    .string()
-    .trim()
-    .min(1, LOGIN_MESSAGES.EMAIL_REQUIRED)
-    .email(LOGIN_MESSAGES.EMAIL_INVALID),
-  password: z.string().min(1, LOGIN_MESSAGES.PASSWORD_REQUIRED),
   rememberMe: z.boolean(),
 });
 
 export type LoginFormValues = z.infer<typeof loginFormSchema>;
 
+/** Pesan Bahasa Indonesia untuk field; email kosong dibedakan dari format yang salah. */
+function toLoginMessage(field: "email" | "password", value: string): string {
+  if (field === "password") return LOGIN_MESSAGES.PASSWORD_REQUIRED;
+  return value.length === 0 ? LOGIN_MESSAGES.EMAIL_REQUIRED : LOGIN_MESSAGES.EMAIL_INVALID;
+}
+
 export function validateLoginInput(payload: { email: string; password: string }): {
   valid: boolean;
   errors: LoginFieldErrors;
 } {
+  const email = payload.email.trim();
   const result = loginFormSchema.safeParse({
-    email: payload.email,
+    email,
     password: payload.password,
     rememberMe: false,
   });
@@ -51,13 +55,40 @@ export function validateLoginInput(payload: { email: string; password: string })
 
   const errors: LoginFieldErrors = {};
   for (const issue of result.error.issues) {
-    const field = issue.path[0] as "email" | "password";
-    if (field && !errors[field]) {
-      errors[field] = issue.message;
+    const field = issue.path[0];
+    if (field !== "email" && field !== "password") continue;
+    if (!errors[field]) {
+      errors[field] = toLoginMessage(field, field === "email" ? email : payload.password);
     }
   }
   return { valid: false, errors };
 }
+
+function toFieldErrors(errors: LoginFieldErrors): FieldErrors<LoginFormValues> {
+  const fieldErrors: FieldErrors<LoginFormValues> = {};
+  if (errors.email) {
+    fieldErrors.email = { type: "validation", message: errors.email };
+  }
+  if (errors.password) {
+    fieldErrors.password = { type: "validation", message: errors.password };
+  }
+  return fieldErrors;
+}
+
+const resolveLoginForm: Resolver<LoginFormValues> = async (values) => {
+  const result = validateLoginInput(values);
+  if (!result.valid) {
+    return { values: {}, errors: toFieldErrors(result.errors) };
+  }
+  return {
+    values: {
+      email: values.email.trim(),
+      password: values.password,
+      rememberMe: values.rememberMe,
+    },
+    errors: {},
+  };
+};
 
 export function mapLoginError(error: unknown): string {
   if (error instanceof ApiClientError) {
@@ -114,7 +145,7 @@ export function useLoginPresenter(options: UseLoginPresenterOptions = {}): Login
   const [isSubmittingManual, setIsSubmittingManual] = useState(false);
 
   const form = useForm<LoginFormValues>({
-    resolver: zodResolver(loginFormSchema),
+    resolver: resolveLoginForm,
     defaultValues: {
       email: initialEmail,
       password: "",
@@ -140,6 +171,7 @@ export function useLoginPresenter(options: UseLoginPresenterOptions = {}): Login
         const payload: LoginRequest = {
           email: values.email.trim(),
           password: values.password,
+          rememberMe: values.rememberMe,
         };
         const response = await loginFn(payload);
         setIsSubmittingManual(false);

@@ -19,7 +19,7 @@ card explicitly brings them into scope.
 
 | Layer         | Technology                                                                    |
 | ------------- | ----------------------------------------------------------------------------- |
-| Runtime       | Bun 1.3.12                                                                    |
+| Runtime       | Bun 1.4.3                                                                     |
 | Language      | TypeScript with strict compiler settings                                      |
 | Web           | React, Vite, React Router, TanStack Query, React Hook Form, Zod, Tailwind CSS |
 | API           | Hono                                                                          |
@@ -32,20 +32,20 @@ card explicitly brings them into scope.
 
 This is an internal delivery team. There is no separate PM or dedicated QA role.
 
-| Area                    | Team member(s)           | Responsibility                                                           |
-| ----------------------- | ------------------------ | ------------------------------------------------------------------------ |
-| Tech Lead               | Arya Isnaidi             | Architecture, review, PR/release approval, and acceptance sign-off       |
-| Backend                 | Sami                     | Assigned API, database, worker, storage, and security cards              |
-| Frontend                | Azis, Aiman              | Assigned Web UI, presenter, and API-integration cards                    |
-| Acceptance verification | Assigned card PIC + Arya | AC evidence and final sign-off; this is an activity, not a separate role |
+| Area                    | Team member(s)          | Responsibility                                                           |
+| ----------------------- | ----------------------- | ------------------------------------------------------------------------ |
+| Tech Lead               | Arya Isnaidi            | Architecture, review, PR/release approval, and acceptance sign-off       |
+| Backend                 | Sami                    | Assigned API, database, worker, storage, and security cards              |
+| Frontend                | Azis, Aiman             | Assigned Web UI, presenter, and API-integration cards                    |
+| Acceptance verification | Arya Isnaidi (QA cards) | AC evidence and final sign-off; this is an activity, not a separate role |
 
 1. Work only on a pre-assigned card in `docs/TASK_BREAKDOWN.md` unless the Tech Lead explicitly
    changes the scope.
 2. Developers do not self-pick backlog work.
 3. Backend and Frontend can work in parallel only from the documented API contract.
 4. Do not fake persistence, authorization, processing, or audit behavior in the Web UI.
-5. The `QA-...` card prefix means acceptance-verification work. It does not imply a dedicated QA
-   team or change the card's assigned PIC.
+5. The `QA-...` card prefix means acceptance-verification work, and its PIC is Arya Isnaidi. It does
+   not imply a dedicated QA team.
 
 ## Local Skills and Commands
 
@@ -73,7 +73,7 @@ resources below.
 | Add an API endpoint                     | `add-api-endpoint`                    | `add-audit-log`, `add-shared-schema`                                 |
 | Change database schema                  | `add-drizzle-migration`               | `add-audit-log`, `docs/CODING_STANDARD.md`                           |
 | Add a cross-process contract            | `add-shared-schema`                   | relevant API and technical specs                                     |
-| Add an acceptance E2E flow              | `add-maestro-flow`                    | `docs/E2E_TESTING.md`                                                |
+| Run an acceptance E2E flow              | `add-playwright-mcp-flow`             | `docs/E2E_TESTING.md`                                                |
 | Refactor safely                         | `refactor-large-file`                 | `.claude/commands/refactor-safely.md`                                |
 | Review a change set                     | `developer-pre-pr-checklist`          | `.claude/commands/review-changes.md`                                 |
 | Prepare a commit                        | `git-commit`                          | `.claude/commands/commit-and-push.md`                                |
@@ -276,6 +276,45 @@ bun run infra:down
 
 Local PostgreSQL is exposed on port `5432`. The full environment and recovery procedures are in
 `docs/ONBOARDING_GUIDE.md`, `docs/DEPLOYMENT_PLAN.md`, and `docs/TROUBLESHOOTING_GUIDE.md`.
+
+## E2E: Playwright MCP (instalasi lokal)
+
+E2E for this repository runs through the Playwright MCP. Developers do not install a separate E2E
+framework for it.
+
+- Requirement: Node.js 20 or newer ([playwright.dev/mcp/installation](https://playwright.dev/mcp/installation)).
+  Browsers download automatically on first use. Optional: add `--headless` after
+  `@playwright/mcp@latest` to run without a visible browser window.
+- Claude Code:
+
+  ```powershell
+  claude mcp add playwright npx @playwright/mcp@latest
+  ```
+
+- Codex CLI:
+
+  ```powershell
+  codex mcp add playwright npx "@playwright/mcp@latest"
+  ```
+
+  Or in `~/.codex/config.toml`:
+
+  ```toml
+  [mcp_servers.playwright]
+  command = "npx"
+  args = ["@playwright/mcp@latest"]
+  ```
+
+- Gemini CLI: add an `mcpServers` entry to `~/.gemini/settings.json`, or to the project
+  `.gemini/settings.json`, using the JSON below.
+- Any other MCP client: use the JSON below.
+
+  ```json
+  { "mcpServers": { "playwright": { "command": "npx", "args": ["@playwright/mcp@latest"] } } }
+  ```
+
+Acceptance evidence for E2E flows is recorded under `docs/screenshots/<CARD-ID>/` (screenshot plus
+observed result). See [docs/E2E_TESTING.md](docs/E2E_TESTING.md).
 
 ## Context Recovery Checklist
 

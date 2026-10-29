@@ -21,11 +21,9 @@ export function createPreviewDocumentHandler(
     });
 
     return jsonSuccess(context, {
-      previewUrl: result.previewUrl,
       filename: result.filename,
       mimeType: result.mimeType,
       fileSize: result.fileSize,
-      expiresInSeconds: result.expiresInSeconds,
     });
   };
 }

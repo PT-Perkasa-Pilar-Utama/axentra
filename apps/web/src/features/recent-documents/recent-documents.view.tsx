@@ -1,83 +1,21 @@
 import type React from "react";
 import { Link } from "react-router";
-import type {
-  RecentDocumentsPresenter,
-  DocumentSmartTagsState,
-  RecentDocumentItem,
-} from "./recent-documents.presenter";
-import {
-  DownloadButton,
-  RecentDocumentActions,
-  type DownloadButtonProps,
-  type RecentDocumentActionsProps,
-} from "./recent-document-actions.view";
+import type { RecentDocumentsPresenter } from "./recent-documents.types";
+import { RecentDocumentActions } from "./recent-document-actions.view";
+import { DocumentSmartTags } from "./recent-document-smart-tags.view";
 
-export { DownloadButton, RecentDocumentActions };
-export type { DownloadButtonProps, RecentDocumentActionsProps };
+export { RecentDocumentActions };
+export type { RecentDocumentActionsProps } from "./recent-document-actions.view";
+export { DownloadButton } from "./recent-document-download-button.view";
+export type { DownloadButtonProps } from "./recent-document-download-button.view";
 
 const emptyMessage = "Tidak ada hasil yang ditemukan";
-
-// Resolusi F17: Deklarasi tipe bernama secara eksplisit
-export type DocumentSmartTagsProps = {
-  state: DocumentSmartTagsState;
-  status: RecentDocumentItem["processingStatus"];
-};
-
-function DocumentSmartTags({ state, status }: DocumentSmartTagsProps): React.JSX.Element | null {
-  if (status !== "completed") return null;
-
-  if (state.isLoading) {
-    return (
-      <div className="flex flex-wrap items-center gap-1.5">
-        <div className="h-5 w-16 animate-pulse rounded-full bg-blue-100" />
-      </div>
-    );
-  }
-
-  if (state.isError) {
-    return (
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-rose-500">Gagal memuat tag</span>
-        <button
-          type="button"
-          onClick={() => state.retry()}
-          className="rounded text-xs text-rose-700 underline hover:text-rose-800 focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500"
-        >
-          Coba lagi
-        </button>
-      </div>
-    );
-  }
-
-  if (state.isEmpty) {
-    return (
-      <div className="flex items-center">
-        <span className="text-xs text-gray-400">Tidak ada tag</span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      {state.tags.slice(0, 3).map((tag) => (
-        <span
-          key={tag.id}
-          className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-600"
-        >
-          {tag.name}
-        </span>
-      ))}
-    </div>
-  );
-}
 
 export type RecentDocumentsViewProps = {
   presenter: RecentDocumentsPresenter;
 };
 
 export function RecentDocumentsView({ presenter }: RecentDocumentsViewProps): React.JSX.Element {
-  const hasItems = !presenter.isLoading && !presenter.isError && presenter.items.length > 0;
-
   return (
     <section aria-label="Semua dokumen">
       <div className="mb-3 flex items-center justify-between gap-4">
@@ -124,7 +62,7 @@ export function RecentDocumentsView({ presenter }: RecentDocumentsViewProps): Re
         </p>
       )}
 
-      {hasItems && (
+      {presenter.hasItems && (
         <ul aria-label="Daftar dokumen" className="space-y-1.5">
           {presenter.items.map((item) => (
             <li

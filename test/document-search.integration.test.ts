@@ -569,4 +569,84 @@ trailer
       }
     },
   );
+
+  integrationTest(
+    "F19: matches %, _ and backslash literally through DrizzleSearchRepository (LIKE escape, AC-06.01)",
+    async () => {
+      if (database === undefined) {
+        throw new Error("PostgreSQL integration database was not initialized");
+      }
+
+      const [{ documents, documentFiles }, { DrizzleSearchRepository }] = await Promise.all([
+        import("@axentra/db"),
+        import("../apps/api/src/modules/search/search.repository"),
+      ]);
+
+      // Each query contains one special character. The decoy title would match only if that character
+      // acted as a wildcard (% or _) or as an escape (backslash), so a match on the decoy means the escape failed.
+      const suffix = crypto.randomUUID().slice(0, 8);
+      const cases = [
+        {
+          query: `100%Final ${suffix}`,
+          literal: `Laporan 100%Final ${suffix}`,
+          decoy: `Laporan 100XFinal ${suffix}`,
+        },
+        {
+          query: `file_name ${suffix}`,
+          literal: `file_name ${suffix}`,
+          decoy: `fileXname ${suffix}`,
+        },
+        {
+          query: `path\\dir ${suffix}`,
+          literal: `path\\dir ${suffix}`,
+          decoy: `pathdir ${suffix}`,
+        },
+      ].map((testCase) => ({
+        ...testCase,
+        literalId: crypto.randomUUID(),
+        decoyId: crypto.randomUUID(),
+      }));
+
+      const seeded = cases.flatMap((testCase) => [
+        { id: testCase.literalId, title: testCase.literal },
+        { id: testCase.decoyId, title: testCase.decoy },
+      ]);
+      const seededIds = seeded.map((doc) => doc.id);
+
+      try {
+        await database.db.insert(documents).values(
+          seeded.map((doc) => ({
+            id: doc.id,
+            title: doc.title,
+            processingStatus: "completed" as const,
+            createdAt: new Date(),
+          })),
+        );
+        await database.db.insert(documentFiles).values(
+          seeded.map((doc) => ({
+            documentId: doc.id,
+            storageKey: `documents/${doc.id}.pdf`,
+            originalName: `${doc.title}.pdf`,
+            mimeType: "application/pdf",
+            fileSize: 4,
+            fileExtension: "pdf",
+          })),
+        );
+
+        const searchRepo = new DrizzleSearchRepository(database.db);
+        for (const testCase of cases) {
+          const result = await searchRepo.searchDocuments({
+            q: testCase.query,
+            page: 1,
+            limit: 20,
+          });
+
+          expect(result.total).toBe(1);
+          expect(result.items.map((item) => item.id)).toEqual([testCase.literalId]);
+        }
+      } finally {
+        await database.db.delete(documents).where(inArray(documents.id, seededIds));
+      }
+    },
+  );
 });

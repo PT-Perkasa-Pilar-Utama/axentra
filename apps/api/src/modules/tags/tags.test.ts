@@ -2,7 +2,6 @@ import { describe, expect, it } from "bun:test";
 import { createLogger } from "@axentra/observability";
 import {
   apiErrorSchema,
-  topTagsQuerySchema,
   topTagsResponseSchema,
   type TopTag,
   type TopTagsQuery,
@@ -10,6 +9,7 @@ import {
 import { createApp } from "../../app";
 import type { TokenVerifier } from "../../middleware/auth";
 import type { TopTagsRepository } from "./tags.repository";
+import { topTagsQuerySchema } from "./tags.schema";
 import { createTopTagsService } from "./tags.service";
 import type { TopTagsService } from "./tags.service";
 

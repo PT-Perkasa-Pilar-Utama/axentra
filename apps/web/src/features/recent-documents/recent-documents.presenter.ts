@@ -1,118 +1,65 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   bulkDownloadDocuments,
-  getDocumentCategory,
-  getDocumentSmartTags,
   listRecentDocuments,
   triggerBlobDownload,
 } from "./recent-documents.api";
-import type { RecentDocument } from "./recent-documents.api";
 import { TOP_TAGS_QUERY_KEY } from "../top-tags/top-tags.presenter";
 import { CATEGORIES_QUERY_KEY } from "../categories/categories.presenter";
 import { ApiClientError } from "../../lib/api-client";
+import { hasPendingDocument } from "./recent-documents.format";
+import { clampPage, totalPagesFor } from "./recent-documents.pagination";
+import {
+  DOCUMENT_CATEGORY_QUERY_KEY,
+  DOCUMENT_SMART_TAGS_QUERY_KEY,
+  useRecentDocumentItems,
+} from "./recent-documents.items";
+import { useRecentDocumentsPageState } from "./recent-documents.page-state";
+import { useRecentDocumentsSelection } from "./recent-documents.selection";
+import type { RecentDocumentsPresenter } from "./recent-documents.types";
 
 export const RECENT_DOCUMENTS_QUERY_KEY = ["recent-documents"] as const;
 const recentDocumentsPollIntervalMs = 2000;
 
-export const DOCUMENT_SMART_TAGS_QUERY_KEY = ["document-smart-tags"] as const;
-export const DOCUMENT_CATEGORY_QUERY_KEY = ["document-category"] as const;
-
-export type DocumentSmartTagItem = {
-  id: string;
-  name: string;
-};
-
-export type DocumentSmartTagsState = {
-  isLoading: boolean;
-  isError: boolean;
-  isEmpty: boolean;
-  tags: DocumentSmartTagItem[];
-  retry: () => void;
-};
-
-export type RecentDocumentItem = {
-  id: string;
-  filename: string;
-  dateLabel: string;
-  statusLabel: string;
-  processingStatus: RecentDocument["processingStatus"];
-  smartTags: DocumentSmartTagsState;
-  isSelected: boolean;
-  category: {
-    isLoading: boolean;
-    isError: boolean;
-    name: string | null;
-    retry: () => void;
-  };
-};
-
-export type RecentDocumentsPresenter = {
-  isLoading: boolean;
-  isError: boolean;
-  isEmpty: boolean;
-  items: RecentDocumentItem[];
-  refresh: () => Promise<void>;
-  retry: () => Promise<void>;
-  selectedIds: ReadonlySet<string>;
-  isDownloading: boolean;
-  downloadError: string | null;
-  toggleSelect: (id: string) => void;
-  clearSelection: () => void;
-  downloadSelected: () => Promise<void>;
-};
-
-function formatDate(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleDateString("id-ID", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
-}
-
-function formatStatus(status: RecentDocument["processingStatus"]): string {
-  switch (status) {
-    case "completed":
-      return "Selesai Diproses";
-    case "processing":
-      return "Sedang Diproses";
-    case "queued":
-      return "Dalam Antrean";
-    case "failed":
-      return "Gagal";
-  }
-}
-
-function hasPendingDocument(documents: readonly RecentDocument[]): boolean {
-  return documents.some(
-    (document) =>
-      document.processingStatus === "queued" || document.processingStatus === "processing",
-  );
+function deriveDownloadDisabledReason(
+  selectedCount: number,
+  isDownloading: boolean,
+): string | undefined {
+  if (selectedCount === 0) return "Pilih minimal satu dokumen untuk mengunduh";
+  if (isDownloading) return "Sedang mengunduh dokumen...";
+  return undefined;
 }
 
 export function useRecentDocumentsPresenter(
   limit = 20,
-  activeTagNames?: ReadonlySet<string>,
+  activeTagNames: readonly string[] = [],
 ): RecentDocumentsPresenter {
   const queryClient = useQueryClient();
   const isPollingRef = useRef(false);
-  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set());
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
-  const tagsArray = activeTagNames ? Array.from(activeTagNames) : [];
+  // Urutan dibuat tetap agar kunci cache stabil; server menerapkan logika AND (AC-04.04).
+  const tagsArray = [...activeTagNames].sort((a, b) => a.localeCompare(b));
   const isFilterActive = tagsArray.length > 0;
+  // Scope adalah filter tag; setiap perubahannya mengembalikan halaman ke 1.
+  const scope = JSON.stringify(tagsArray);
+  const { requestedPage, setRequestedPage } = useRecentDocumentsPageState(scope);
 
   const query = useQuery({
-    queryKey: [...RECENT_DOCUMENTS_QUERY_KEY, limit, tagsArray],
-    queryFn: () => listRecentDocuments(1, limit, tagsArray),
+    queryKey: [...RECENT_DOCUMENTS_QUERY_KEY, limit, tagsArray, requestedPage],
+    queryFn: () => listRecentDocuments(requestedPage, limit, tagsArray),
+    // Halaman sebelumnya tetap tampil saat halaman lain dimuat, kecuali filter tag berubah.
+    placeholderData: (previousData, previousQuery) =>
+      previousQuery !== undefined && JSON.stringify(previousQuery.queryKey[2]) === scope
+        ? previousData
+        : undefined,
     staleTime: 30 * 1000,
     retry: 1,
     refetchInterval: (current) =>
-      hasPendingDocument(current.state.data ?? []) ? recentDocumentsPollIntervalMs : false,
+      hasPendingDocument(current.state.data?.items ?? []) ? recentDocumentsPollIntervalMs : false,
   });
 
   const pendingMonitorQuery = useQuery({
@@ -122,13 +69,24 @@ export function useRecentDocumentsPresenter(
     retry: 1,
     enabled: isFilterActive,
     refetchInterval: (current) =>
-      hasPendingDocument(current.state.data ?? []) ? recentDocumentsPollIntervalMs : false,
+      hasPendingDocument(current.state.data?.items ?? []) ? recentDocumentsPollIntervalMs : false,
   });
 
-  const documents = useMemo(() => query.data ?? [], [query.data]);
+  const documents = useMemo(() => query.data?.items ?? [], [query.data]);
+  const total = query.data?.meta.total ?? 0;
+  const totalPages = totalPagesFor(total, limit);
+  const page = clampPage(query.data?.meta.page ?? requestedPage, totalPages);
+  const isLoading = query.isPending;
+  const isError = query.isError;
+  const isChanging = query.isPlaceholderData;
   const isPending =
     hasPendingDocument(documents) ||
-    (isFilterActive && hasPendingDocument(pendingMonitorQuery.data ?? []));
+    (isFilterActive && hasPendingDocument(pendingMonitorQuery.data?.items ?? []));
+
+  // Total yang menyusut (mis. setelah unggah) membuat halaman saat ini di luar rentang.
+  if (query.data !== undefined && !query.isPlaceholderData && requestedPage > totalPages) {
+    setRequestedPage(totalPages);
+  }
 
   useEffect(() => {
     if (isPending) {
@@ -145,54 +103,53 @@ export function useRecentDocumentsPresenter(
     }
   }, [isPending, isFilterActive, queryClient]);
 
-  const smartTagsQueries = useQueries({
-    queries: documents.map((doc) => ({
-      queryKey: [...DOCUMENT_SMART_TAGS_QUERY_KEY, doc.id],
-      queryFn: () => getDocumentSmartTags(doc.id),
-      staleTime: 5 * 60 * 1000,
-      enabled: doc.processingStatus === "completed",
-    })),
-  });
-  const categoryQueries = useQueries({
-    queries: documents.map((doc) => ({
-      queryKey: [...DOCUMENT_CATEGORY_QUERY_KEY, doc.id],
-      queryFn: () => getDocumentCategory(doc.id),
-      staleTime: 5 * 60 * 1000,
-      enabled: doc.processingStatus === "completed",
-    })),
-  });
-
   const visibleIds = useMemo(() => new Set(documents.map((document) => document.id)), [documents]);
-  const visibleSelectedIds = useMemo(
-    () => new Set([...selectedIds].filter((id) => visibleIds.has(id))),
-    [selectedIds, visibleIds],
-  );
+  // Pilihan terikat pada halaman dan filter, sehingga berganti keduanya membuang pilihan lama.
+  const {
+    selectedIds,
+    toggleSelect: toggleSelection,
+    clearSelection: clearSelectedIds,
+  } = useRecentDocumentsSelection(`${scope}#${requestedPage}`, visibleIds);
+  const items = useRecentDocumentItems(documents, selectedIds);
 
   const toggleSelect = useCallback(
     (id: string): void => {
       if (!visibleIds.has(id)) return;
       setDownloadError(null);
-      setSelectedIds((current) => {
-        const next = new Set([...current].filter((selectedId) => visibleIds.has(selectedId)));
-        if (next.has(id)) next.delete(id);
-        else next.add(id);
-        return next;
-      });
+      toggleSelection(id);
     },
-    [visibleIds],
+    [toggleSelection, visibleIds],
   );
 
   const clearSelection = useCallback((): void => {
-    setSelectedIds(new Set());
+    clearSelectedIds();
     setDownloadError(null);
-  }, []);
+  }, [clearSelectedIds]);
+
+  const goToPage = useCallback(
+    (target: number): void => {
+      const nextPage = clampPage(target, totalPages);
+      if (nextPage === requestedPage) return;
+      setDownloadError(null);
+      setRequestedPage(nextPage);
+    },
+    [requestedPage, setRequestedPage, totalPages],
+  );
+
+  const goToPrevious = useCallback((): void => {
+    goToPage(page - 1);
+  }, [goToPage, page]);
+
+  const goToNext = useCallback((): void => {
+    goToPage(page + 1);
+  }, [goToPage, page]);
 
   const downloadSelected = useCallback(async (): Promise<void> => {
-    if (visibleSelectedIds.size === 0 || isDownloading) return;
+    if (selectedIds.size === 0 || isDownloading) return;
     setIsDownloading(true);
     setDownloadError(null);
     try {
-      const blob = await bulkDownloadDocuments([...visibleSelectedIds]);
+      const blob = await bulkDownloadDocuments([...selectedIds]);
       triggerBlobDownload(blob);
       clearSelection();
     } catch (error) {
@@ -204,37 +161,7 @@ export function useRecentDocumentsPresenter(
     } finally {
       setIsDownloading(false);
     }
-  }, [clearSelection, isDownloading, visibleSelectedIds]);
-
-  const items: RecentDocumentItem[] = documents.map((doc, index) => {
-    const tagQuery = smartTagsQueries[index];
-    const categoryQuery = categoryQueries[index];
-    return {
-      id: doc.id,
-      filename: doc.filename,
-      dateLabel: formatDate(doc.createdAt),
-      statusLabel: formatStatus(doc.processingStatus),
-      processingStatus: doc.processingStatus,
-      smartTags: {
-        isLoading: tagQuery?.isFetching ?? false,
-        isError: tagQuery?.isError ?? false,
-        isEmpty: !tagQuery?.isFetching && !tagQuery?.isError && (tagQuery?.data?.length ?? 0) === 0,
-        tags: tagQuery?.data ?? [],
-        retry: () => {
-          void tagQuery?.refetch();
-        },
-      },
-      isSelected: visibleSelectedIds.has(doc.id),
-      category: {
-        isLoading: categoryQuery?.isFetching ?? false,
-        isError: categoryQuery?.isError ?? false,
-        name: categoryQuery?.data?.name ?? null,
-        retry: () => {
-          void categoryQuery?.refetch();
-        },
-      },
-    };
-  });
+  }, [clearSelection, isDownloading, selectedIds]);
 
   const refresh = useCallback(async (): Promise<void> => {
     await queryClient.invalidateQueries({ queryKey: [...RECENT_DOCUMENTS_QUERY_KEY] });
@@ -245,15 +172,29 @@ export function useRecentDocumentsPresenter(
   }, [query]);
 
   return {
-    isLoading: query.isPending,
-    isError: query.isError,
-    isEmpty: !query.isPending && !query.isError && documents.length === 0,
+    isLoading,
+    isError,
+    isEmpty: !isLoading && !isError && total === 0,
+    hasItems: !isLoading && !isError && items.length > 0,
     items,
+    pagination: {
+      page,
+      totalPages,
+      pageLabel: `Halaman ${page} dari ${totalPages}`,
+      canGoPrevious: page > 1 && !isChanging,
+      canGoNext: page < totalPages && !isChanging,
+      isChanging,
+      goToPage,
+      goToPrevious,
+      goToNext,
+    },
     refresh,
     retry,
-    selectedIds: visibleSelectedIds,
+    selectedIds,
     isDownloading,
     downloadError,
+    canDownloadSelected: selectedIds.size > 0 && !isDownloading,
+    downloadDisabledReason: deriveDownloadDisabledReason(selectedIds.size, isDownloading),
     toggleSelect,
     clearSelection,
     downloadSelected,

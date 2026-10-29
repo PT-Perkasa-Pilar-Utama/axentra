@@ -1,26 +1,27 @@
-import { z } from "zod";
-import { categorySummarySchema, recentDocumentSchema, smartTagSchema } from "@axentra/shared";
-import type { CategorySummary, RecentDocument } from "@axentra/shared";
-import { apiDownloadRequest, apiRequest } from "../../lib/api-client";
+import type { z } from "zod";
+import {
+  bulkDownloadRequestSchema,
+  categorySummarySchema,
+  recentDocumentSchema,
+  smartTagSchema,
+} from "@axentra/shared";
+import type { CategorySummary, PaginationMeta, RecentDocument } from "@axentra/shared";
+import { apiDownloadRequest, apiRequest, apiRequestPage } from "../../lib/api-client";
 
 export type { CategorySummary, RecentDocument };
 
 export type SmartTagResponse = z.infer<typeof smartTagSchema>;
 
-// TODO(BE-S3-03): Replace with the backend-approved contract when BE-S3-03 publishes it.
-export const bulkDownloadRequestSchema = z.object({
-  documentIds: z
-    .array(z.string().uuid({ message: "ID dokumen harus berupa UUID yang valid" }))
-    .min(1, "Minimal satu dokumen harus dipilih"),
-});
-
-export type BulkDownloadRequest = z.infer<typeof bulkDownloadRequestSchema>;
+export type RecentDocumentPage = {
+  items: RecentDocument[];
+  meta: PaginationMeta;
+};
 
 export async function listRecentDocuments(
   page = 1,
   limit = 5,
   tags?: readonly string[],
-): Promise<RecentDocument[]> {
+): Promise<RecentDocumentPage> {
   const params = new URLSearchParams({
     page: String(page),
     limit: String(limit),
@@ -30,7 +31,11 @@ export async function listRecentDocuments(
     params.append("tags", tag);
   }
 
-  return apiRequest(`/documents?${params.toString()}`, recentDocumentSchema.array());
+  const { data, meta } = await apiRequestPage(
+    `/documents?${params.toString()}`,
+    recentDocumentSchema.array(),
+  );
+  return { items: data, meta };
 }
 
 export async function getDocumentSmartTags(documentId: string): Promise<SmartTagResponse[]> {

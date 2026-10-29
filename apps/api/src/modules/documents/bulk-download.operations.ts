@@ -1,27 +1,34 @@
 import type { Logger } from "@axentra/observability";
 import type { StorageAdapter } from "@axentra/storage";
-import {
-  BULK_DOWNLOAD_MAX_TOTAL_BYTES,
-  DOWNLOAD_ACCESS_DENIED_MESSAGE,
-  type AuthUser,
-} from "@axentra/shared";
-import { ForbiddenError, NotFoundError, PayloadTooLargeError } from "../../http/errors";
-import type { DownloadTargetRecord, IDownloadRepository } from "./download.repository";
+import type { AuthUser } from "@axentra/shared";
+import { TooManyRequestsError } from "../../http/errors";
+import type { IDownloadRepository } from "./download.repository";
 import { runDownloadAuditTransaction } from "./download.audit-transaction";
+import { createZipArchive } from "./zip.writer";
 import {
-  createZipArchive,
-  ZIP32_MAX_ENTRY_COUNT,
-  ZIP32_MAX_ENTRY_SIZE,
-  type ZipEntry,
-} from "./zip.writer";
-import { type BulkDownloadSemaphore, globalBulkDownloadSemaphore } from "./bulk-download.semaphore";
-import { getObjectWithTimeout } from "./bulk-download.storage";
+  BULK_DOWNLOAD_BUSY_MESSAGE,
+  type BulkDownloadSemaphore,
+  globalBulkDownloadSemaphore,
+} from "./bulk-download.semaphore";
+import {
+  type BulkDownloadByteBudget,
+  calculateBulkDownloadReservationBytes,
+  globalBulkDownloadByteBudget,
+} from "./bulk-download.byte-budget";
+import { BULK_DOWNLOAD_TRANSFER_TIMEOUT_MS } from "./bulk-download.body";
+import { prefetchBulkDownloadEntries, throwIfBulkDownloadAborted } from "./bulk-download.storage";
+import { normalizeBulkDownloadIds, resolveBulkDownloadItems } from "./bulk-download.targets";
+import { recheckAndRecordBulkAudit } from "./bulk-download.audit";
+
+export const BULK_DOWNLOAD_ARCHIVE_FILENAME = "axentra-documents.zip";
 
 export type BulkDownloadOperationDependencies = {
   downloadRepository: IDownloadRepository;
   storage: StorageAdapter;
   logger?: Logger | undefined;
   bulkDownloadSemaphore?: BulkDownloadSemaphore | undefined;
+  bulkDownloadByteBudget?: BulkDownloadByteBudget | undefined;
+  bulkDownloadTransferTimeoutMs?: number | undefined;
   storageTimeoutMs?: number | undefined;
 };
 
@@ -36,165 +43,80 @@ export type ExecuteBulkDownloadInput = {
 export type BulkDownloadOperationResult = {
   filename: string;
   bytes: Uint8Array;
-  contentLength: number;
   fileCount: number;
+  // How long the slot and the reservation stay held after the response starts.
+  transferTimeoutMs: number;
+  // Releases the concurrency slot and the byte reservation; idempotent. The response body calls it when
+  // the request aborts, the consumer cancels, or the transfer window ends (see createBulkDownloadBody).
+  release: () => void;
 };
 
-// Runs inside the audit unit of work: rechecks each selected document under a share lock, then records
-// one audit event per document in the same transaction, so a revoke cannot slip in between.
-async function recheckAndRecordBulkAudit(
-  downloadRepository: IDownloadRepository,
-  input: ExecuteBulkDownloadInput,
-  uniqueIds: ReadonlyArray<string>,
-  targetMap: ReadonlyMap<string, DownloadTargetRecord>,
-): Promise<void> {
-  await downloadRepository.transaction(async (txRepo) => {
-    // Deletion is rechecked for every role; the category permission applies to member_team only.
-    const permissionRows = await txRepo.checkCategoryPermissions(uniqueIds, {
-      lock: "share",
-    });
-    const permMap = new Map(permissionRows.map((r) => [r.documentId, r]));
-
-    for (const docId of uniqueIds) {
-      const perm = permMap.get(docId);
-      if (!perm || perm.deletedAt !== null) {
-        throw new NotFoundError("Dokumen tidak ditemukan");
-      }
-      if (
-        input.user.role === "member_team" &&
-        (!perm.categoryId || perm.downloadEnabled !== true)
-      ) {
-        throw new ForbiddenError(DOWNLOAD_ACCESS_DENIED_MESSAGE);
-      }
-    }
-
-    const now = new Date();
-    await txRepo.recordDownloadAuditEvents(
-      uniqueIds.map((docId) => {
-        const target = targetMap.get(docId);
-        const fileName = target?.file?.originalName ?? "unknown";
-        return {
-          userId: input.user.id,
-          userName: input.user.name ?? input.user.email,
-          userEmail: input.user.email,
-          documentId: docId,
-          documentName: fileName,
-          downloadedAt: now,
-        };
-      }),
-    );
-  });
+// Takes the concurrency slot, then reserves the request's byte bound. Nothing has been read from
+// storage yet, so a request that does not fit the budget gets 429 with no storage read and no audit.
+async function acquireBulkDownloadCapacity(
+  dependencies: BulkDownloadOperationDependencies,
+  reservationBytes: number,
+  signal: AbortSignal | undefined,
+): Promise<() => void> {
+  const semaphore = dependencies.bulkDownloadSemaphore ?? globalBulkDownloadSemaphore;
+  const releaseSlot = await semaphore.acquire({ signal });
+  const budget = dependencies.bulkDownloadByteBudget ?? globalBulkDownloadByteBudget;
+  const releaseReservation = budget.tryReserve(reservationBytes);
+  if (releaseReservation === null) {
+    releaseSlot();
+    throw new TooManyRequestsError(BULK_DOWNLOAD_BUSY_MESSAGE);
+  }
+  return () => {
+    releaseReservation();
+    releaseSlot();
+  };
 }
 
 export async function executeBulkDownloadOperation(
   dependencies: BulkDownloadOperationDependencies,
   input: ExecuteBulkDownloadInput,
 ): Promise<BulkDownloadOperationResult> {
-  const uniqueIds = Array.from(new Set(input.documentIds));
-
-  // 1. Enforce ZIP32 entry count limit before database operations
-  if (uniqueIds.length > ZIP32_MAX_ENTRY_COUNT) {
-    throw new PayloadTooLargeError("Jumlah dokumen melebihi batas maksimum arsip ZIP (65.535)");
-  }
-
+  // 1. Load the selected documents' metadata and run every check that needs no storage read.
+  const uniqueIds = normalizeBulkDownloadIds(input.documentIds);
   const targets = await dependencies.downloadRepository.findDownloadTargets(uniqueIds);
-  const targetMap = new Map(targets.map((t) => [t.document.id, t]));
+  const items = resolveBulkDownloadItems(uniqueIds, targets, input.user);
 
-  // 2. Verify all selected documents exist and are not soft-deleted
-  for (const docId of uniqueIds) {
-    const target = targetMap.get(docId);
-    if (!target || target.document.deletedAt !== null) {
-      throw new NotFoundError("Dokumen tidak ditemukan");
-    }
-
-    if (!target.file) {
-      throw new NotFoundError("File dokumen tidak ditemukan");
-    }
-  }
-
-  // 3. Enforce category download permissions per item for member_team (AC-10.01, AC-13.01)
-  if (input.user.role === "member_team") {
-    for (const docId of uniqueIds) {
-      const target = targetMap.get(docId);
-      if (!target) continue;
-
-      if (!target.document.categoryId) {
-        throw new ForbiddenError(DOWNLOAD_ACCESS_DENIED_MESSAGE);
-      }
-
-      if (!target.categoryPermission || !target.categoryPermission.downloadEnabled) {
-        throw new ForbiddenError(DOWNLOAD_ACCESS_DENIED_MESSAGE);
-      }
-    }
-  }
-
-  // 4. Enforce aggregate and individual file size limits before storage retrieval
-  let totalBytes = 0;
-  for (const docId of uniqueIds) {
-    const target = targetMap.get(docId);
-    const size = target?.file?.fileSize ?? 0;
-    if (size > ZIP32_MAX_ENTRY_SIZE) {
-      throw new PayloadTooLargeError(
-        `Ukuran berkas "${target?.file?.originalName ?? docId}" melebihi batas 32-bit (4 GiB)`,
-      );
-    }
-    totalBytes += size;
-  }
-
-  if (totalBytes > BULK_DOWNLOAD_MAX_TOTAL_BYTES) {
-    throw new PayloadTooLargeError(
-      "Total ukuran dokumen melebihi batas maksimum unduhan massal (250 MB)",
-    );
-  }
-
-  // 5. Acquire concurrency slot to protect peak RSS during storage prefetch and archive assembly
-  // Total aggregate size is checked against 250 MB (BULK_DOWNLOAD_MAX_TOTAL_BYTES) in step 4,
-  // which strictly guarantees total archive size never approaches the ZIP32 4 GiB limit.
-  const semaphore = dependencies.bulkDownloadSemaphore ?? globalBulkDownloadSemaphore;
-  const releaseSlot = await semaphore.acquire({ signal: input.signal });
+  // 2-3. Bound the bytes from stored sizes plus ZIP overhead, and reserve them before any storage read.
+  const reservationBytes = calculateBulkDownloadReservationBytes(
+    items.map((item) => ({ name: item.file.originalName, size: item.file.fileSize })),
+  );
+  const release = await acquireBulkDownloadCapacity(dependencies, reservationBytes, input.signal);
 
   try {
-    // 6. Prefetch all storage objects before audit recording and response generation
-    const entries: Array<ZipEntry> = [];
-    for (const docId of uniqueIds) {
-      const target = targetMap.get(docId);
-      if (!target?.file) continue;
-
-      const fileBytes = await getObjectWithTimeout(
-        dependencies.storage,
-        target.file.storageKey,
-        dependencies.storageTimeoutMs,
-      );
-      if (fileBytes.byteLength !== target.file.fileSize) {
-        throw new Error(
-          `Ukuran berkas "${target.file.originalName}" (${fileBytes.byteLength} byte) tidak sesuai dengan metadata (${target.file.fileSize} byte)`,
-        );
-      }
-
-      entries.push({
-        name: target.file.originalName,
-        content: fileBytes,
-      });
-    }
-
-    // 7. Assemble the ZIP archive using single-pass continuous buffer allocation
+    // 4. Prefetch and assemble. An abort is honoured between object reads and again before the audit,
+    // so a request the client already abandoned writes no audit record.
+    const entries = await prefetchBulkDownloadEntries(dependencies.storage, items, {
+      signal: input.signal,
+      timeoutMs: dependencies.storageTimeoutMs,
+    });
     const bytes = createZipArchive(entries);
+    throwIfBulkDownloadAborted(input.signal);
 
-    // 8. Atomically recheck category permissions with row lock and record point-in-time audit events
+    // 5. Recheck permissions under row locks and record one audit event per document atomically.
     await runDownloadAuditTransaction(
       input.logger ?? dependencies.logger,
       "Gagal mencatat audit event bulk download",
-      { requestId: input.requestId, userId: input.user.id, documentCount: uniqueIds.length },
-      () => recheckAndRecordBulkAudit(dependencies.downloadRepository, input, uniqueIds, targetMap),
+      { requestId: input.requestId, userId: input.user.id, documentCount: items.length },
+      () => recheckAndRecordBulkAudit(dependencies.downloadRepository, input.user, items),
     );
 
     return {
-      filename: "axentra-documents.zip",
+      filename: BULK_DOWNLOAD_ARCHIVE_FILENAME,
       bytes,
-      contentLength: bytes.byteLength,
       fileCount: entries.length,
+      transferTimeoutMs:
+        dependencies.bulkDownloadTransferTimeoutMs ?? BULK_DOWNLOAD_TRANSFER_TIMEOUT_MS,
+      release,
     };
-  } finally {
-    releaseSlot();
+  } catch (error: unknown) {
+    // Abort, prefetch, assembly, and audit failures release the slot and the reservation here; a
+    // successful result hands them to the response body.
+    release();
+    throw error;
   }
 }

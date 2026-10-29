@@ -82,17 +82,26 @@ describe("Test Database Preparation Helper (Finding F5)", () => {
     async () => {
       const postgres = (await import("postgres")).default;
 
+      // The server comes from the environment, so the test uses the disposable local server it was given.
+      const serverUrl = new URL(
+        Bun.env.TEST_DATABASE_URL ??
+          Bun.env.DATABASE_URL ??
+          "postgres://axentra:local-postgres-password@localhost:5432/axentra_test",
+      );
+      const withDatabase = (databaseName: string): string => {
+        const url = new URL(serverUrl.toString());
+        url.pathname = `/${databaseName}`;
+        return url.toString();
+      };
+
       const targetTestDbName = "axentra_missing_prov_test";
-      const targetTestDbUrl = `postgres://axentra:local-postgres-password@localhost:5432/${targetTestDbName}`;
+      const targetTestDbUrl = withDatabase(targetTestDbName);
 
       // 1. Setup: Connect to maintenance DB and ensure target test database is dropped first
-      const adminSql = postgres(
-        "postgres://axentra:local-postgres-password@localhost:5432/axentra",
-        {
-          max: 1,
-          onnotice: () => undefined,
-        },
-      );
+      const adminSql = postgres(withDatabase("axentra"), {
+        max: 1,
+        onnotice: () => undefined,
+      });
 
       try {
         await adminSql.unsafe(`DROP DATABASE IF EXISTS "${targetTestDbName}"`);

@@ -4,18 +4,19 @@ import type {
   DocumentProcessingFileRecord,
   DocumentProcessingRecord,
   DocumentProcessingRepository,
-  FailedProcessingDocument,
-} from "./document.processor.repository";
+  RecoverableProcessingDocument,
+} from "./document.processor.repository.types";
+
+type InMemoryDocument = DocumentProcessingRecord & {
+  categoryId?: string | null;
+  errorMessage?: string | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+  processingRecoveryAttempts?: number;
+};
 
 export class InMemoryDocumentProcessingRepository implements DocumentProcessingRepository {
-  public readonly documents = new Map<
-    string,
-    DocumentProcessingRecord & {
-      categoryId?: string | null;
-      errorMessage?: string | null;
-      updatedAt?: Date;
-    }
-  >();
+  public readonly documents = new Map<string, InMemoryDocument>();
   public readonly files = new Map<string, DocumentProcessingFileRecord>();
   public readonly metadata = new Map<
     string,
@@ -28,6 +29,7 @@ export class InMemoryDocumentProcessingRepository implements DocumentProcessingR
     { id: string; categoryId: string; downloadEnabled: boolean }
   >();
   public shouldFailOnComplete = false;
+  public readonly createdCategoryIds: string[] = [];
 
   public constructor(
     private readonly onMetadataSaved?: (
@@ -44,27 +46,71 @@ export class InMemoryDocumentProcessingRepository implements DocumentProcessingR
     ) => Promise<void> | void,
   ) {}
 
-  public readonly enqueueFailures: FailedProcessingDocument[] = [];
-  public readonly createdCategoryIds: string[] = [];
+  // Same rule as the Drizzle store: an enqueue-failed row, or a 'processing' row not updated since the stale clock.
+  private isClaimable(document: InMemoryDocument, staleProcessingBefore: Date): boolean {
+    if (document.processingStatus === "failed") {
+      return document.errorMessage === PROCESSING_ENQUEUE_FAILURE_MESSAGE;
+    }
+    return (
+      document.processingStatus === "processing" &&
+      document.updatedAt !== undefined &&
+      document.updatedAt < staleProcessingBefore
+    );
+  }
 
-  public async listRecoverableDocuments(): Promise<ReadonlyArray<FailedProcessingDocument>> {
-    if (this.enqueueFailures.length > 0) return [...this.enqueueFailures];
-    const recoverable: FailedProcessingDocument[] = [];
+  public async listRecoverableDocuments(
+    staleProcessingBefore: Date,
+  ): Promise<ReadonlyArray<RecoverableProcessingDocument>> {
+    const now = new Date();
+    const recoverable: RecoverableProcessingDocument[] = [];
     for (const [documentId, document] of this.documents) {
-      const stranded =
-        document.processingStatus === "queued" ||
-        (document.processingStatus === "failed" &&
-          document.errorMessage === PROCESSING_ENQUEUE_FAILURE_MESSAGE);
       const file = this.files.get(documentId);
-      if (!stranded || file === undefined) continue;
-      recoverable.push({ documentId, storageKey: file.storageKey });
+      const queued = document.processingStatus === "queued";
+      if (file === undefined || !(queued || this.isClaimable(document, staleProcessingBefore))) {
+        continue;
+      }
+      recoverable.push({
+        documentId,
+        storageKey: file.storageKey,
+        processingStatus: document.processingStatus,
+        createdAt: document.createdAt ?? now,
+        updatedAt: document.updatedAt ?? now,
+        recoveryAttempts: document.processingRecoveryAttempts ?? 0,
+      });
     }
     return recoverable;
   }
 
+  public async recordRecoveryAttempt(
+    documentId: string,
+    staleProcessingBefore: Date,
+  ): Promise<boolean> {
+    const document = this.documents.get(documentId);
+    if (document === undefined || !this.isClaimable(document, staleProcessingBefore)) return false;
+    document.processingRecoveryAttempts = (document.processingRecoveryAttempts ?? 0) + 1;
+    document.updatedAt = new Date();
+    return true;
+  }
+
+  public async markRecoveryExhausted(
+    documentId: string,
+    errorMessage: string,
+    staleProcessingBefore: Date,
+  ): Promise<boolean> {
+    const document = this.documents.get(documentId);
+    if (document === undefined || !this.isClaimable(document, staleProcessingBefore)) return false;
+    document.processingStatus = "failed";
+    document.errorMessage = errorMessage;
+    document.updatedAt = new Date();
+    return true;
+  }
+
   public async markEnqueueRecovered(documentId: string): Promise<void> {
     const document = this.documents.get(documentId);
-    if (document?.processingStatus === "failed") {
+    if (
+      document?.processingStatus === "failed" &&
+      document.errorMessage === PROCESSING_ENQUEUE_FAILURE_MESSAGE
+    ) {
       document.processingStatus = "queued";
       document.errorMessage = null;
     }

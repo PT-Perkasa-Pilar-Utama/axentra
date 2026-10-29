@@ -233,14 +233,11 @@ export const downloadAuditEventSchema = z.object({
 });
 export type DownloadAuditEvent = z.infer<typeof downloadAuditEventSchema>;
 
-export const PREVIEW_URL_TTL_SECONDS = 300;
-
+// Metadata only. The bytes are served by GET /documents/:id/preview/content; no storage URL is returned.
 export const previewDocumentResponseSchema = z.object({
-  previewUrl: z.string().url(),
   filename: z.string().min(1),
   mimeType: z.string().min(1),
   fileSize: z.number().int().nonnegative(),
-  expiresInSeconds: z.number().int().positive(),
 });
 export type PreviewDocumentResponse = z.infer<typeof previewDocumentResponseSchema>;
 

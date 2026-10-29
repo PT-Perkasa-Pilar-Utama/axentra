@@ -476,9 +476,9 @@ describe("GET /api/v1/documents/:id/download — BE-S3-02", () => {
       expect(contentDisposition).not.toBeNull();
       // ASCII fallback uses sanitizeFilename (replaces non-ASCII characters with _)
       expect(contentDisposition).toContain('filename="Laporan___Q3___________.pdf"');
-      // UTF-8 filename* retains full Unicode filename per RFC 5987 / 6266
+      // UTF-8 filename* keeps the full Unicode name per RFC 5987: ( ) are encoded, & is an attr-char.
       expect(contentDisposition).toContain(
-        `filename*=UTF-8''${encodeURIComponent("Laporan – Q3 (中文 & 日本語).pdf")}`,
+        "filename*=UTF-8''Laporan%20%E2%80%93%20Q3%20%28%E4%B8%AD%E6%96%87%20&%20%E6%97%A5%E6%9C%AC%E8%AA%9E%29.pdf",
       );
 
       const bytes = new Uint8Array(await response.arrayBuffer());

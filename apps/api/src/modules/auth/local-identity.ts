@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { authUserSchema, type AuthUser, type LoginRequest, type UserRole } from "@axentra/shared";
+import type { PasswordVerifier } from "./auth.password";
 import type { UserAuthenticator } from "./auth.service";
 
 const localIdentityRecordSchema = authUserSchema.extend({
@@ -39,15 +40,24 @@ export function parseLocalIdentityDirectory(encodedDirectory: string): LocalIden
   return parsed.data;
 }
 
-export function createLocalIdentityAuthenticator(encodedDirectory: string): UserAuthenticator {
+export function createLocalIdentityAuthenticator(
+  encodedDirectory: string,
+  passwords: PasswordVerifier,
+): UserAuthenticator {
   const directory = parseLocalIdentityDirectory(encodedDirectory);
 
   return async (credentials: LoginRequest): Promise<AuthUser | null> => {
     const email = credentials.email.toLowerCase();
     const record = directory.find((candidate) => candidate.email.toLowerCase() === email);
-    if (record === undefined) return null;
+    if (record === undefined) {
+      await passwords.rejectUnknownAccount(credentials.password);
+      return null;
+    }
 
-    const passwordMatches = await Bun.password.verify(credentials.password, record.passwordHash);
+    const passwordMatches = await passwords.verify(credentials.password, {
+      userId: record.id,
+      passwordHash: record.passwordHash,
+    });
     if (!passwordMatches) return null;
 
     const user: AuthUser = {

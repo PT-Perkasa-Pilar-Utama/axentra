@@ -11,8 +11,8 @@ For new developers joining Axentra. Read this before writing code.
 
 Axentra is currently at **Foundation v1.0.0**. The repository contains the approved engineering
 base for Web, API, Worker, database boundary, queue, storage, observability, CI, and documentation.
-Business features from US-01 through US-13 are planned but intentionally not implemented in the
-foundation release.
+Sprint 1-3 business routes and tables (AC-01.01 to AC-10.01) exist on `dev`. Sprint 4 (AC-11.01 to
+AC-13.01) is still planned.
 
 ---
 
@@ -48,7 +48,7 @@ Current stack:
 
 | Layer         | Technology                                                                    |
 | ------------- | ----------------------------------------------------------------------------- |
-| Runtime       | Bun 1.3.12                                                                    |
+| Runtime       | Bun 1.4.3                                                                     |
 | Language      | TypeScript strict                                                             |
 | Web           | React, Vite, React Router, TanStack Query, React Hook Form, Zod, Tailwind CSS |
 | API           | Hono REST API on Bun                                                          |
@@ -156,8 +156,9 @@ This starts:
 bun run db:migrate
 ```
 
-Foundation v1.0.0 intentionally has no business tables. Business schema appears only after a
-reviewed sprint task adds it.
+The committed migrations create the Sprint 1-3 business tables (documents, metadata, tags,
+categories, users, and download audit events) and the auth session tables. Further schema changes
+arrive only through a reviewed sprint card.
 
 ### 3.5 Inspect the local database
 

@@ -26,7 +26,7 @@ Then saya melihat kartu data yang menampilkan jumlah dokumen yang diunggah dalam
 Given saya seorang Head of Team
 And berada di menu Audit Trail
 When saya membuka halaman audit trail
-Then tampil informasi detail: Siapa atau User, Apa atau Nama Dokumen, dan Kapan atau Waktu proses download dilakukan
+Then tampil informasi detail: Siapa (User), Apa (Nama Dokumen), dan Kapan (Waktu) proses download dilakukan
 ```
 
 ## AC-13.01 - Pembatasan Hak Download berdasarkan kategori dokumen

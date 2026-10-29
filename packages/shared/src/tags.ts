@@ -28,9 +28,15 @@ export function parseTagsQuery(value: unknown): string[] | undefined {
   return normalized.length > 0 ? Array.from(new Set(normalized)) : undefined;
 }
 
+export const topTagsContextSchema = z.enum(["dashboard", "search"]);
+
+export type TopTagsContext = z.infer<typeof topTagsContextSchema>;
+
+// Dipakai API untuk validasi runtime dan Web untuk tipe request, sehingga kedua sisi tidak
+// bisa berbeda tanpa kompilasi gagal.
 export const topTagsQuerySchema = z
   .object({
-    context: z.enum(["dashboard", "search"]),
+    context: topTagsContextSchema,
     limit: z.coerce
       .number()
       .int()
@@ -42,7 +48,7 @@ export const topTagsQuerySchema = z
   .superRefine((query, context) => {
     if (query.context === "dashboard" && query.documentIds !== undefined) {
       context.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         path: ["documentIds"],
         message: "documentIds hanya berlaku untuk konteks search",
       });

@@ -85,7 +85,7 @@ if another document already exists in the system.
 
 ### Upload (`"Unggah Dokumen"`)
 
-Member Team action for adding one or more documents into Axentra. Planned API:
+Member Team action for adding one or more documents into Axentra. API:
 `POST /api/v1/documents/upload`.
 
 AC references: AC-01.01, AC-01.04.
@@ -190,7 +190,7 @@ Category assigned automatically from document content.
 
 ### Search (`"Pencarian"`)
 
-Finding documents by keyword from title or extracted content. Planned API:
+Finding documents by keyword from title or extracted content. API:
 `GET /api/v1/search/documents`.
 
 AC references: AC-06.01 to AC-06.04.
@@ -211,7 +211,7 @@ AC reference: AC-06.04.
 
 Suggestions shown on a document detail page based on shared tags or other relevance signals.
 
-Planned API: `GET /api/v1/documents/:id/related`.
+API: `GET /api/v1/documents/:id/related`.
 
 AC references: AC-07.01, AC-07.02.
 
@@ -223,7 +223,8 @@ AC references: AC-07.01, AC-07.02.
 
 Viewing document contents without downloading the original file.
 
-Planned API: `GET /api/v1/documents/:id/preview`.
+API: `GET /api/v1/documents/:id/preview` for preview metadata and
+`GET /api/v1/documents/:id/preview/content` for the file bytes.
 
 AC reference: AC-08.01.
 
@@ -231,7 +232,7 @@ AC reference: AC-08.01.
 
 Downloading the original document file when role and category permission allow it.
 
-Planned API: `GET /api/v1/documents/:id/download`.
+API: `GET /api/v1/documents/:id/download`.
 
 AC reference: AC-09.01.
 
@@ -239,7 +240,7 @@ AC reference: AC-09.01.
 
 Downloading multiple selected documents as one `.zip` file.
 
-Planned API: `POST /api/v1/documents/bulk-download`.
+API: `POST /api/v1/documents/bulk-download`.
 
 AC reference: AC-10.01.
 
@@ -337,7 +338,7 @@ tracking.
 
 Log showing who downloaded which document and when.
 
-Planned table: `download_audit_events`. Planned API: `GET /api/v1/audit/downloads`.
+Table: `download_audit_events`. Planned API: `GET /api/v1/audit/downloads`.
 
 AC reference: AC-12.01.
 

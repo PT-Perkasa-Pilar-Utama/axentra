@@ -1,6 +1,8 @@
 import {
   bigint,
+  check,
   index,
+  integer,
   jsonb,
   pgTable,
   text,
@@ -21,6 +23,7 @@ export const documents = pgTable(
     categoryId: uuid("category_id").references(() => categories.id, { onDelete: "set null" }),
     processingStatus: processingStatusEnum("processing_status").default("queued").notNull(),
     errorMessage: text("error_message"),
+    processingRecoveryAttempts: integer("processing_recovery_attempts").default(0).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true, mode: "date" }),
@@ -50,6 +53,7 @@ export const documentFiles = pgTable(
   },
   (table) => [
     uniqueIndex("document_files_document_id_unique_idx").on(table.documentId),
+    check("document_files_file_size_non_negative_check", sql`${table.fileSize} >= 0`),
     index("document_files_storage_key_idx").on(table.storageKey),
     index("document_files_original_name_trgm_idx").using(
       "gin",

@@ -25,6 +25,15 @@ content specific to Axentra Foundation v1.0.0.
 | [business/textual-design-member-team.md](business/textual-design-member-team.md)   | Planned Member Team UI          |
 | [business/textual-design-head-of-team.md](business/textual-design-head-of-team.md) | Planned Head of Team UI         |
 
+## Proposals
+
+Proposals await approval. Code, tests, and acceptance evidence do not rely on them.
+
+| Document                                                             | Purpose                                                    |
+| -------------------------------------------------------------------- | ---------------------------------------------------------- |
+| [proposals/admin-role-proposal.md](proposals/admin-role-proposal.md) | Admin role proposal, not approved by the BA                |
+| [DECISIONS.md](DECISIONS.md)                                         | Proposed decision IDs (B1, B2, D8, D24, D30), not approved |
+
 ## Technical
 
 | Document                                                | Purpose                                        |
@@ -40,6 +49,6 @@ content specific to Axentra Foundation v1.0.0.
 | Document                                             | Purpose                     |
 | ---------------------------------------------------- | --------------------------- |
 | [DEPLOYMENT_PLAN.md](DEPLOYMENT_PLAN.md)             | Deployment plan draft       |
-| [E2E_TESTING.md](E2E_TESTING.md)                     | Future E2E guide            |
+| [E2E_TESTING.md](E2E_TESTING.md)                     | E2E guide (Playwright MCP)  |
 | [TASK_BREAKDOWN.md](TASK_BREAKDOWN.md)               | Foundation and sprint cards |
 | [TROUBLESHOOTING_GUIDE.md](TROUBLESHOOTING_GUIDE.md) | Known local failure modes   |

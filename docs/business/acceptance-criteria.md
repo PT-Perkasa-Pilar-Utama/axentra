@@ -1,6 +1,6 @@
 # Acceptance Criteria - Index
 
-Source: BA workbook `Doc_BA_DMS (Document Management System)_Versi 1 (1).xlsx`, sheet
+Source: BA workbook `Doc_BA_DMS (Document Management System)_Versi 1 (2).xlsx`, sheet
 `Acceptance Criteria`.
 
 Full Given/When/Then bodies live in the per-phase files under
@@ -64,7 +64,7 @@ Full Given/When/Then bodies live in the per-phase files under
 
 - AC-08.01 - Melihat preview dokumen.
 - AC-09.01 - Mengunduh single dokumen.
-- AC-10.01 - Mengunduh dokumen secara massal.
+- AC-10.01 - Mengunduh dokumen secara massal (bulk download).
 
 ## Sprint 4
 
@@ -72,5 +72,5 @@ Full Given/When/Then bodies live in the per-phase files under
 
 - AC-11.01 - Melihat metrik total dokumen.
 - AC-11.02 - Melihat metrik unggahan terbaru.
-- AC-12.01 - Melakukan tracking log unduhan.
-- AC-13.01 - Pembatasan hak download berdasarkan kategori dokumen.
+- AC-12.01 - Melakukan Tracking Log Unduhan.
+- AC-13.01 - Pembatasan Hak Download berdasarkan kategori dokumen.

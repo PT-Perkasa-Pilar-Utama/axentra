@@ -1,65 +1,26 @@
 import { and, count, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { documentContentHashes, documentFiles, documents } from "@axentra/db";
-import {
-  DOCUMENT_COPY,
-  DOCUMENT_ERROR_CODES,
-  type PaginationMeta,
-  type RelatedDocument,
-  type RecentDocument,
-} from "@axentra/shared";
+import { DOCUMENT_COPY, DOCUMENT_ERROR_CODES, type RelatedDocument } from "@axentra/shared";
 import { ConflictError } from "../../http/errors";
 import { listRelatedDocuments as listRelatedDocumentsQuery } from "./documents-related.repository";
 import { listRecentDocumentsWithTagFilter } from "./documents.tag-filter";
+import type {
+  CreateDocumentBatchItem,
+  DocumentBatchDb,
+  IDocumentRepository,
+  RecentDocumentPage,
+  SavedDocumentRecord,
+} from "./documents.repository.types";
 
-export type CreateDocumentBatchItem = {
-  id: string;
-  title: string;
-  storageKey: string;
-  originalName: string;
-  mimeType: string;
-  fileSize: number;
-  fileExtension: string;
-  contentHash: string;
-  hashAlgorithm?: string;
-};
-
-export type SavedDocumentRecord = Omit<CreateDocumentBatchItem, "id" | "hashAlgorithm"> & {
-  documentId: string;
-};
-
-export type RecentDocumentPage = {
-  items: ReadonlyArray<RecentDocument>;
-  meta: PaginationMeta;
-};
-
-export type IDocumentRepository = {
-  findExistingHashes: (hashes: ReadonlyArray<string>, algorithm?: string) => Promise<Set<string>>;
-  findByContentHash?: (
-    contentHash: string,
-    algorithm?: string,
-  ) => Promise<{ documentId: string; contentHash: string } | null>;
-  listRecentDocuments: (
-    page: number,
-    limit: number,
-    tags?: ReadonlyArray<string> | undefined,
-  ) => Promise<RecentDocumentPage>;
-  listRelatedDocuments: (
-    documentId: string,
-    limit: number,
-  ) => Promise<ReadonlyArray<RelatedDocument>>;
-  saveDocumentBatch: (
-    items: ReadonlyArray<CreateDocumentBatchItem>,
-  ) => Promise<ReadonlyArray<SavedDocumentRecord>>;
-  findDocumentById: (id: string) => Promise<typeof documents.$inferSelect | null>;
-  findDocumentFileByDocumentId: (
-    documentId: string,
-  ) => Promise<typeof documentFiles.$inferSelect | null>;
-  markProcessingEnqueueFailed: (
-    documentIds: ReadonlyArray<string>,
-    errorMessage: string,
-  ) => Promise<void>;
-};
+export type {
+  CreateDocumentBatchItem,
+  DocumentBatchDb,
+  DocumentBatchTx,
+  IDocumentRepository,
+  RecentDocumentPage,
+  SavedDocumentRecord,
+} from "./documents.repository.types";
 
 function isUniqueConstraintError(error: unknown): boolean {
   if (typeof error !== "object" || error === null) return false;
@@ -74,19 +35,6 @@ function isUniqueConstraintError(error: unknown): boolean {
     matches || (e.cause !== null && typeof e.cause === "object" && isUniqueConstraintError(e.cause))
   );
 }
-
-export type DocumentBatchTx = {
-  select: (fields: unknown) => {
-    from: (table: unknown) => {
-      where: (condition: unknown) => Promise<ReadonlyArray<{ contentHash: string }>>;
-    };
-  };
-  insert: (table: unknown) => { values: (values: unknown) => Promise<unknown> };
-};
-
-export type DocumentBatchDb = {
-  transaction: <T>(callback: (tx: DocumentBatchTx) => Promise<T>) => Promise<T>;
-};
 
 export class DocumentRepository implements IDocumentRepository {
   public constructor(private readonly db: PostgresJsDatabase | DocumentBatchDb) {}

@@ -1,9 +1,22 @@
 import type React from "react";
 import { Link, useParams } from "react-router";
 import { useDocumentDetailPresenter } from "./document-detail.presenter";
+import type { DownloadButtonTone, DownloadNoteTone } from "./document-detail-download.presenter";
 import { CloseIcon, DownloadIcon, FileIcon } from "./document-icons";
+import { DocumentDocxPreview } from "./document-docx-preview.view";
 import { DocumentMetadataSidebar } from "./document-metadata-sidebar";
 import "./document-preview.css";
+
+const DOWNLOAD_BUTTON_CLASS: Record<DownloadButtonTone, string> = {
+  primary: "bg-[#477532] text-white hover:bg-[#365b26] focus-visible:ring-green-800",
+  busy: "bg-[#e8f0e4] text-[#477532] cursor-wait",
+  blocked: "bg-gray-200 text-gray-500 cursor-not-allowed",
+};
+
+const DOWNLOAD_NOTE_CLASS: Record<DownloadNoteTone, string> = {
+  muted: "text-gray-500",
+  error: "text-rose-600",
+};
 
 export type DocumentDetailViewProps = {
   presenterOptions?: Parameters<typeof useDocumentDetailPresenter>[1];
@@ -41,7 +54,7 @@ export function DocumentDetailView({
     );
   }
 
-  if (presenter.status === "error" || !presenter.document) {
+  if (presenter.status === "error" || !presenter.document || !presenter.fields) {
     return (
       <div className="min-h-dvh bg-[#f3f4f6] flex flex-col items-center justify-center p-6">
         <div className="bg-white p-8 rounded-2xl shadow-sm text-center max-w-md w-full border border-gray-200">
@@ -72,20 +85,8 @@ export function DocumentDetailView({
     );
   }
 
-  const { filename, author, uploadDate } = presenter;
-
-  // Ekstraksi logika styling untuk menghindari nested ternary (linter fix)
-  let downloadBtnClass = "bg-[#477532] text-white hover:bg-[#365b26] focus-visible:ring-green-800";
-  if (presenter.downloadStatus === "loading") {
-    downloadBtnClass = "bg-[#e8f0e4] text-[#477532] cursor-wait";
-  } else if (presenter.downloadStatus === "denied") {
-    downloadBtnClass = "bg-gray-200 text-gray-500 cursor-not-allowed";
-  }
-
-  let downloadNoteClass = "text-gray-500";
-  if (presenter.downloadStatus === "error" || presenter.downloadStatus === "denied") {
-    downloadNoteClass = "text-rose-600";
-  }
+  const { filename, downloadControl } = presenter;
+  const fields = presenter.fields;
 
   return (
     <div className="document-detail-page min-h-dvh flex flex-col text-gray-900 font-sans">
@@ -110,13 +111,11 @@ export function DocumentDetailView({
             id="document-preview-download"
             type="button"
             onClick={presenter.handleDownload}
-            disabled={
-              presenter.downloadStatus === "loading" || presenter.downloadStatus === "denied"
-            }
-            className={`flex min-h-11 items-center gap-2 text-sm font-medium px-4 py-2 rounded-lg transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 ${downloadBtnClass}`}
+            disabled={downloadControl.isBlocked}
+            className={`flex min-h-11 items-center gap-2 text-sm font-medium px-4 py-2 rounded-lg transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 ${DOWNLOAD_BUTTON_CLASS[downloadControl.buttonTone]}`}
             aria-describedby="download-note"
           >
-            <span>{presenter.downloadStatus === "loading" ? "Menyiapkan..." : "Unduh"}</span>
+            <span>{downloadControl.label}</span>
             <DownloadIcon />
           </button>
 
@@ -124,14 +123,9 @@ export function DocumentDetailView({
             id="download-note"
             role="status"
             aria-live="polite"
-            className={`text-xs ${downloadNoteClass}`}
+            className={`text-xs ${DOWNLOAD_NOTE_CLASS[downloadControl.noteTone]}`}
           >
-            {presenter.downloadStatus === "idle" && "Unduh dalam format asli"}
-            {presenter.downloadStatus === "loading" && "Menyiapkan tautan unduhan..."}
-            {presenter.downloadStatus === "success" && "Unduhan dimulai..."}
-            {presenter.downloadStatus === "error" && "Gagal mengunduh dokumen. Coba lagi."}
-            {presenter.downloadStatus === "denied" &&
-              "Anda tidak memiliki izin mengunduh dokumen ini."}
+            {downloadControl.note}
           </span>
         </div>
       </header>
@@ -160,6 +154,13 @@ export function DocumentDetailView({
                 Coba lagi
               </button>
             </section>
+          )}
+
+          {presenter.previewView === "docx" && presenter.docxPreview !== null && (
+            <DocumentDocxPreview
+              state={presenter.docxPreview}
+              onRetry={presenter.retryDocxPreview}
+            />
           )}
 
           {presenter.previewStatus === "ready" &&
@@ -192,10 +193,13 @@ export function DocumentDetailView({
 
         {/* Right Column: Meta Data & Related Documents Sidebar */}
         <DocumentMetadataSidebar
-          documentId={presenter.document.documentId}
+          documentId={presenter.document.id}
           filename={filename}
-          author={author}
-          uploadDate={uploadDate}
+          author={fields.author}
+          tags={fields.tags}
+          category={fields.category}
+          uploadDate={fields.uploadDate}
+          showRelated={fields.showRelated}
         />
       </div>
     </div>
