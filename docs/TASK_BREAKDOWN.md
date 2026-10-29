@@ -102,13 +102,13 @@ overall release.
 | FND-09  | Add database studio shortcut             | Expose a root command for local PostgreSQL inspection through Drizzle Studio.                                                                                                                                                                                                                                                                                                                  | AC-FND-07                            | Arya | 0.2d              | ONBOARDING_GUIDE.md, acceptance-criteria-foundation.md                                                                                |
 | FND-10  | Resolve Sprint 1-3 partials and blockers | Closes PARTIAL items and release blockers from the Sprint 1-3 status review of 2026-10-27 (a local report that is not committed; this row lists its scope): production login, durable sessions with refresh cookie, login rate limit, stuck processing recovery, search wildcard escape, bulk download memory hold, spec drift, and the FE gaps for upload, search, tags, detail, and bulk UI. | AC-01.01 to AC-10.01 (as applicable) | Arya | tracked by branch | api-specs/\_index.md, api-specs/02-authentication.md, api-specs/03-documents.md, technical-specs/09-authentication.md, E2E_TESTING.md |
 
-Decision IDs used by FND-10 (B1, B2, D8, D24, D30) are defined in [DECISIONS.md](DECISIONS.md). Keputusan dicatat dan disetujui oleh Tech Lead (Arya Isnaidi, 2026-10-29).
+Decision IDs used by FND-10 (B1, B2, D8, D24, D30) are defined in [DECISIONS.md](DECISIONS.md). They are proposals until the Tech Lead records a decision.
 
 The Admin role is a proposal that the BA has not approved. Its proposal IDs (PROP-ADM-01 to PROP-ADM-05 and PROP-ADM-AC-01.01 to PROP-ADM-AC-05.01) are not BA IDs, and no sprint card covers them. See [proposals/admin-role-proposal.md](proposals/admin-role-proposal.md).
 
 ## Sprint 1: Upload, Duplicate Detection, Metadata
 
-**Status:** Done. FND-10 disetujui Tech Lead (Arya Isnaidi, 2026-10-29).
+**Status:** Done. FND-10, which closes the Sprint 1-3 partials, is still awaiting Tech Lead approval.
 
 Goal: Member Team can upload supported documents, see duplicate warnings, and view extracted
 metadata.
@@ -147,7 +147,7 @@ metadata.
 
 ## Sprint 2: Smart Tags, Auto Category, Search, Related Documents
 
-**Status:** Done. FND-10 disetujui Tech Lead (Arya Isnaidi, 2026-10-29).
+**Status:** Done. FND-10, which closes the Sprint 1-3 partials, is still awaiting Tech Lead approval.
 
 Goal: uploaded documents become discoverable through AI-generated tags, auto categories, search,
 and related-document suggestions.
@@ -189,7 +189,7 @@ and related-document suggestions.
 
 ## Sprint 3: Preview, Download, Bulk Download
 
-**Status:** Done. FND-10 disetujui Tech Lead (Arya Isnaidi, 2026-10-29).
+**Status:** Done. FND-10, which closes the Sprint 1-3 partials, is still awaiting Tech Lead approval.
 
 Goal: Member Team can preview documents without downloading, download one permitted document, and
 download selected documents as a `.zip`.

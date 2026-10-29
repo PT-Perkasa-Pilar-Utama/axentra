@@ -1,13 +1,13 @@
 # Evidence: FE-S3-01 - Inline preview
 
 Run: 2026-10-27, branch FND-10-Resolve-sprint-1-3-partials-and-blockers, Playwright MCP (Chromium), manual flows per docs/E2E_TESTING.md sections 3-6.
-Diverifikasi pada SHA: a02dd05
+Diverifikasi pada SHA: belum (lihat catatan)
 
-Catatan SHA: Alur walkthrough diverifikasi pada commit a02dd05 (Bun 1.4.3).
+Catatan SHA: run ini tidak mencatat SHA commit. Ulangi alur pada SHA final sebelum rilis, lalu catat SHA di sini.
 
-Coverage: PDF and text-only DOCX. Konfirmasi BA dan Tech Lead menyetujui pratinjau DOCX berupa teks saja untuk AC-08.01 (F12).
+Coverage: PDF only. Neither run records a DOCX preview.
 
-Superseded: the first record and its screenshot `inline-preview.png` show an iframe that loaded a presigned object-storage URL. Re-run di bawah menggantikannya (proxy API byte streaming). Diverifikasi pada commit a02dd05.
+Superseded: the first record and its screenshot `inline-preview.png` show an iframe that loaded a presigned object-storage URL. The preview no longer exposes a storage URL, so the re-run below replaces that record. Do not cite `inline-preview.png` as current evidence. Usang: perlu diverifikasi ulang pada SHA final.
 
 Setup deviations (recorded for the Tech Lead):
 
