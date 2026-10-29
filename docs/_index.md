@@ -32,7 +32,7 @@ Proposals await approval. Code, tests, and acceptance evidence do not rely on th
 | Document                                                             | Purpose                                                    |
 | -------------------------------------------------------------------- | ---------------------------------------------------------- |
 | [proposals/admin-role-proposal.md](proposals/admin-role-proposal.md) | Admin role proposal, not approved by the BA                |
-| [DECISIONS.md](DECISIONS.md)                                         | Proposed decision IDs (B1, B2, D8, F24, F30), not approved |
+| [DECISIONS.md](DECISIONS.md)                                         | Proposed decision IDs (B1, B2, D8, D24, D30), not approved |
 
 ## Technical
 

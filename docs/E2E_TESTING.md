@@ -69,7 +69,7 @@ commit under release and the evidence, including that commit's SHA, is recorded.
 ## 2. Tooling: Playwright MCP
 
 E2E runs use the Playwright MCP. Install it for your client from the section
-`E2E: Playwright MCP (instalasi lokal)` in `CLAUDE.md`, `AGENTS.md`, or `GEMINI.md`. Developers do
+`E2E: Playwright MCP (instalasi lokal)` in `CLAUDE.md`. Developers do
 not install a separate E2E framework.
 
 Why the Playwright MCP fits Axentra:
@@ -395,16 +395,16 @@ Before E2E can become a CI gate, the team must add:
 
 ## 10. Troubleshooting
 
-| Symptom                                | Likely cause                                | Fix                                                                                                    |
-| -------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| Web page does not load                 | Web dev server is not running               | Run `bun run dev:web`.                                                                                 |
-| API health fails                       | API process is not running                  | Run `bun run dev:api`.                                                                                 |
-| Readiness reports database down        | PostgreSQL container is down                | Run `bun run infra:up`, then `bun run db:migrate`.                                                     |
-| Readiness reports Redis down           | Redis container is down                     | Run `bun run infra:up`.                                                                                |
-| Readiness reports storage down         | MinIO container or bucket setup failed      | Restart local infra and check MinIO console.                                                           |
-| Upload flow fails before API request   | Fixture path or browser file input issue    | Verify fixture path and tool-specific upload syntax.                                                   |
-| Duplicate test is flaky                | Seed or cleanup does not reset state        | Reset test namespace before the flow.                                                                  |
-| Search response is slow                | Indexing or processing not completed        | Wait on visible processing-complete state, not sleep.                                                  |
-| Download test exposes signed URL       | Test captured sensitive output              | Redact logs and fix app logging before merging.                                                        |
-| Flow passes locally but fails on Test  | Seed data differs                           | Align Test seed data with E2E fixtures.                                                                |
-| Playwright MCP tools are not available | MCP server is not registered in this client | Register it from the E2E section in `CLAUDE.md`, `AGENTS.md`, or `GEMINI.md`, then restart the client. |
+| Symptom                                | Likely cause                                | Fix                                                                       |
+| -------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------- |
+| Web page does not load                 | Web dev server is not running               | Run `bun run dev:web`.                                                    |
+| API health fails                       | API process is not running                  | Run `bun run dev:api`.                                                    |
+| Readiness reports database down        | PostgreSQL container is down                | Run `bun run infra:up`, then `bun run db:migrate`.                        |
+| Readiness reports Redis down           | Redis container is down                     | Run `bun run infra:up`.                                                   |
+| Readiness reports storage down         | MinIO container or bucket setup failed      | Restart local infra and check MinIO console.                              |
+| Upload flow fails before API request   | Fixture path or browser file input issue    | Verify fixture path and tool-specific upload syntax.                      |
+| Duplicate test is flaky                | Seed or cleanup does not reset state        | Reset test namespace before the flow.                                     |
+| Search response is slow                | Indexing or processing not completed        | Wait on visible processing-complete state, not sleep.                     |
+| Download test exposes signed URL       | Test captured sensitive output              | Redact logs and fix app logging before merging.                           |
+| Flow passes locally but fails on Test  | Seed data differs                           | Align Test seed data with E2E fixtures.                                   |
+| Playwright MCP tools are not available | MCP server is not registered in this client | Register it from the E2E section in `CLAUDE.md`, then restart the client. |

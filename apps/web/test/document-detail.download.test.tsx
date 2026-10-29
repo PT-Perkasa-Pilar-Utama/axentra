@@ -92,7 +92,7 @@ function detailFixture(canDownload: boolean): DocumentDetail {
 }
 
 // Catatan: seluruh HTTP di file ini di-mock (globalThis.fetch). Ini tes presenter/view
-// dengan API palsu, bukan tes integrasi nyata. Bukti stack nyata ada di docs/audits/e2e-*.
+// dengan API palsu, bukan tes integrasi nyata. Bukti stack nyata ada di docs/screenshots/FE-S3-02/EVIDENCE.md.
 function createFetchMock(scenario: DownloadScenario = "success"): typeof fetch {
   const handler = async (input: RequestInfo | URL, _init?: RequestInit): Promise<Response> => {
     const url = String(input);

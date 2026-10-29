@@ -31,7 +31,7 @@ These controls need a decision or an implementation before the related scope is 
 - **Malware scan path for uploads:** not decided or implemented.
 - **OCR and AI provider boundary, data classification, and extracted-text retention:** not decided.
 - **Immutable audit events:** enforced only by the absence of update and delete code paths. Decide whether a database trigger or an append-only database role is required.
-- **Preview size limit and bulk download memory risk:** both await approver decisions. See [DECISIONS.md](../DECISIONS.md) (B2, F24, and F30).
+- **Preview size limit and bulk download memory risk:** both await approver decisions. See [DECISIONS.md](../DECISIONS.md) (B2, D24, and D30).
 
 ## Logging Rules
 

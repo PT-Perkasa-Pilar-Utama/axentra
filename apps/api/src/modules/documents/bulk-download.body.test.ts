@@ -11,7 +11,7 @@ function reserve(budget: BulkDownloadByteBudget, bytes: number): () => void {
   return release;
 }
 
-describe("bulk download response body and slot lifetime (F24)", () => {
+describe("bulk download response body and slot lifetime (D24)", () => {
   test("streams the complete archive and keeps the slot after the body is fully read", async () => {
     const semaphore = new BulkDownloadSemaphore({ maxConcurrency: 2 });
     const release = await semaphore.acquire();
