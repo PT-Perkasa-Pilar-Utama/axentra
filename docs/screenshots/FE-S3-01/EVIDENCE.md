@@ -83,3 +83,5 @@ Result:      Blocked
 Screenshot:  docs/screenshots/FE-S3-01/docx-text-preview-rerun-2026-10-29.jpg
 Note:        Text-only DOCX preview needs BA confirmation for AC-08.01 (F12).
 ```
+
+Addendum 2026-10-29: BA (Azizah) confirmed on 2026-10-29 that text-only DOCX preview meets AC-08.01, relayed by Arya Isnaidi (Tech Lead). The Blocked dependency above is cleared; the observed result of this run stands and counts as Pass for AC-08.01 (DOCX). The run itself was not repeated.
