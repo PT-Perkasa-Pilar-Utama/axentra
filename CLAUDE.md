@@ -32,20 +32,20 @@ card explicitly brings them into scope.
 
 This is an internal delivery team. There is no separate PM or dedicated QA role.
 
-| Area                    | Team member(s)           | Responsibility                                                           |
-| ----------------------- | ------------------------ | ------------------------------------------------------------------------ |
-| Tech Lead               | Arya Isnaidi             | Architecture, review, PR/release approval, and acceptance sign-off       |
-| Backend                 | Sami                     | Assigned API, database, worker, storage, and security cards              |
-| Frontend                | Azis, Aiman              | Assigned Web UI, presenter, and API-integration cards                    |
-| Acceptance verification | Assigned card PIC + Arya | AC evidence and final sign-off; this is an activity, not a separate role |
+| Area                    | Team member(s)          | Responsibility                                                           |
+| ----------------------- | ----------------------- | ------------------------------------------------------------------------ |
+| Tech Lead               | Arya Isnaidi            | Architecture, review, PR/release approval, and acceptance sign-off       |
+| Backend                 | Sami                    | Assigned API, database, worker, storage, and security cards              |
+| Frontend                | Azis, Aiman             | Assigned Web UI, presenter, and API-integration cards                    |
+| Acceptance verification | Arya Isnaidi (QA cards) | AC evidence and final sign-off; this is an activity, not a separate role |
 
 1. Work only on a pre-assigned card in `docs/TASK_BREAKDOWN.md` unless the Tech Lead explicitly
    changes the scope.
 2. Developers do not self-pick backlog work.
 3. Backend and Frontend can work in parallel only from the documented API contract.
 4. Do not fake persistence, authorization, processing, or audit behavior in the Web UI.
-5. The `QA-...` card prefix means acceptance-verification work. It does not imply a dedicated QA
-   team or change the card's assigned PIC.
+5. The `QA-...` card prefix means acceptance-verification work, and its PIC is Arya Isnaidi. It does
+   not imply a dedicated QA team.
 
 ## Local Skills and Commands
 
