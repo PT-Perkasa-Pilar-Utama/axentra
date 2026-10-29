@@ -108,6 +108,8 @@ The Admin role is a proposal that the BA has not approved. Its proposal IDs (PRO
 
 ## Sprint 1: Upload, Duplicate Detection, Metadata
 
+**Status:** Done
+
 Goal: Member Team can upload supported documents, see duplicate warnings, and view extracted
 metadata.
 
@@ -139,11 +141,13 @@ metadata.
 
 | Card ID  | Board Card Title                 | Task Description                                                                                  | AC                   | PIC  | Est  | Docs                                                                   |
 | -------- | -------------------------------- | ------------------------------------------------------------------------------------------------- | -------------------- | ---- | ---- | ---------------------------------------------------------------------- |
-| QA-S1-01 | Verify upload and duplicate flow | Manual and automated coverage for valid PDF, multiple DOCX, unsupported JPG, duplicate, metadata. | AC-01.01 to AC-03.01 | Sami | 0.8d | business/acceptance-criteria-breakdown/acceptance-criteria-sprint-1.md |
+| QA-S1-01 | Verify upload and duplicate flow | Manual and automated coverage for valid PDF, multiple DOCX, unsupported JPG, duplicate, metadata. | AC-01.01 to AC-03.01 | Arya | 0.8d | business/acceptance-criteria-breakdown/acceptance-criteria-sprint-1.md |
 
 ---
 
 ## Sprint 2: Smart Tags, Auto Category, Search, Related Documents
+
+**Status:** Done
 
 Goal: uploaded documents become discoverable through AI-generated tags, auto categories, search,
 and related-document suggestions.
@@ -179,11 +183,13 @@ and related-document suggestions.
 
 | Card ID  | Board Card Title                            | Task Description                                                                                      | AC                   | PIC  | Est  | Docs                                                                   |
 | -------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------- | -------------------- | ---- | ---- | ---------------------------------------------------------------------- |
-| QA-S2-01 | Verify discovery, tag, category, and search | Coverage for Smart Tags, Top Tags, single/multi-tag filter, auto category, fast search, related docs. | AC-04.01 to AC-07.02 | Azis | 1.0d | business/acceptance-criteria-breakdown/acceptance-criteria-sprint-2.md |
+| QA-S2-01 | Verify discovery, tag, category, and search | Coverage for Smart Tags, Top Tags, single/multi-tag filter, auto category, fast search, related docs. | AC-04.01 to AC-07.02 | Arya | 1.0d | business/acceptance-criteria-breakdown/acceptance-criteria-sprint-2.md |
 
 ---
 
 ## Sprint 3: Preview, Download, Bulk Download
+
+**Status:** Done
 
 Goal: Member Team can preview documents without downloading, download one permitted document, and
 download selected documents as a `.zip`.
@@ -211,13 +217,15 @@ Walkthrough 2026-10-20 sudah usang. Screenshot pertama dari run FND-10, `inline-
 
 ### Acceptance Verification
 
-| Card ID  | Board Card Title               | Task Description                                                                       | AC                   | PIC   | Est  | Docs                                                                   |
-| -------- | ------------------------------ | -------------------------------------------------------------------------------------- | -------------------- | ----- | ---- | ---------------------------------------------------------------------- |
-| QA-S3-01 | Verify preview and download AC | Coverage for preview, single download original format, bulk `.zip`, permission denial. | AC-08.01 to AC-10.01 | Aiman | 0.8d | business/acceptance-criteria-breakdown/acceptance-criteria-sprint-3.md |
+| Card ID  | Board Card Title               | Task Description                                                                       | AC                   | PIC  | Est  | Docs                                                                   |
+| -------- | ------------------------------ | -------------------------------------------------------------------------------------- | -------------------- | ---- | ---- | ---------------------------------------------------------------------- |
+| QA-S3-01 | Verify preview and download AC | Coverage for preview, single download original format, bulk `.zip`, permission denial. | AC-08.01 to AC-10.01 | Arya | 0.8d | business/acceptance-criteria-breakdown/acceptance-criteria-sprint-3.md |
 
 ---
 
 ## Sprint 4: Analytics, Audit Trail, Category Permissions
+
+**Status:** Planned
 
 Goal: Head of Team can monitor document usage, inspect download logs, and control Member Team
 download permission by category.
@@ -243,7 +251,7 @@ download permission by category.
 
 | Card ID  | Board Card Title             | Task Description                                                                                    | AC                   | PIC  | Est  | Docs                                                                   |
 | -------- | ---------------------------- | --------------------------------------------------------------------------------------------------- | -------------------- | ---- | ---- | ---------------------------------------------------------------------- |
-| QA-S4-01 | Verify Head of Team controls | Coverage for analytics cards, audit trail fields, category toggle, and Member Team download access. | AC-11.01 to AC-13.01 | Azis | 0.8d | business/acceptance-criteria-breakdown/acceptance-criteria-sprint-4.md |
+| QA-S4-01 | Verify Head of Team controls | Coverage for analytics cards, audit trail fields, category toggle, and Member Team download access. | AC-11.01 to AC-13.01 | Arya | 0.8d | business/acceptance-criteria-breakdown/acceptance-criteria-sprint-4.md |
 
 ---
 
@@ -262,10 +270,10 @@ Applies to every BE, FE, DB, FND, and shared verification card:
 
 ## Summary
 
-| Sprint     | Focus                                                | BE/DB cards | FE cards | Verification cards | Est total |
-| ---------- | ---------------------------------------------------- | ----------- | -------- | ------------------ | --------- |
-| Foundation | Runtime, infrastructure, docs, CI                    | Done        | Done     | Done               | Done      |
-| Sprint 1   | Upload, duplicate detection, metadata, auth          | 6           | 6        | 1                  | 10.5d     |
-| Sprint 2   | Smart Tags, category, search, related documents      | 6           | 5        | 1                  | 8.4d      |
-| Sprint 3   | Preview, single download, bulk download              | 4           | 3        | 1                  | 7.1d      |
-| Sprint 4   | Analytics, audit trail, category download permission | 4           | 3        | 1                  | 5.8d      |
+| Sprint     | Focus                                                | BE/DB cards | FE cards | Verification cards | Est total | Status  |
+| ---------- | ---------------------------------------------------- | ----------- | -------- | ------------------ | --------- | ------- |
+| Foundation | Runtime, infrastructure, docs, CI                    | Done        | Done     | Done               | Done      | Done    |
+| Sprint 1   | Upload, duplicate detection, metadata, auth          | 6           | 6        | 1                  | 10.5d     | Done    |
+| Sprint 2   | Smart Tags, category, search, related documents      | 6           | 5        | 1                  | 8.4d      | Done    |
+| Sprint 3   | Preview, single download, bulk download              | 4           | 3        | 1                  | 7.1d      | Done    |
+| Sprint 4   | Analytics, audit trail, category download permission | 4           | 3        | 1                  | 5.8d      | Planned |
