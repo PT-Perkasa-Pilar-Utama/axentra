@@ -7,8 +7,8 @@ description: Run and record an approved Axentra UI acceptance flow through the P
 
 Use only for an acceptance criterion that requires browser-visible behavior. The web app runs through Vite and React Router; the API and worker run through the documented local commands.
 
-- Install and check the Playwright MCP first: see the "E2E: Playwright MCP (instalasi lokal)" section in AGENTS.md, CLAUDE.md, or GEMINI.md.
-- Run the flow only against a disposable local database (a `*_test` database name) and a local stack started with the documented commands.
+- Install and check the Playwright MCP first: see the "E2E: Playwright MCP (instalasi lokal)" section in CLAUDE.md.
+- Run the flow against a local stack started with the documented commands, or against the Test environment with seeded, non-production accounts. Run destructive resets only on a disposable database, never on a production-like environment (docs/E2E_TESTING.md, section 8.3).
 - Use seeded, non-production accounts from the local identity directory. Never use production credentials.
 - Assert user-visible text, navigation, and persisted outcomes; do not assert implementation details.
 - Record evidence under `docs/screenshots/<CARD-ID>/`: a screenshot for each step that carries the AC, and the observed result. Record the environment, role, input, expected result, and observed result, as described in docs/E2E_TESTING.md.
