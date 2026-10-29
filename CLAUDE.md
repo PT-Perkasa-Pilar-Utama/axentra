@@ -19,7 +19,7 @@ card explicitly brings them into scope.
 
 | Layer         | Technology                                                                    |
 | ------------- | ----------------------------------------------------------------------------- |
-| Runtime       | Bun 1.3.12                                                                    |
+| Runtime       | Bun 1.4.3                                                                     |
 | Language      | TypeScript with strict compiler settings                                      |
 | Web           | React, Vite, React Router, TanStack Query, React Hook Form, Zod, Tailwind CSS |
 | API           | Hono                                                                          |

@@ -48,7 +48,7 @@ Current stack:
 
 | Layer         | Technology                                                                    |
 | ------------- | ----------------------------------------------------------------------------- |
-| Runtime       | Bun 1.3.12                                                                    |
+| Runtime       | Bun 1.4.3                                                                     |
 | Language      | TypeScript strict                                                             |
 | Web           | React, Vite, React Router, TanStack Query, React Hook Form, Zod, Tailwind CSS |
 | API           | Hono REST API on Bun                                                          |
