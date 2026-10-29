@@ -36,7 +36,7 @@ delivery model.
 | Role                    | Team member               | Notes                                     |
 | ----------------------- | ------------------------- | ----------------------------------------- |
 | Tech Lead               | Arya Isnaidi              | Final architecture, review, and release   |
-| Backend                 | Sami                      | API, database, worker, storage, security  |
+| Backend                 | Sami, Arya (Sprint 4)     | API, database, worker, storage, security  |
 | Frontend                | Azis, Aiman               | Web UI, presenter, API integration        |
 | Acceptance verification | Shared by card PIC + Arya | Manual verification and evidence per card |
 
@@ -55,7 +55,7 @@ Approximate effort by sprint:
 | Sprint 1 | 1.3d | 4.6d | 2.1d | 3.5d  |
 | Sprint 2 | 1.2d | 3.7d | 2.6d | 1.4d  |
 | Sprint 3 | 1.5d | 2.2d | 0.7d | 1.9d  |
-| Sprint 4 | 1.2d | 1.4d | 0.7d | 1.7d  |
+| Sprint 4 | 1.8d | 5.9d | 1.7d | 3.4d  |
 
 ## Work Model: Foundation + Contract-First Delivery
 
@@ -97,14 +97,15 @@ overall release.
 
 ## Foundation Maintenance
 
-| Card ID | Board Card Title                         | Task Description                                                                                                                                                                                                                                                                                                                                                                               | AC                                   | PIC  | Est               | Docs                                                                                                                                  |
-| ------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ | ---- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| FND-09  | Add database studio shortcut             | Expose a root command for local PostgreSQL inspection through Drizzle Studio.                                                                                                                                                                                                                                                                                                                  | AC-FND-07                            | Arya | 0.2d              | ONBOARDING_GUIDE.md, acceptance-criteria-foundation.md                                                                                |
-| FND-10  | Resolve Sprint 1-3 partials and blockers | Closes PARTIAL items and release blockers from the Sprint 1-3 status review of 2026-10-27 (a local report that is not committed; this row lists its scope): production login, durable sessions with refresh cookie, login rate limit, stuck processing recovery, search wildcard escape, bulk download memory hold, spec drift, and the FE gaps for upload, search, tags, detail, and bulk UI. | AC-01.01 to AC-10.01 (as applicable) | Arya | tracked by branch | api-specs/\_index.md, api-specs/02-authentication.md, api-specs/03-documents.md, technical-specs/09-authentication.md, E2E_TESTING.md |
+| Card ID | Board Card Title                         | Task Description                                                                                                                                                                                                                                                                                                                                                                               | AC                                     | PIC  | Est               | Docs                                                                                                                                  |
+| ------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- | ---- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| FND-09  | Add database studio shortcut             | Expose a root command for local PostgreSQL inspection through Drizzle Studio.                                                                                                                                                                                                                                                                                                                  | AC-FND-07                              | Arya | 0.2d              | ONBOARDING_GUIDE.md, acceptance-criteria-foundation.md                                                                                |
+| FND-10  | Resolve Sprint 1-3 partials and blockers | Closes PARTIAL items and release blockers from the Sprint 1-3 status review of 2026-10-27 (a local report that is not committed; this row lists its scope): production login, durable sessions with refresh cookie, login rate limit, stuck processing recovery, search wildcard escape, bulk download memory hold, spec drift, and the FE gaps for upload, search, tags, detail, and bulk UI. | AC-01.01 to AC-10.01 (as applicable)   | Arya | tracked by branch | api-specs/\_index.md, api-specs/02-authentication.md, api-specs/03-documents.md, technical-specs/09-authentication.md, E2E_TESTING.md |
+| FND-11  | Add Admin role cards to Sprint 4         | Bring the Admin role proposal into Sprint 4 (account, dashboard, audit, documents) as cards (Tech Lead decision, 2026-10-29). BA approval (Azizah, 2026-10-29) for the in-scope Admin stories; PROP-ADM-04 is not in any card.                                                                                                                                                                 | PROP-ADM-AC-01.01 to PROP-ADM-AC-05.01 | Arya | 0.2d              | proposals/admin-role-proposal.md                                                                                                      |
 
 Decision IDs used by FND-10 (B1, B2, D8, D24, D30) are defined in [DECISIONS.md](DECISIONS.md). They are proposals until the Tech Lead records a decision.
 
-The Admin role is a proposal that the BA has not approved. Its proposal IDs (PROP-ADM-01 to PROP-ADM-05 and PROP-ADM-AC-01.01 to PROP-ADM-AC-05.01) are not BA IDs, and no sprint card covers them. See [proposals/admin-role-proposal.md](proposals/admin-role-proposal.md).
+The Tech Lead brought the Admin role into Sprint 4 (account, dashboard, audit, documents) on 2026-10-29 (see "Sprint 4: Admin"). The BA (Azizah) approved the in-scope Admin stories on 2026-10-29. PROP-ADM-04 is not in any card. Its proposal IDs (PROP-ADM-01 to PROP-ADM-05 and PROP-ADM-AC-01.01 to PROP-ADM-AC-05.01) are not BA IDs, and the cards use them until the BA confirms or renumbers them. See [proposals/admin-role-proposal.md](proposals/admin-role-proposal.md).
 
 ## Sprint 1: Upload, Duplicate Detection, Metadata
 
@@ -227,6 +228,8 @@ Walkthrough 2026-10-20 sudah usang. Screenshot pertama dari run FND-10, `inline-
 
 **Status:** Planned
 
+**Estimated duration:** 5 working days for Sprint 4 as a whole (Head of Team, Admin accounts, dashboard, audit, and documents). Basis: Sami at 5.9d for all Sprint 4 backend cards; Arya (1.8d, QA cards) pairs with Sami on BE-S4-06 and BE-S4-07 to keep the sprint at about 5 working days. Frontend: Aiman 3.4d, Azis 1.7d. The Tech Lead sets the calendar start and end dates.
+
 Goal: Head of Team can monitor document usage, inspect download logs, and control Member Team
 download permission by category.
 
@@ -234,9 +237,9 @@ download permission by category.
 
 | Card ID  | Board Card Title                     | Task Description                                                                                            | AC                 | PIC  | Est  | Docs                                                              |
 | -------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------- | ------------------ | ---- | ---- | ----------------------------------------------------------------- |
-| BE-S4-01 | Implement analytics summary API      | `GET /analytics/summary`; return total documents and documents uploaded in the last 7 days.                 | AC-11.01, AC-11.02 | Arya | 0.7d | api-specs/06-analytics.md                                         |
+| BE-S4-01 | Implement analytics summary API      | `GET /analytics/summary`; return total documents and documents uploaded in the last 7 days.                 | AC-11.01, AC-11.02 | Sami | 0.7d | api-specs/06-analytics.md                                         |
 | BE-S4-02 | Implement download audit trail API   | `GET /audit/downloads`; return user, document name, and timestamp for download events.                      | AC-12.01           | Sami | 0.8d | api-specs/07-audit-permissions.md                                 |
-| BE-S4-03 | Implement permission category list   | `GET /permission-categories`; expose categories and Member Team download permission status to Head of Team. | AC-13.01           | Arya | 0.5d | api-specs/07-audit-permissions.md                                 |
+| BE-S4-03 | Implement permission category list   | `GET /permission-categories`; expose categories and Member Team download permission status to Head of Team. | AC-13.01           | Sami | 0.5d | api-specs/07-audit-permissions.md                                 |
 | BE-S4-04 | Implement category permission toggle | `PATCH /permission-categories/:categoryId`; toggle inactive/active download permission for a category.      | AC-13.01           | Sami | 0.6d | api-specs/07-audit-permissions.md, technical-specs/07-security.md |
 
 ### Frontend
@@ -255,6 +258,49 @@ download permission by category.
 
 ---
 
+## Sprint 4: Admin
+
+**Status:** Planned. Brought into scope by the Tech Lead on 2026-10-29. BA approved the in-scope stories on 2026-10-29 (Azizah, relayed by the Tech Lead). Open questions still need answers before the related cards start.
+
+Goal: Admin can see a system summary, manage Member Team and Head of Team accounts, read the download audit trail for all users, and archive or soft-delete documents.
+
+Scope (defaults from [proposals/admin-role-proposal.md](proposals/admin-role-proposal.md)):
+
+- In scope: PROP-ADM-01 (dasbor), PROP-ADM-02 (akun), PROP-ADM-03 (dokumen), PROP-ADM-05 (audit trail semua pengguna).
+- Out of scope: PROP-ADM-04 (bertentangan dengan AC-05.01) dan perubahan peran akun.
+- Keputusan 2026-10-29: pertanyaan 5, 7, dan 9 sudah diputuskan (arsip tidak tampil untuk Member Team dan Head of Team; Admin hanya metadata, tanpa pratinjau atau unduh isi). Pertanyaan 1 disetujui sesuai usulan. Kartu di sprint ini tidak mengubah perilaku unduh. Sampai pertanyaan 9 dijawab, perilaku API tetap seperti sekarang.
+- Urutan kerja: kartu dokumen (BE-S4-07, FE-S4-06, QA-S4-03) dikerjakan terakhir, setelah akun dan audit stabil, karena hapus lunak memengaruhi daftar dan pencarian Member Team.
+
+**Estimated duration:** termasuk dalam estimasi Sprint 4 di atas. Beban Admin: Sami 3.3d (DB-S4-01, BE-S4-05 sampai BE-S4-08, Arya membantu BE-S4-06 dan BE-S4-07), Aiman 1.7d (FE-S4-05, FE-S4-06), Azis 1.0d (FE-S4-04, FE-S4-07), Arya 1.0d (QA-S4-02, QA-S4-03).
+
+### Backend
+
+| Card ID  | Board Card Title                          | Task Description                                                                                                                                                                                                                                                                                                                                                                                                                                                 | AC                                                                         | PIC  | Est  | Docs                                                                 |
+| -------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | ---- | ---- | -------------------------------------------------------------------- |
+| DB-S4-01 | Add account status and document ownership | One reviewed migration: `users.status` (active/inactive, default active); `documents.uploaded_by` (FK to `users`, nullable, with a documented backfill rule for legacy rows); `documents.archived_at`. The existing `deleted_at` is reused for soft delete.                                                                                                                                                                                                      | PROP-ADM-AC-02.02, PROP-ADM-AC-02.03, PROP-ADM-AC-03.01, PROP-ADM-AC-03.03 | Sami | 0.7d | technical-specs/06-data-model.md, CODING_STANDARD.md                 |
+| BE-S4-05 | Implement Admin summary API               | `GET /admin/summary` for role `admin`: users per role, total documents, uploads in the last 7 days, download count and latest download time.                                                                                                                                                                                                                                                                                                                     | PROP-ADM-AC-01.01 to 01.03                                                 | Sami | 0.6d | api-specs/06-analytics.md                                            |
+| BE-S4-06 | Implement Admin account management API    | `GET /admin/users` lists Member Team and Head of Team accounts with name, role, and status. `PATCH /admin/users/:id/status` deactivates or reactivates them. A deactivated account cannot log in, and its sessions are revoked. Targets other than these two roles are rejected.                                                                                                                                                                                 | PROP-ADM-AC-02.01 to 02.03                                                 | Sami | 0.8d | api-specs/02-authentication.md, technical-specs/09-authentication.md |
+| BE-S4-07 | Implement Admin document management API   | `GET /admin/documents` lists all documents with uploader and upload date. `GET /admin/documents/:id` returns detail and metadata. `POST /admin/documents/:id/archive` archives, and `DELETE /admin/documents/:id` soft-deletes. Metadata only: no preview or content. Archived and deleted documents leave Member Team and Head of Team lists and search. Admin can still find archived documents and unarchive them with `POST /admin/documents/:id/unarchive`. | PROP-ADM-AC-03.01 to 03.04                                                 | Sami | 0.9d | api-specs/03-documents.md, api-specs/05-search-tags-categories.md    |
+| BE-S4-08 | Allow Admin on download audit trail       | Extend `GET /audit/downloads` (BE-S4-02) to role `admin`, covering downloads by all users. Server-side role check. Also remove role `admin` from the preview, preview content, download, and bulk-download routes (`documents.routes.ts`), per the 2026-10-29 decision.                                                                                                                                                                                          | PROP-ADM-AC-05.01                                                          | Sami | 0.3d | api-specs/07-audit-permissions.md                                    |
+
+### Frontend
+
+| Card ID  | Board Card Title                    | Task Description                                                                                                                                                       | AC                         | PIC   | Est  | Docs                             |
+| -------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- | ----- | ---- | -------------------------------- |
+| FE-S4-04 | Build Admin dashboard page          | Cards for users per role, total documents, uploads in the last 7 days, and download activity. Reuses the existing dashboard template.                                  | PROP-ADM-AC-01.01 to 01.03 | Azis  | 0.7d | proposals/admin-role-proposal.md |
+| FE-S4-05 | Build account management page       | Account list with name, role, and status; "Nonaktifkan" and "Aktifkan" with confirmation, loading, and error states.                                                   | PROP-ADM-AC-02.01 to 02.03 | Aiman | 0.8d | proposals/admin-role-proposal.md |
+| FE-S4-06 | Build document management page      | Document list with uploader and upload date; detail with metadata; \"Arsipkan\" and \"Hapus\" with confirmation, loading, and error states. Metadata only; no preview. | PROP-ADM-AC-03.01 to 03.04 | Aiman | 0.9d | proposals/admin-role-proposal.md |
+| FE-S4-07 | Add Admin navigation and audit page | Admin menu (Dasbor Admin, Manajemen Akun, Manajemen Dokumen, Audit Trail) shown only to role `admin`. Reuses the FE-S4-02 audit trail page.                            | PROP-ADM-AC-05.01          | Azis  | 0.3d | proposals/admin-role-proposal.md |
+
+### Acceptance Verification
+
+| Card ID  | Board Card Title                            | Task Description                                                                                                                                                                                              | AC                                                | PIC  | Est  | Docs                             |
+| -------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- | ---- | ---- | -------------------------------- |
+| QA-S4-02 | Verify Admin accounts, dashboard, and audit | Coverage for the Admin summary, account deactivation and reactivation (including blocked login and revoked sessions), audit trail visibility, and denial of Admin routes for member_team and head_of_team.    | PROP-ADM-AC-01.01 to 01.03, 02.01 to 02.03, 05.01 | Arya | 0.5d | proposals/admin-role-proposal.md |
+| QA-S4-03 | Verify Admin document controls              | Coverage for the document list with owner, archive hidden from Member Team search, soft delete removed from active lists with data kept, and denial of Admin routes for other roles. Runs last in the sprint. | PROP-ADM-AC-03.01 to 03.04                        | Arya | 0.5d | proposals/admin-role-proposal.md |
+
+---
+
 ## Definition of Done
 
 Applies to every BE, FE, DB, FND, and shared verification card:
@@ -270,10 +316,10 @@ Applies to every BE, FE, DB, FND, and shared verification card:
 
 ## Summary
 
-| Sprint     | Focus                                                | BE/DB cards | FE cards | Verification cards | Est total | Status  |
-| ---------- | ---------------------------------------------------- | ----------- | -------- | ------------------ | --------- | ------- |
-| Foundation | Runtime, infrastructure, docs, CI                    | Done        | Done     | Done               | Done      | Done    |
-| Sprint 1   | Upload, duplicate detection, metadata, auth          | 6           | 6        | 1                  | 10.5d     | Done    |
-| Sprint 2   | Smart Tags, category, search, related documents      | 6           | 5        | 1                  | 8.4d      | Done    |
-| Sprint 3   | Preview, single download, bulk download              | 4           | 3        | 1                  | 7.1d      | Done    |
-| Sprint 4   | Analytics, audit trail, category download permission | 4           | 3        | 1                  | 5.8d      | Planned |
+| Sprint     | Focus                                                                                      | BE/DB cards | FE cards | Verification cards | Est total | Status  |
+| ---------- | ------------------------------------------------------------------------------------------ | ----------- | -------- | ------------------ | --------- | ------- |
+| Foundation | Runtime, infrastructure, docs, CI                                                          | Done        | Done     | Done               | Done      | Done    |
+| Sprint 1   | Upload, duplicate detection, metadata, auth                                                | 6           | 6        | 1                  | 10.5d     | Done    |
+| Sprint 2   | Smart Tags, category, search, related documents                                            | 6           | 5        | 1                  | 8.4d      | Done    |
+| Sprint 3   | Preview, single download, bulk download                                                    | 4           | 3        | 1                  | 7.1d      | Done    |
+| Sprint 4   | Analytics, audit trail, category download permission, Admin (akun, dasbor, audit, dokumen) | 9           | 7        | 3                  | 12.8d     | Planned |

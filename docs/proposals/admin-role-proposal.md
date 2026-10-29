@@ -1,6 +1,6 @@
 # Peran Admin (usulan)
 
-**Usulan. Bukan sumber BA. Belum disetujui BA atau Tech Lead.**
+**Disetujui BA (Azizah, 29 Oktober 2026) untuk cakupan PROP-ADM-01, 02, 03, dan 05 pada Sprint 4. PROP-ADM-04 tidak termasuk. Pertanyaan 1, 5, 7, dan 9 masih terbuka.**
 
 Peran ini belum ada di BA workbook `Doc_BA_DMS (Document Management System)_Versi 1 (2).xlsx`.
 Sumber BA yang disetujui berhenti di US-13 dan AC-13.01. Karena itu dokumen ini ada di
@@ -9,8 +9,8 @@ Sumber BA yang disetujui berhenti di US-13 dan AC-13.01. Karena itu dokumen ini 
 **ID bersifat sementara.** PROP-ADM-01 sampai PROP-ADM-05 dan PROP-ADM-AC-01.01 sampai
 PROP-ADM-AC-05.01 hanya penanda di dokumen ini. Penanda ini bukan ID BA. Penomoran lama US-14 sampai
 US-18 dan AC-14.01 sampai AC-18.01 tidak dipakai lagi. BA dapat menghapus, menggabungkan, atau
-menomori ulang penanda tersebut saat meninjau. Sampai BA menyetujui, kartu sprint, kode, tes, dan
-bukti tidak boleh memakai penanda ini sebagai requirement yang disetujui. Semua US, AC, dan matriks
+menomori ulang penanda tersebut saat meninjau. Kartu Sprint 4 memakai penanda ini atas keputusan
+Tech Lead (29 Oktober 2026). Sejak BA menyetujui cakupan PROP-ADM-01, 02, 03, dan 05 (29 Oktober 2026), kode, tes, dan bukti boleh memakai penanda ini untuk cakupan tersebut. PROP-ADM-04 tetap tidak boleh dicatat sebagai AC yang disetujui. Semua US, AC, dan matriks
 di bawah berstatus usulan, kecuali yang diberi sumber BA.
 
 Peran `admin` sudah tercantum di [09-authentication.md](../technical-specs/09-authentication.md).
@@ -37,6 +37,16 @@ memantau ringkasan sistem.
 - Peran `admin` tidak menggantikan `member_team` atau `head_of_team` pada rute dokumen, kecuali rute
   itu menyebut `admin` dalam daftar peran yang diizinkan (lihat 09-authentication.md). Rute
   pratinjau dan unduh saat ini menyebut `admin`. Lihat pertanyaan 9.
+
+## Keputusan yang sudah diambil
+
+**Pertanyaan 7 (Admin melihat isi dokumen?)** diputuskan 2026-10-29 oleh Tech Lead di chat: **Admin hanya melihat metadata**, tidak melihat pratinjau atau isi dokumen. Konfirmasi BA untuk keputusan ini belum tercatat.
+
+**Pertanyaan 9 (hak unduh Admin)** mengikuti keputusan 7: Admin tidak mengunduh isi dokumen, sehingga akses pratinjau dan unduh untuk role `admin` dicabut. Keputusan ini perlu dicatat juga oleh Tech Lead dan dikonfirmasi BA.
+
+**Pertanyaan 5 (dokumen arsip masih bisa dicari?)** diputuskan 2026-10-29: dokumen yang diarsipkan **tidak tampil** di pencarian dan daftar Member Team maupun Head of Team. Admin tetap bisa mencarinya di Manajemen Dokumen dan dapat membatalkan arsip (unarchive). BA (Azizah) menyetujui cakupan ini, disampaikan Tech Lead di chat.
+
+**Pertanyaan 1 (arti "tugas")** disetujui 2026-10-29 sesuai usulan: tugas Admin berarti dokumen dan hak unduh yang menjadi milik akun Member Team dan Head of Team. Hak unduh di sini berarti hak yang dikelola Admin, bukan hak Admin untuk mengunduh isi dokumen (lihat pertanyaan 9). Pertanyaan 2, 3, 4, dan 8 mengikuti usulan default.
 
 ## Pertanyaan terbuka untuk Tech Lead dan BA
 
@@ -78,7 +88,7 @@ Dokumen ini memuat 9 pertanyaan terbuka.
 - **Pemilik dokumen (PROP-ADM-AC-03.01, PROP-ADM-AC-03.02).** Kedua AC menampilkan nama pemilik
   dokumen. Tabel `documents` tidak punya kolom pemilik, dan tabel lain di `packages/db/src/schema`
   tidak menyimpan siapa yang mengunggah. Fitur ini membutuhkan perubahan skema lewat migrasi yang
-  direview. Belum ada kartu sprint untuk perubahan itu.
+  direview. Kartu DB-S4-01 (Sprint 4) mencakup perubahan itu.
 - **Unduh oleh Admin.** Kode sudah mengizinkan Admin mengunduh dokumen semua kategori, tetapi belum
   ada keputusan BA atau Tech Lead. Lihat pertanyaan 9.
 
@@ -283,7 +293,5 @@ Catatan matriks:
 
 ## Catatan
 
-- Dokumen ini bukan bagian dari BA workbook. Sebelum masuk ke AC resmi, BA perlu menyetujui
-  PROP-ADM-01 sampai PROP-ADM-05.
-- Admin belum punya sprint. Lihat [TASK_BREAKDOWN.md](../TASK_BREAKDOWN.md) dan
-  [sprint-breakdown.md](../business/sprint-breakdown.md).
+- Dokumen ini bukan bagian dari BA workbook. BA sudah menyetujui cakupan PROP-ADM-01, 02, 03, dan 05 (29 Oktober 2026). PROP-ADM-04 belum disetujui.
+- Tech Lead memasukkan Admin ke Sprint 4 (akun, dasbor, audit, dokumen) pada 29 Oktober 2026. Kartunya ada di [TASK_BREAKDOWN.md](../TASK_BREAKDOWN.md), bagian "Sprint 4: Admin". PROP-ADM-04 dan perubahan peran akun tidak masuk kartu. BA (Azizah) menyetujui cakupan ini pada 29 Oktober 2026, disampaikan Tech Lead di chat.
