@@ -7,5 +7,5 @@ export const downloadAuditEventsResponseSchema = z.array(downloadAuditEventSchem
 export type { DownloadAuditEvent };
 
 export async function listDownloadAuditEvents(): Promise<DownloadAuditEvent[]> {
-  return apiRequest("/audit/downloads", downloadAuditEventsResponseSchema);
+  return apiRequest("/audit/downloads?limit=100", downloadAuditEventsResponseSchema);
 }
