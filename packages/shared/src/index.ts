@@ -6,6 +6,15 @@ export type {
   PaginationMeta,
 } from "./api";
 export { apiErrorSchema, errorDetailSchema, paginationMetaSchema } from "./api";
+export type { DownloadAuditListQuery, DownloadAuditListResponse } from "./audit";
+export {
+  DOWNLOAD_AUDIT_DEFAULT_LIMIT,
+  DOWNLOAD_AUDIT_DEFAULT_PAGE,
+  DOWNLOAD_AUDIT_MAX_LIMIT,
+  DOWNLOAD_AUDIT_MAX_PAGE,
+  downloadAuditListQuerySchema,
+  downloadAuditListResponseSchema,
+} from "./audit";
 export type { AuthUser, LoginRequest, LoginResponse, UserRole } from "./auth";
 export {
   USER_ROLES,

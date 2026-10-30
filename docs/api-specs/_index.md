@@ -77,7 +77,7 @@ PLANNED GET /analytics/summary
 ### Audit (Sprint 4)
 
 ```text
-PLANNED GET /audit/downloads
+OK      GET /audit/downloads
 ```
 
 ### Permission Category (Sprint 4)
