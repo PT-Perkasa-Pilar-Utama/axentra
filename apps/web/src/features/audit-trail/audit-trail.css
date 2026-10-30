@@ -1,0 +1,239 @@
+.audit-trail-page {
+  width: 100%;
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 3rem;
+  color: #25282e;
+}
+
+@media (min-width: 640px) {
+  .audit-trail-page {
+    padding: 2rem 2rem 4rem;
+  }
+}
+
+.audit-trail__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.audit-trail__header h1 {
+  margin: 0;
+  color: #1b1e23;
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.audit-trail__search {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 20rem;
+  padding: 0.5rem 0.875rem;
+  border: 1px solid #dcdfe4;
+  border-radius: 0.75rem;
+  background-color: #ffffff;
+}
+
+.audit-trail__search:focus-within {
+  outline: 2px solid #477532;
+  outline-offset: 2px;
+}
+
+.audit-trail__search svg {
+  width: 1.125rem;
+  height: 1.125rem;
+  flex: none;
+  color: #7a828e;
+}
+
+.audit-trail__search input {
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: #1b1e23;
+  font-size: 0.875rem;
+}
+
+.audit-trail__pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.audit-trail__pagination button {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid #dcdfe4;
+  border-radius: 0.5rem;
+  background-color: #ffffff;
+  color: #434954;
+  cursor: pointer;
+}
+
+.audit-trail__pagination button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.audit-trail__pagination button:not(:disabled):hover {
+  background-color: #e6e9ed;
+}
+
+.audit-trail__pagination button:focus-visible,
+.audit-trail__retry-button:focus-visible {
+  outline: 3px solid #477532;
+  outline-offset: 2px;
+}
+
+.audit-trail__pagination button svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.audit-trail__page-number {
+  min-width: 1.5rem;
+  color: #1b1e23;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.audit-trail__table-container {
+  overflow-x: auto;
+  border: 1px solid #e1e4e8;
+  border-radius: 0.875rem;
+  background-color: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.audit-trail__table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.875rem;
+}
+
+.audit-trail__table th {
+  padding: 0.875rem 1.25rem;
+  border-bottom: 1px solid #e1e4e8;
+  background-color: #f8fafc;
+  color: #475569;
+  font-weight: 600;
+  font-size: 0.8125rem;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.audit-trail__table td {
+  padding: 0.875rem 1.25rem;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+
+.audit-trail__table-row:last-child td {
+  border-bottom: none;
+}
+
+.audit-trail__table-row:hover {
+  background-color: #f8fafc;
+}
+
+.audit-trail__cell-user {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.audit-trail__user-name {
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.audit-trail__user-email {
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.audit-trail__document-name {
+  font-weight: 500;
+  color: #1e293b;
+  word-break: break-all;
+}
+
+.audit-trail__cell-time time {
+  color: #475569;
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+
+.audit-trail__result-count {
+  margin-top: 1rem;
+  color: #64748b;
+  font-size: 0.75rem;
+  text-align: right;
+}
+
+.audit-trail__state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 3rem 1.5rem;
+  border: 1px solid #e1e4e8;
+  border-radius: 0.875rem;
+  background-color: #ffffff;
+  text-align: center;
+}
+
+.audit-trail__state h2 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.audit-trail__state p {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.875rem;
+}
+
+.audit-trail__empty-icon svg {
+  width: 2.75rem;
+  height: 2.75rem;
+  color: #94a3b8;
+}
+
+.audit-trail__retry-button {
+  padding: 0.5rem 1.125rem;
+  border: none;
+  border-radius: 0.5rem;
+  background-color: #477532;
+  color: #ffffff;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.audit-trail__retry-button:hover {
+  background-color: #365b26;
+}
+
+.audit-trail__skeleton {
+  width: 100%;
+  height: 3.5rem;
+  border-radius: 0.5rem;
+  background-color: #e2e8f0;
+}
