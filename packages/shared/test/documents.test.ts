@@ -110,7 +110,7 @@ describe("document shared contracts", () => {
   test("validates user roles and auth contracts", () => {
     expect(isValidUserRole("member_team")).toBe(true);
     expect(isValidUserRole("head_of_team")).toBe(true);
-    expect(isValidUserRole("admin")).toBe(false);
+    expect(isValidUserRole("admin")).toBe(true);
     expect(isValidUserRole("guest")).toBe(false);
 
     const validUser = {

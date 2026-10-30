@@ -2,7 +2,7 @@
 
 Source: BA user stories US-12 and US-13.
 
-These APIs are planned and not implemented in Foundation v0.1.0.
+These APIs are planned and not implemented in Foundation v1.0.0.
 
 ## Download Audit Trail
 

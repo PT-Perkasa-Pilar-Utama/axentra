@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Axentra Document Management System engineering foundation",
-  "packageManager": "bun@1.3.12",
+  "packageManager": "bun@1.4.3",
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -20,11 +20,17 @@
     "lint:fix": "oxlint --fix .",
     "fmt": "oxfmt --check .",
     "fmt:fix": "oxfmt .",
-    "test": "bun test",
-    "test:integration": "cross-env RUN_INTEGRATION_TESTS=1 bun test test/infrastructure.integration.test.ts",
+    "test": "bun run test:backend && bun run test:frontend && bun test ./packages ./test",
+    "test:backend": "bun --cwd apps/api test && bun --cwd apps/worker test",
+    "test:frontend": "bun --cwd apps/web test",
+    "test:be-then-fe": "bun run test:backend && bun run test:frontend",
+    "test:integration": "bun run db:test:prepare && cross-env RUN_INTEGRATION_TESTS=1 DATABASE_URL=postgres://axentra:local-postgres-password@localhost:5432/axentra_test bun test --parallel=1 test/helpers/prepare-test-db.test.ts test/helpers/disposable-database.test.ts test/infrastructure.integration.test.ts test/top-tags.integration.test.ts test/related-documents.integration.test.ts test/smart-tags.integration.test.ts test/tag-filtering.integration.test.ts test/document-search.integration.test.ts test/auto-category.integration.test.ts test/document-download.integration.test.ts test/document-download-audit.integration.test.ts test/document-preview.integration.test.ts test/auth-session.integration.test.ts test/processing-recovery.integration.test.ts",
     "db:generate": "bun run --cwd packages/db generate",
     "db:migrate": "bun run --cwd packages/db migrate",
-    "infra:up": "docker compose -f infra/local/docker-compose.yml up -d --wait",
+    "db:seed": "bun run --cwd packages/db seed",
+    "db:studio": "bun run --cwd packages/db studio",
+    "db:test:prepare": "bun ./infra/local/prepare-test-db.ts",
+    "infra:up": "docker compose -f infra/local/docker-compose.yml up -d --wait && bun run db:test:prepare",
     "infra:down": "docker compose -f infra/local/docker-compose.yml down",
     "complete-check": "bun run type-check && bun run lint && bun run fmt && bun run test && bun run build",
     "prepare": "husky"
@@ -40,7 +46,7 @@
     "bullmq": "^5.0.0",
     "cross-env": "^10.0.0",
     "drizzle-orm": "^0.45.0",
-    "hono": "^4.0.0",
+    "hono": "^4.13.11",
     "husky": "^9.1.0",
     "lint-staged": "^16.0.0",
     "oxfmt": "^0.48.0",
@@ -58,6 +64,13 @@
     ]
   },
   "resolutions": {
-    "esbuild": "^0.28.2"
+    "esbuild": "^0.28.2",
+    "source-map-js": "^1.2.2",
+    "tinypool": "^2.2.0"
+  },
+  "overrides": {
+    "esbuild": "^0.28.2",
+    "source-map-js": "^1.2.2",
+    "tinypool": "^2.2.0"
   }
 }

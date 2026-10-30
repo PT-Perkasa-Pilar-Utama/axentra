@@ -8,6 +8,7 @@ import {
 import { createApp } from "../../app";
 import type { TokenVerifier } from "../../middleware/auth";
 import { createDocumentService } from "./documents.service";
+import type { QueueProducer } from "@axentra/queue";
 import type { IDocumentRepository, RecentDocumentPage } from "./documents.repository";
 
 const testLogger = createLogger({
@@ -50,9 +51,11 @@ function repositoryWith(page: RecentDocumentPage): IDocumentRepository {
   return {
     findExistingHashes: async () => new Set<string>(),
     listRecentDocuments: async () => page,
+    listRelatedDocuments: async () => [],
     saveDocumentBatch: async () => [],
     findDocumentById: async () => null,
     findDocumentFileByDocumentId: async () => null,
+    markProcessingEnqueueFailed: async () => undefined,
   };
 }
 
@@ -129,7 +132,13 @@ describe("GET /api/v1/documents — BE-S1-06", () => {
   });
 
   test("lists a file saved by the default upload repository", async () => {
-    const service = createDocumentService();
+    const queue: QueueProducer = {
+      enqueueSystemHealthCheck: async () => "health-job",
+      enqueueDocumentProcessing: async (payload) => payload.jobId,
+      reconcileDocumentProcessing: async (payload) => payload.jobId,
+      close: async () => undefined,
+    };
+    const service = createDocumentService({ queue });
     const bytes = new TextEncoder().encode("%PDF-1.4\n% laporan\n");
 
     await service.uploadDocuments([
@@ -145,6 +154,148 @@ describe("GET /api/v1/documents — BE-S1-06", () => {
     expect(listed.items[0]?.filename).toBe("laporan.pdf");
     expect(listed.items[0]?.processingStatus).toBe("queued");
     expect(listed.meta.total).toBe(1);
+  });
+
+  test("lists two uploaded documents newest first by createdAt (BE-S1-06)", async () => {
+    const queue: QueueProducer = {
+      enqueueSystemHealthCheck: async () => "health-job",
+      enqueueDocumentProcessing: async (payload) => payload.jobId,
+      reconcileDocumentProcessing: async (payload) => payload.jobId,
+      close: async () => undefined,
+    };
+    const service = createDocumentService({ queue });
+    const olderBytes = new TextEncoder().encode("%PDF-1.4\n% pertama\n");
+    const newerBytes = new TextEncoder().encode("%PDF-1.4\n% kedua\n");
+
+    await service.uploadDocuments([
+      {
+        filename: "pertama.pdf",
+        mimeType: "application/pdf",
+        size: olderBytes.byteLength,
+        bytes: olderBytes,
+      },
+    ]);
+    await service.uploadDocuments([
+      {
+        filename: "kedua.pdf",
+        mimeType: "application/pdf",
+        size: newerBytes.byteLength,
+        bytes: newerBytes,
+      },
+    ]);
+    const listed = await service.listRecentDocuments(1, 20);
+    const [newest, oldest] = listed.items;
+
+    expect(listed.items.map((item) => item.filename)).toEqual(["kedua.pdf", "pertama.pdf"]);
+    expect(Date.parse(newest?.createdAt ?? "")).toBeGreaterThanOrEqual(
+      Date.parse(oldest?.createdAt ?? ""),
+    );
+  });
+
+  describe("tag filtering — BE-S2-03 (AC-04.03, AC-04.04)", () => {
+    test("filters by single tag via tags query parameter (AC-04.03)", async () => {
+      let passedTags: ReadonlyArray<string> | undefined;
+      const repo: IDocumentRepository = {
+        findExistingHashes: async () => new Set<string>(),
+        listRecentDocuments: async (_page, _limit, tags) => {
+          passedTags = tags;
+          return pageOf([laporan]);
+        },
+        listRelatedDocuments: async () => [],
+        saveDocumentBatch: async () => [],
+        findDocumentById: async () => null,
+        findDocumentFileByDocumentId: async () => null,
+        markProcessingEnqueueFailed: async () => undefined,
+      };
+
+      const response = await appWith(repo).request("/api/v1/documents?tags=Strategy", {
+        headers: { authorization: "Bearer member-token" },
+      });
+
+      expect(response.status).toBe(200);
+      expect(passedTags).toEqual(["Strategy"]);
+    });
+
+    test("filters by tag alias query parameter", async () => {
+      let passedTags: ReadonlyArray<string> | undefined;
+      const repo: IDocumentRepository = {
+        findExistingHashes: async () => new Set<string>(),
+        listRecentDocuments: async (_page, _limit, tags) => {
+          passedTags = tags;
+          return pageOf([laporan]);
+        },
+        listRelatedDocuments: async () => [],
+        saveDocumentBatch: async () => [],
+        findDocumentById: async () => null,
+        findDocumentFileByDocumentId: async () => null,
+        markProcessingEnqueueFailed: async () => undefined,
+      };
+
+      const response = await appWith(repo).request("/api/v1/documents?tag=Strategy", {
+        headers: { authorization: "Bearer member-token" },
+      });
+
+      expect(response.status).toBe(200);
+      expect(passedTags).toEqual(["Strategy"]);
+    });
+
+    test("filters by multi-tag via repeated query parameters (AC-04.04)", async () => {
+      let passedTags: ReadonlyArray<string> | undefined;
+      const repo: IDocumentRepository = {
+        findExistingHashes: async () => new Set<string>(),
+        listRecentDocuments: async (_page, _limit, tags) => {
+          passedTags = tags;
+          return pageOf([laporan]);
+        },
+        listRelatedDocuments: async () => [],
+        saveDocumentBatch: async () => [],
+        findDocumentById: async () => null,
+        findDocumentFileByDocumentId: async () => null,
+        markProcessingEnqueueFailed: async () => undefined,
+      };
+
+      const response = await appWith(repo).request("/api/v1/documents?tags=Strategy&tags=Legal", {
+        headers: { authorization: "Bearer member-token" },
+      });
+
+      expect(response.status).toBe(200);
+      expect(passedTags).toEqual(["Strategy", "Legal"]);
+    });
+
+    test("filters by multi-tag via comma-separated query parameter (AC-04.04)", async () => {
+      let passedTags: ReadonlyArray<string> | undefined;
+      const repo: IDocumentRepository = {
+        findExistingHashes: async () => new Set<string>(),
+        listRecentDocuments: async (_page, _limit, tags) => {
+          passedTags = tags;
+          return pageOf([laporan]);
+        },
+        listRelatedDocuments: async () => [],
+        saveDocumentBatch: async () => [],
+        findDocumentById: async () => null,
+        findDocumentFileByDocumentId: async () => null,
+        markProcessingEnqueueFailed: async () => undefined,
+      };
+
+      const response = await appWith(repo).request("/api/v1/documents?tags=Strategy,Legal", {
+        headers: { authorization: "Bearer member-token" },
+      });
+
+      expect(response.status).toBe(200);
+      expect(passedTags).toEqual(["Strategy", "Legal"]);
+    });
+
+    test("returns 400 when a tag exceeds maximum character length", async () => {
+      const longTag = "a".repeat(51);
+      const response = await appWith(repositoryWith(pageOf([]))).request(
+        `/api/v1/documents?tags=${longTag}`,
+        { headers: { authorization: "Bearer member-token" } },
+      );
+
+      expect(response.status).toBe(400);
+      const body = apiErrorSchema.parse(await response.json());
+      expect(body.error.code).toBe("VALIDATION_ERROR");
+    });
   });
 });
 

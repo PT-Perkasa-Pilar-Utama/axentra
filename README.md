@@ -1,7 +1,7 @@
 # Axentra
 
 Axentra is an internal Document Management System. This repository currently contains
-**Axentra Foundation v0.1.0**: the approved engineering base for the Web, API, Worker,
+**Axentra Foundation v1.0.0**: the approved engineering base for the Web, API, Worker,
 database, queue, storage, observability, documentation, and CI workflow.
 
 Business features from US-01 through US-13 are intentionally not implemented in this
@@ -23,7 +23,7 @@ and acceptance verification are documented in [docs/TASK_BREAKDOWN.md](docs/TASK
 
 ## Quick Onboard Guide
 
-Prerequisites: Bun 1.3.12, Docker Desktop with Docker Compose, and Git.
+Prerequisites: Bun 1.4.3, Docker Desktop with Docker Compose, and Git.
 
 ### 1. Install dependencies
 
@@ -36,6 +36,10 @@ bun install
 ```powershell
 Copy-Item .env.example .env
 ```
+
+Before starting the API or running `bun run db:seed`, populate
+`AUTH_LOCAL_IDENTITY_DIRECTORY` in the local `.env` file as described in
+[Environment Configuration](docs/technical-specs/11-environment-configuration.md).
 
 Local PostgreSQL uses the standard host port `5432`.
 
@@ -53,7 +57,7 @@ This starts PostgreSQL, Redis, and MinIO.
 bun run db:migrate
 ```
 
-Foundation v0.1.0 intentionally has no business tables, so migration generation reports no
+Foundation v1.0.0 intentionally has no business tables, so migration generation reports no
 schema changes until a reviewed sprint task adds a domain schema.
 
 ### 5. Start the application processes
@@ -81,7 +85,7 @@ Open:
 
 | Layer    | Technology                                                                     |
 | -------- | ------------------------------------------------------------------------------ |
-| Runtime  | Bun 1.3.12                                                                     |
+| Runtime  | Bun 1.4.3                                                                      |
 | Language | TypeScript strict                                                              |
 | Frontend | React, Vite, React Router, TanStack Query, React Hook Form, Zod, Tailwind CSS  |
 | API      | Hono REST API on Bun                                                           |
@@ -189,7 +193,7 @@ bun run db:migrate
 
 ## API Surface
 
-Foundation v0.1.0 exposes only operational health endpoints:
+Foundation v1.0.0 exposes only operational health endpoints:
 
 | Method | Path                   | Purpose                                            |
 | ------ | ---------------------- | -------------------------------------------------- |
@@ -225,7 +229,7 @@ domain workflows are excluded until their sprint scope is reviewed and approved.
 | [docs/TROUBLESHOOTING_GUIDE.md](docs/TROUBLESHOOTING_GUIDE.md)               | Local troubleshooting runbook                                         |
 
 Business, API, and technical docs may describe planned scope, but implementation remains limited
-to Foundation v0.1.0 until the related sprint is approved.
+to Foundation v1.0.0 until the related sprint is approved.
 
 ---
 

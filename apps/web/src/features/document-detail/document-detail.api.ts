@@ -1,9 +1,30 @@
-import type { DocumentMetadataResult } from "@axentra/shared";
-import { documentMetadataResultSchema } from "@axentra/shared";
-import { apiRequest } from "../../lib/api-client";
+import type {
+  DocumentDetail,
+  DownloadDocumentResponse,
+  PreviewDocumentResponse,
+} from "@axentra/shared";
+import {
+  documentDetailSchema,
+  downloadDocumentResponseSchema,
+  previewDocumentResponseSchema,
+} from "@axentra/shared";
+import { apiDownloadRequest, apiRequest } from "../../lib/api-client";
 
-export function getDocumentMetadata(documentId: string): Promise<DocumentMetadataResult> {
-  return apiRequest(`/documents/${documentId}/metadata`, documentMetadataResultSchema);
+// Satu sumber untuk penulis, tag, kategori, tanggal unggah, dan canDownload.
+export function getDocumentDetail(documentId: string): Promise<DocumentDetail> {
+  return apiRequest(`/documents/${documentId}`, documentDetailSchema);
 }
 
-export const getDocumentDetail = getDocumentMetadata;
+// Metadata saja (filename, mimeType, fileSize); tidak ada URL penyimpanan dalam respons.
+export function getDocumentPreview(documentId: string): Promise<PreviewDocumentResponse> {
+  return apiRequest(`/documents/${documentId}/preview`, previewDocumentResponseSchema);
+}
+
+// Byte berkas dikirim lewat API dengan Bearer token, lalu dibungkus blob URL di presenter.
+export function getDocumentPreviewContent(documentId: string): Promise<Blob> {
+  return apiDownloadRequest(`/documents/${documentId}/preview/content`);
+}
+
+export function getDocumentDownload(documentId: string): Promise<DownloadDocumentResponse> {
+  return apiRequest(`/documents/${documentId}/download`, downloadDocumentResponseSchema);
+}

@@ -13,9 +13,13 @@ export function createListRecentDocumentsHandler(
   dependencies: ListRecentDocumentsDependencies,
 ): (context: Context<ApiEnvironment>) => Promise<Response> {
   return async (context: Context<ApiEnvironment>): Promise<Response> => {
+    const rawTags =
+      context.req.queries("tags") ?? context.req.query("tags") ?? context.req.query("tag");
+
     const parsed = recentDocumentListQuerySchema.safeParse({
       page: context.req.query("page"),
       limit: context.req.query("limit"),
+      tags: rawTags,
     });
 
     if (!parsed.success) {
@@ -29,6 +33,7 @@ export function createListRecentDocumentsHandler(
     const result = await dependencies.documentService.listRecentDocuments(
       parsed.data.page,
       parsed.data.limit,
+      parsed.data.tags,
     );
     return jsonSuccess(context, result.items, 200, result.meta);
   };

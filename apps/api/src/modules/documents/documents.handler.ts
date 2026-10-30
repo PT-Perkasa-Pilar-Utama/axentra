@@ -10,6 +10,7 @@ import { PayloadTooLargeError, ValidationError } from "../../http/errors";
 import { jsonSuccess } from "../../http/responses";
 import type { RawUploadFile } from "./documents.schema";
 import type { DocumentService } from "./documents.service";
+import { createBoundedStream } from "./documents.service.helpers";
 
 export type DocumentHandlerDependencies = {
   documentService: DocumentService;
@@ -17,28 +18,6 @@ export type DocumentHandlerDependencies = {
 
 function isUploadedFile(value: unknown): value is File {
   return typeof value === "object" && value !== null && value instanceof File;
-}
-
-/**
- * Creates a bounded stream that counts incoming bytes and aborts immediately
- * with PayloadTooLargeError as soon as total bytes exceed maxBytes.
- */
-function createBoundedStream(
-  source: ReadableStream<Uint8Array>,
-  maxBytes: number,
-): ReadableStream<Uint8Array> {
-  let totalBytes = 0;
-  const transform = new TransformStream<Uint8Array, Uint8Array>({
-    transform(chunk, controller) {
-      totalBytes += chunk.byteLength;
-      if (totalBytes > maxBytes) {
-        controller.error(new PayloadTooLargeError(DOCUMENT_COPY.FILE_TOO_LARGE));
-        return;
-      }
-      controller.enqueue(chunk);
-    },
-  });
-  return source.pipeThrough(transform);
 }
 
 export function createDocumentUploadHandler(

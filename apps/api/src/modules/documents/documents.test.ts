@@ -4,7 +4,10 @@ import type { StorageAdapter } from "@axentra/storage";
 import {
   DOCUMENT_COPY,
   DOCUMENT_ERROR_CODES,
+  PROCESSING_ENQUEUE_FAILURE_MESSAGE,
+  apiErrorSchema,
   documentProcessJobName,
+  documentProcessJobSchema,
   type ApiErrorEnvelope,
   type ApiSuccessEnvelope,
   type AuthUser,
@@ -15,7 +18,7 @@ import type { QueueProducer } from "@axentra/queue";
 import { createApp } from "../../app";
 import { ConflictError, PayloadTooLargeError, UnsupportedFileTypeError } from "../../http/errors";
 import type { TokenVerifier } from "../../middleware/auth";
-import { createAuthService } from "../auth/auth.service";
+import { createInMemoryAuthService } from "../auth/auth.memory-stores";
 import type { CreateDocumentBatchItem, IDocumentRepository } from "./documents.repository";
 import { validateSingleFileConstraints } from "./documents.schema";
 import { createDocumentService, DocumentService } from "./documents.service";
@@ -233,6 +236,10 @@ function createMockRepository(): IDocumentRepository & {
   existingHashes: Set<string>;
   failOnSave: boolean;
   failWithUniqueConstraint: boolean;
+  markProcessingEnqueueFailed: (
+    documentIds: ReadonlyArray<string>,
+    errorMessage: string,
+  ) => Promise<void>;
 } {
   const savedBatches: CreateDocumentBatchItem[][] = [];
   const existingHashes = new Set<string>();
@@ -250,6 +257,7 @@ function createMockRepository(): IDocumentRepository & {
       return found;
     },
     listRecentDocuments: async () => ({ items: [], meta: { page: 1, limit: 20, total: 0 } }),
+    listRelatedDocuments: async () => [],
     saveDocumentBatch: async (items: ReadonlyArray<CreateDocumentBatchItem>) => {
       if (repo.failWithUniqueConstraint) {
         throw new ConflictError(
@@ -277,6 +285,7 @@ function createMockRepository(): IDocumentRepository & {
     },
     findDocumentById: async () => null,
     findDocumentFileByDocumentId: async () => null,
+    markProcessingEnqueueFailed: async () => undefined,
   };
   return repo;
 }
@@ -295,6 +304,10 @@ function createMockQueue(): QueueProducer & {
     enqueueDocumentProcess: async (data: DocumentProcessJob) => {
       enqueued.push({ name: documentProcessJobName, data });
       return `job-${enqueued.length}`;
+    },
+    reconcileDocumentProcessing: async (data: DocumentProcessJob) => {
+      enqueued.push({ name: documentProcessJobName, data });
+      return data.jobId;
     },
     close: async () => {},
   };
@@ -828,7 +841,107 @@ describe("POST /api/v1/documents/upload", () => {
       const jobData = queuedJob?.data as DocumentProcessJob;
       expect(jobData.schemaVersion).toBe(1);
       expect(jobData.documentId).toBe(savedItem?.id ?? "");
+      expect(jobData.jobId).toBe(savedItem?.id ?? "");
       expect(jobData.storageKey).toBe(savedItem?.storageKey ?? "");
+    });
+
+    it("returns 503 and records failed status when processing enqueue fails [BE-S1-02]", async () => {
+      const failedIds: string[] = [];
+      repository.markProcessingEnqueueFailed = async (documentIds) => {
+        failedIds.push(...documentIds);
+      };
+      queue.enqueueDocumentProcessing = async () => {
+        throw new Error("redis unavailable");
+      };
+
+      const formData = new FormData();
+      formData.append("files", makePdfFile("laporan.pdf", "queue failure content"));
+      const response = await app.request("/api/v1/documents/upload", {
+        method: "POST",
+        headers: { authorization: "Bearer member-token" },
+        body: formData,
+      });
+
+      expect(response.status).toBe(503);
+      const json = apiErrorSchema.parse(await response.json());
+      expect(json.success).toBe(false);
+      expect(json.error.code).toBe(DOCUMENT_ERROR_CODES.PROCESSING_UNAVAILABLE);
+      expect(json.error.message).toBe(PROCESSING_ENQUEUE_FAILURE_MESSAGE);
+      expect(repository.savedBatches.length).toBe(1);
+      const failedDocumentId = repository.savedBatches[0]?.[0]?.id;
+      if (failedDocumentId === undefined) {
+        throw new Error("Expected the failed upload to persist a document id");
+      }
+      expect(json.error.details).toEqual([
+        { field: failedDocumentId, message: "failed laporan.pdf" },
+      ]);
+      expect(failedIds).toEqual([failedDocumentId]);
+      expect(queue.enqueued).toHaveLength(0);
+    });
+
+    it("returns 503 when the second DOCX enqueue fails and records only that file [BE-S1-02]", async () => {
+      const failedIds: string[] = [];
+      repository.markProcessingEnqueueFailed = async (documentIds) => {
+        failedIds.push(...documentIds);
+      };
+      let enqueueCalls = 0;
+      queue.enqueueDocumentProcessing = async (data) => {
+        enqueueCalls += 1;
+        if (enqueueCalls === 2) throw new Error("redis unavailable");
+        queue.enqueued.push({ name: documentProcessJobName, data });
+        return data.jobId;
+      };
+
+      const formData = new FormData();
+      formData.append("files", makeDocxFile("satu.docx", "first docx"));
+      formData.append("files", makeDocxFile("dua.docx", "second docx"));
+      const response = await app.request("/api/v1/documents/upload", {
+        method: "POST",
+        headers: { authorization: "Bearer member-token" },
+        body: formData,
+      });
+
+      expect(response.status).toBe(503);
+      const json = apiErrorSchema.parse(await response.json());
+      expect(json.error.code).toBe(DOCUMENT_ERROR_CODES.PROCESSING_UNAVAILABLE);
+      expect(repository.savedBatches[0]?.map((item) => item.originalName)).toEqual([
+        "satu.docx",
+        "dua.docx",
+      ]);
+      const firstId = repository.savedBatches[0]?.[0]?.id;
+      const secondId = repository.savedBatches[0]?.[1]?.id;
+      if (firstId === undefined || secondId === undefined) {
+        throw new Error("Expected both document ids");
+      }
+      expect(json.error.details).toEqual([
+        { field: firstId, message: "queued satu.docx" },
+        { field: secondId, message: "failed dua.docx" },
+      ]);
+      expect(failedIds).toEqual([secondId]);
+      expect(
+        queue.enqueued.map((job) => documentProcessJobSchema.parse(job.data).documentId),
+      ).toEqual([firstId]);
+    });
+
+    it("propagates a failed enqueue-status write instead of hiding the document [BE-S1-02]", async () => {
+      repository.markProcessingEnqueueFailed = async () => {
+        throw new Error("database unavailable");
+      };
+      queue.enqueueDocumentProcessing = async () => {
+        throw new Error("redis unavailable");
+      };
+
+      const formData = new FormData();
+      formData.append("files", makePdfFile("gagal-status.pdf", "status write failure"));
+      const response = await app.request("/api/v1/documents/upload", {
+        method: "POST",
+        headers: { authorization: "Bearer member-token" },
+        body: formData,
+      });
+
+      expect(response.status).toBe(500);
+      const json = apiErrorSchema.parse(await response.json());
+      expect(json.error.code).toBe("INTERNAL_ERROR");
     });
 
     it("accepts multiple valid DOCX files and returns count and details", async () => {
@@ -1038,7 +1151,7 @@ describe("POST /api/v1/documents/upload", () => {
 
   describe("Production Route Registration & AuthService Integration", () => {
     test("registers /api/v1/documents/upload in production createApp configuration when authService and documentService are injected", async () => {
-      const authService = createAuthService({
+      const authService = createInMemoryAuthService({
         authenticator: (creds) => {
           if (creds.email === "member@axentra.local" && creds.password === "correct-password") {
             return {
@@ -1081,7 +1194,7 @@ describe("POST /api/v1/documents/upload", () => {
     });
 
     test("mounts upload route and applies authentication/RBAC when documentService is injected for BE-S1-02", async () => {
-      const authService = createAuthService({
+      const authService = createInMemoryAuthService({
         authenticator: (creds) => {
           if (creds.email === "member@axentra.local") {
             return {

@@ -1,12 +1,18 @@
+import { randomUUID } from "node:crypto";
 import path from "node:path";
+import { createLogger, type Logger } from "@axentra/observability";
 import type { StorageAdapter } from "@axentra/storage";
+import type {
+  DocumentDetailRecord,
+  IDocumentDetailRepository,
+} from "./documents.detail.repository";
 import {
   DOCUMENT_COPY,
   DOCUMENT_ERROR_CODES,
   type DocumentMetadataResult,
   type RecentDocument,
 } from "@axentra/shared";
-import { ConflictError } from "../../http/errors";
+import { ConflictError, PayloadTooLargeError } from "../../http/errors";
 import type {
   CreateDocumentBatchItem,
   IDocumentRepository,
@@ -32,11 +38,62 @@ export function sanitizeFilename(filename: string): string {
   return cleaned.length > 0 ? cleaned : "document";
 }
 
+function toDetailRecord(item: CreateDocumentBatchItem): DocumentDetailRecord {
+  const now = new Date();
+  return {
+    document: {
+      id: item.id,
+      title: item.title,
+      categoryId: null,
+      processingStatus: "queued",
+      errorMessage: null,
+      processingRecoveryAttempts: 0,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+    },
+    file: {
+      id: randomUUID(),
+      documentId: item.id,
+      storageKey: item.storageKey,
+      originalName: item.originalName,
+      mimeType: item.mimeType,
+      fileSize: item.fileSize,
+      fileExtension: item.fileExtension,
+      createdAt: now,
+      updatedAt: now,
+    },
+  };
+}
+
+// Logger for a service built without one. Production always passes its own logger.
+export function createDefaultServiceLogger(): Logger {
+  return createLogger({
+    service: "axentra-api",
+    environment: "test",
+    version: "0.1.0",
+    level: "fatal",
+  });
+}
+
+// Repository and detail reader share one store, so a document saved through the repository is readable.
+export type InMemoryDocumentStore = {
+  repository: IDocumentRepository;
+  detailRepository: IDocumentDetailRepository;
+};
+
 export function createInMemoryRepository(): IDocumentRepository {
+  return createInMemoryDocumentStore().repository;
+}
+
+export function createInMemoryDocumentStore(): InMemoryDocumentStore {
   const existingHashes = new Set<string>();
+  const hashToDocId = new Map<string, string>();
   const savedBatches: CreateDocumentBatchItem[][] = [];
   const recentDocuments: RecentDocument[] = [];
-  return {
+  const detailRecords = new Map<string, DocumentDetailRecord>();
+  const documentTags = new Map<string, Set<string>>();
+  const repository: IDocumentRepository = {
     findExistingHashes: async (hashes) => {
       const found = new Set<string>();
       for (const h of hashes) {
@@ -44,13 +101,36 @@ export function createInMemoryRepository(): IDocumentRepository {
       }
       return found;
     },
-    listRecentDocuments: async (page, limit): Promise<RecentDocumentPage> => {
+    findByContentHash: async (contentHash: string) => {
+      const docId = hashToDocId.get(contentHash);
+      if (!docId) return null;
+      return { documentId: docId, contentHash };
+    },
+    listRecentDocuments: async (
+      page: number,
+      limit: number,
+      tags?: ReadonlyArray<string> | undefined,
+    ): Promise<RecentDocumentPage> => {
+      let filtered = recentDocuments;
+      if (tags && tags.length > 0) {
+        const uniqueTags = Array.from(
+          new Set(tags.map((t) => t.trim().toLowerCase()).filter((t) => t.length > 0)),
+        );
+        if (uniqueTags.length > 0) {
+          filtered = recentDocuments.filter((doc) => {
+            const tagsForDoc = documentTags.get(doc.id);
+            if (!tagsForDoc) return false;
+            return uniqueTags.every((t) => tagsForDoc.has(t));
+          });
+        }
+      }
       const start = (page - 1) * limit;
       return {
-        items: recentDocuments.slice(start, start + limit),
-        meta: { page, limit, total: recentDocuments.length },
+        items: filtered.slice(start, start + limit),
+        meta: { page, limit, total: filtered.length },
       };
     },
+    listRelatedDocuments: async () => [],
     saveDocumentBatch: async (items) => {
       for (const item of items) {
         if (existingHashes.has(item.contentHash)) {
@@ -63,12 +143,14 @@ export function createInMemoryRepository(): IDocumentRepository {
       savedBatches.push([...items]);
       for (const item of items) {
         existingHashes.add(item.contentHash);
+        hashToDocId.set(item.contentHash, item.id);
         recentDocuments.unshift({
           id: item.id,
           filename: item.originalName,
           processingStatus: "queued",
           createdAt: new Date().toISOString(),
         });
+        detailRecords.set(item.id, toDetailRecord(item));
       }
       return items.map((i) => ({
         documentId: i.id,
@@ -83,7 +165,34 @@ export function createInMemoryRepository(): IDocumentRepository {
     },
     findDocumentById: async () => null,
     findDocumentFileByDocumentId: async () => null,
+    markProcessingEnqueueFailed: async () => undefined,
   };
+  const detailRepository: IDocumentDetailRepository = {
+    findDocumentDetail: async (id) => detailRecords.get(id) ?? null,
+  };
+  return { repository, detailRepository };
+}
+
+/**
+ * Creates a bounded stream that counts incoming bytes and aborts immediately
+ * with PayloadTooLargeError as soon as total bytes exceed maxBytes.
+ */
+export function createBoundedStream(
+  source: ReadableStream<Uint8Array>,
+  maxBytes: number,
+): ReadableStream<Uint8Array> {
+  let totalBytes = 0;
+  const transform = new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      totalBytes += chunk.byteLength;
+      if (totalBytes > maxBytes) {
+        controller.error(new PayloadTooLargeError(DOCUMENT_COPY.FILE_TOO_LARGE));
+        return;
+      }
+      controller.enqueue(chunk);
+    },
+  });
+  return source.pipeThrough(transform);
 }
 
 export function createInMemoryStorage(): StorageAdapter {

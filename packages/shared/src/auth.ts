@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const USER_ROLES = ["member_team", "head_of_team"] as const;
+export const USER_ROLES = ["member_team", "head_of_team", "admin"] as const;
 export type UserRole = (typeof USER_ROLES)[number];
 
 export const userRoleSchema = z.enum(USER_ROLES);
@@ -20,12 +20,15 @@ export function isValidUserRole(role: string): role is UserRole {
 export const loginRequestSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
+  rememberMe: z.boolean().optional(),
 });
 export type LoginRequest = z.infer<typeof loginRequestSchema>;
 
+// Response of POST /auth/login and POST /auth/refresh. The refresh token is an HttpOnly cookie and is
+// never part of the body.
 export const loginResponseSchema = z.object({
   user: authUserSchema,
   token: z.string().min(1),
-  refreshToken: z.string().min(1).optional(),
+  expiresAt: z.iso.datetime(),
 });
 export type LoginResponse = z.infer<typeof loginResponseSchema>;

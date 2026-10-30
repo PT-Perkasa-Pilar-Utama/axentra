@@ -1,0 +1,201 @@
+.document-detail-page {
+  --preview-header-height: 4.375rem;
+  --preview-rail-width: 6.625rem;
+  --preview-sidebar-width: 18.25rem;
+  --preview-line: #e5e7eb;
+  --preview-canvas: #d8d8d8;
+  --preview-accent: #6ca54f;
+  background: var(--preview-canvas);
+}
+
+.document-detail-page__header {
+  height: var(--preview-header-height);
+  border-bottom: 1px solid var(--preview-line);
+}
+
+.document-detail-page__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-height: calc(100dvh - var(--preview-header-height));
+}
+
+.document-detail-page__rail {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid var(--preview-line);
+  background: white;
+  color: #4b5563;
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.document-detail-page__rail-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 2.5rem;
+  height: 3.25rem;
+  border: 1px solid #d4d9df;
+  border-radius: 0.125rem;
+  background: #f8fafc;
+  color: #67717d;
+}
+
+.document-detail-page__canvas {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 24rem;
+  padding: clamp(1.25rem, 5vw, 3.5rem);
+  background: var(--preview-canvas);
+}
+
+.document-detail-page__empty-icon {
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  margin-bottom: 1.25rem;
+  border-radius: 50%;
+  background: #edf3e9;
+  color: #477532;
+}
+
+.document-detail-page__sidebar {
+  min-width: 0;
+  padding: 1.25rem;
+  border-top: 1px solid var(--preview-line);
+  background: white;
+}
+
+.document-detail-page__sidebar > section:first-child {
+  gap: 0.5rem;
+}
+
+.document-detail-page__sidebar > section:first-child > div {
+  gap: 0.5rem;
+}
+
+.document-detail-page__sidebar > section:first-child > div > div {
+  padding: 0.625rem 0.75rem;
+  border: 0;
+  border-radius: 0.625rem;
+  background: #f7f8f9;
+  gap: 0.625rem;
+}
+
+.document-detail-page__sidebar > section:first-child > div > div > div:first-child {
+  border: 0;
+  background: #f1f3f5;
+}
+
+.document-detail-page__sidebar > section:first-child > div > div span {
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.document-detail-page__sidebar .related-documents {
+  padding-top: 0.5rem;
+}
+
+.document-detail-page__sidebar .related-documents__card {
+  min-height: 4rem;
+  padding: 0.625rem;
+  border: 0;
+  border-radius: 0.625rem;
+  background: #f7f8f9;
+}
+
+@media (min-width: 1024px) {
+  .document-detail-page__body {
+    grid-template-columns: var(--preview-rail-width) minmax(0, 1fr) var(--preview-sidebar-width);
+    height: calc(100dvh - var(--preview-header-height));
+    min-height: 0;
+  }
+
+  .document-detail-page__rail,
+  .document-detail-page__canvas,
+  .document-detail-page__sidebar {
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .document-detail-page__rail {
+    flex-direction: column;
+    justify-content: flex-start;
+    padding: 1.5rem 0.75rem;
+    border-right: 1px solid var(--preview-line);
+    border-bottom: 0;
+    text-align: center;
+  }
+
+  .document-detail-page__rail-icon {
+    width: 3.75rem;
+    height: 5.5rem;
+  }
+
+  .document-detail-page__sidebar {
+    border-top: 0;
+    border-left: 1px solid var(--preview-line);
+  }
+}
+
+.document-preview-frame {
+  display: block;
+  width: 100%;
+  min-height: 70dvh;
+  border: 0;
+  border-radius: 0.5rem;
+  background: white;
+}
+
+.document-preview-state {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  width: min(100%, 30rem);
+  min-height: 24rem;
+  margin: auto;
+  padding: 2rem;
+  background: white;
+  text-align: center;
+}
+
+.document-preview-state h2 {
+  margin: 0;
+  color: #252b30;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.document-preview-state p {
+  margin: 0.75rem 0 0;
+  color: #4b5563;
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+.document-preview-state button {
+  min-height: 2.75rem;
+  margin-top: 1.25rem;
+  padding: 0.5rem 1rem;
+  border-radius: 0.75rem;
+  background: #477532;
+  color: white;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.document-preview-state button:focus-visible {
+  outline: 2px solid #365b26;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .document-detail-page * {
+    scroll-behavior: auto;
+  }
+}

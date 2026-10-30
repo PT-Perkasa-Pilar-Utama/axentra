@@ -1,4 +1,5 @@
 import { PlatformStatusView } from "../features/platform-status/platform-status.view";
+import { UserSessionBadge } from "../features/auth/user-session-badge.view";
 
 const boundaries = [
   ["Web", "React, Vite, Router, Query"],
@@ -14,7 +15,10 @@ export function FoundationPage(): React.JSX.Element {
         <a className="wordmark" href="/" aria-label="Axentra Foundation">
           AXENTRA
         </a>
-        <span>Foundation v0.1.0</span>
+        <div className="flex items-center gap-4">
+          <UserSessionBadge />
+          <span>Foundation v1.0.0</span>
+        </div>
       </header>
 
       <section className="intro" aria-labelledby="foundation-title">

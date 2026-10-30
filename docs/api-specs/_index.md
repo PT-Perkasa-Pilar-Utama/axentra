@@ -2,9 +2,9 @@
 
 ## Axentra: Document Management System
 
-**Version:** 0.1.0  
+**Version:** 1.0.0<br>
 **Base URL:** `/api/v1`  
-**Status:** Foundation active, BA feature APIs planned
+**Status:** Sprint 1-3 APIs implemented on `dev`; Sprint 4 APIs planned
 
 Legend:
 
@@ -21,59 +21,66 @@ OK GET /health
 OK GET /health/ready
 ```
 
-### Authentication
+### Authentication (TECHNICAL prerequisite)
 
 Authentication is a technical prerequisite for Member Team and Head of Team flows.
 
 ```text
-TECHNICAL POST /auth/login
-TECHNICAL POST /auth/refresh
-TECHNICAL POST /auth/logout
-TECHNICAL GET  /auth/me
+OK      POST   /auth/login
+OK      POST   /auth/refresh
+OK      POST   /auth/logout
+OK      GET    /auth/me
 ```
 
 ### Documents
 
 ```text
 OK      GET    /documents
-PLANNED POST   /documents/upload
-PLANNED POST   /documents/check-duplicate
-PLANNED GET    /documents/:id
-PLANNED GET    /documents/:id/preview
-PLANNED GET    /documents/:id/download
-PLANNED POST   /documents/bulk-download
-PLANNED GET    /documents/:id/related
+OK      POST   /documents/upload
+OK      POST   /documents/check-duplicate
+OK      GET    /documents/:id
+OK      GET    /documents/:id/preview
+OK      GET    /documents/:id/preview/content
+OK      GET    /documents/:id/download
+OK      POST   /documents/bulk-download
+OK      GET    /documents/:id/related
 ```
+
+`GET /documents/:id` returns the document detail that the Web detail page reads, including
+`canDownload`. `GET /documents/:id/preview` returns preview metadata only. The content route
+`GET /documents/:id/preview/content` streams the stored file through the API for inline rendering
+and issues no storage URL. The API registers `POST /documents/upload` only when the process enables
+the upload route, and `apps/api/src/server.ts` enables it.
 
 ### Processing
 
 ```text
-PLANNED GET /documents/:id/metadata
-PLANNED GET /documents/:id/smart-tags
-PLANNED GET /documents/:id/category
+OK      GET /documents/:id/metadata
+OK      GET /documents/:id/smart-tags
+OK      GET /documents/:id/category
 ```
 
 ### Search, Tags, and Categories
 
 ```text
-PLANNED GET /search/documents
-PLANNED GET /tags/top
-PLANNED GET /categories
+OK GET /search/documents
+OK GET /tags/top
+OK GET /categories
 ```
 
-### Analytics
+### Analytics (Sprint 4)
 
 ```text
 PLANNED GET /analytics/summary
 ```
 
-### Audit
+### Audit (Sprint 4)
 
 ```text
 PLANNED GET /audit/downloads
 ```
 
-### Permission Category
+### Permission Category (Sprint 4)
 
 ```text
 PLANNED GET   /permission-categories

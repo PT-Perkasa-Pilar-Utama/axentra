@@ -10,8 +10,11 @@ import {
   documentMetadata,
   documentSmartTags,
   documents,
+  downloadAuditEvents,
   processingStatusEnum,
   smartTags,
+  userRoleEnum,
+  users,
 } from "../src/schema";
 
 describe("database schema definitions", () => {
@@ -52,6 +55,12 @@ describe("database schema definitions", () => {
     expect(cols.createdAt).toBeDefined();
     expect(cols.updatedAt).toBeDefined();
     expect(cols.deletedAt).toBeDefined();
+
+    const docConfig = getTableConfig(documents);
+    const titleTrgmIdx = docConfig.indexes.find(
+      (idx) => idx.config.name === "documents_title_trgm_idx",
+    );
+    expect(titleTrgmIdx).toBeDefined();
   });
 
   it("defines document_files table columns and unique document_id constraint", () => {
@@ -72,6 +81,11 @@ describe("database schema definitions", () => {
     );
     expect(docIdIndex).toBeDefined();
     expect(docIdIndex?.config.unique).toBe(true);
+
+    const origNameTrgmIdx = config.indexes.find(
+      (idx) => idx.config.name === "document_files_original_name_trgm_idx",
+    );
+    expect(origNameTrgmIdx).toBeDefined();
   });
 
   it("defines document_content_hashes table columns", () => {
@@ -88,10 +102,17 @@ describe("database schema definitions", () => {
     expect(cols.id).toBeDefined();
     expect(cols.documentId).toBeDefined();
     expect(cols.author).toBeDefined();
+    expect(cols.extractedText).toBeDefined();
     expect(cols.rawMetadata).toBeDefined();
     expect(cols.extractedAt).toBeDefined();
     expect(cols.createdAt).toBeDefined();
     expect(cols.updatedAt).toBeDefined();
+
+    const metaConfig = getTableConfig(documentMetadata);
+    const extTextTrgmIdx = metaConfig.indexes.find(
+      (idx) => idx.config.name === "document_metadata_extracted_text_trgm_idx",
+    );
+    expect(extTextTrgmIdx).toBeDefined();
   });
 
   it("defines smart_tags and document_smart_tags table columns", () => {
@@ -105,5 +126,52 @@ describe("database schema definitions", () => {
     expect(docTagCols.documentId).toBeDefined();
     expect(docTagCols.tagId).toBeDefined();
     expect(docTagCols.createdAt).toBeDefined();
+  });
+
+  it("defines user role enum values", () => {
+    expect(userRoleEnum.enumValues).toEqual(["member_team", "head_of_team", "admin"]);
+  });
+
+  it("defines users table columns and unique email constraint", () => {
+    const cols = getTableColumns(users);
+    expect(cols.id).toBeDefined();
+    expect(cols.email).toBeDefined();
+    expect(cols.name).toBeDefined();
+    expect(cols.passwordHash).toBeDefined();
+    expect(cols.role).toBeDefined();
+    expect(cols.createdAt).toBeDefined();
+    expect(cols.updatedAt).toBeDefined();
+
+    const config = getTableConfig(users);
+    const emailIndex = config.indexes.find((idx) => idx.config.name === "users_email_unique_idx");
+    expect(emailIndex).toBeDefined();
+    expect(emailIndex?.config.unique).toBe(true);
+  });
+
+  it("defines download_audit_events table columns and indexes", () => {
+    const cols = getTableColumns(downloadAuditEvents);
+    expect(cols.id).toBeDefined();
+    expect(cols.userId).toBeDefined();
+    expect(cols.userName).toBeDefined();
+    expect(cols.userEmail).toBeDefined();
+    expect(cols.documentId).toBeDefined();
+    expect(cols.documentName).toBeDefined();
+    expect(cols.downloadedAt).toBeDefined();
+
+    const config = getTableConfig(downloadAuditEvents);
+    const userIdIdx = config.indexes.find(
+      (idx) => idx.config.name === "download_audit_events_user_id_idx",
+    );
+    expect(userIdIdx).toBeDefined();
+
+    const docIdIdx = config.indexes.find(
+      (idx) => idx.config.name === "download_audit_events_document_id_idx",
+    );
+    expect(docIdIdx).toBeDefined();
+
+    const downloadedAtIdx = config.indexes.find(
+      (idx) => idx.config.name === "download_audit_events_downloaded_at_idx",
+    );
+    expect(downloadedAtIdx).toBeDefined();
   });
 });

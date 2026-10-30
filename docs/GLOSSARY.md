@@ -2,7 +2,7 @@
 
 ## Axentra: Document Management System
 
-**Version:** 0.1.0  
+**Version:** 1.0.0<br>
 **Date:** 2026-09-16  
 **Author:** Arya Isnaidi (Tech Lead)  
 **Status:** Living Document
@@ -85,7 +85,7 @@ if another document already exists in the system.
 
 ### Upload (`"Unggah Dokumen"`)
 
-Member Team action for adding one or more documents into Axentra. Planned API:
+Member Team action for adding one or more documents into Axentra. API:
 `POST /api/v1/documents/upload`.
 
 AC references: AC-01.01, AC-01.04.
@@ -133,7 +133,7 @@ Planned table area: `processing_jobs`, `ocr_results`.
 ### OCR
 
 Optical Character Recognition. Planned integration for extracting text from documents when needed.
-Deferred in Foundation v0.1.0.
+Deferred in Foundation v1.0.0.
 
 ### AI Extraction
 
@@ -190,7 +190,7 @@ Category assigned automatically from document content.
 
 ### Search (`"Pencarian"`)
 
-Finding documents by keyword from title or extracted content. Planned API:
+Finding documents by keyword from title or extracted content. API:
 `GET /api/v1/search/documents`.
 
 AC references: AC-06.01 to AC-06.04.
@@ -211,7 +211,7 @@ AC reference: AC-06.04.
 
 Suggestions shown on a document detail page based on shared tags or other relevance signals.
 
-Planned API: `GET /api/v1/documents/:id/related`.
+API: `GET /api/v1/documents/:id/related`.
 
 AC references: AC-07.01, AC-07.02.
 
@@ -223,7 +223,8 @@ AC references: AC-07.01, AC-07.02.
 
 Viewing document contents without downloading the original file.
 
-Planned API: `GET /api/v1/documents/:id/preview`.
+API: `GET /api/v1/documents/:id/preview` for preview metadata and
+`GET /api/v1/documents/:id/preview/content` for the file bytes.
 
 AC reference: AC-08.01.
 
@@ -231,7 +232,7 @@ AC reference: AC-08.01.
 
 Downloading the original document file when role and category permission allow it.
 
-Planned API: `GET /api/v1/documents/:id/download`.
+API: `GET /api/v1/documents/:id/download`.
 
 AC reference: AC-09.01.
 
@@ -239,7 +240,7 @@ AC reference: AC-09.01.
 
 Downloading multiple selected documents as one `.zip` file.
 
-Planned API: `POST /api/v1/documents/bulk-download`.
+API: `POST /api/v1/documents/bulk-download`.
 
 AC reference: AC-10.01.
 
@@ -276,7 +277,7 @@ authorization substitute.
 
 ### Member Team
 
-BA persona who uploads documents, searches, filters, previews, and downloads documents when category
+BA persona who uploads documents, searches, filters, and previews; downloads documents when category
 permission allows it.
 
 Planned role code: `member_team`.
@@ -294,7 +295,7 @@ Role-Based Access Control. Axentra must enforce RBAC in the API, not only in the
 
 ### Authentication
 
-Login/session capability. Deferred in Foundation v0.1.0 and required before protected business APIs
+Login/session capability. Deferred in Foundation v1.0.0 and required before protected business APIs
 are exposed.
 
 ### Authorization
@@ -337,7 +338,7 @@ tracking.
 
 Log showing who downloaded which document and when.
 
-Planned table: `download_audit_events`. Planned API: `GET /api/v1/audit/downloads`.
+Table: `download_audit_events`. Planned API: `GET /api/v1/audit/downloads`.
 
 AC reference: AC-12.01.
 
@@ -449,7 +450,7 @@ bun run complete-check
 | ------------- | ------------------------------------------------------ |
 | `Implemented` | Exists in code and is covered by verification.         |
 | `Planned`     | Approved or expected but not implemented yet.          |
-| `Deferred`    | Intentionally postponed outside Foundation v0.1.0.     |
+| `Deferred`    | Intentionally postponed outside Foundation v1.0.0.     |
 | `Blocked`     | Cannot proceed until dependency or decision is solved. |
 
 ### Processing Status

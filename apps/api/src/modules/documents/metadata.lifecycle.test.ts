@@ -3,7 +3,7 @@ import { createLogger } from "@axentra/observability";
 import type { ApiSuccessEnvelope, DocumentMetadataResult } from "@axentra/shared";
 import type { StorageAdapter } from "@axentra/storage";
 import { createApp } from "../../app";
-import { createAuthService } from "../auth/auth.service";
+import { createInMemoryAuthService } from "../auth/auth.memory-stores";
 import { createDocumentService } from "./documents.service";
 import { InMemoryDocumentMetadataRepository } from "./metadata.repository";
 import {
@@ -85,7 +85,7 @@ describe("Document Processing Lifecycle Integration (Task BE-S1-05 / F2, F7 & F8
     });
 
     // 2. Set up API application with metadataRepository
-    const authService = createAuthService({
+    const authService = createInMemoryAuthService({
       authenticator: (creds) => {
         if (creds.email === "member@axentra.local") {
           return {

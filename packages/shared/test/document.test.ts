@@ -1,12 +1,26 @@
 import { describe, expect, it } from "bun:test";
 
 import {
+  BULK_DOWNLOAD_MAX_DOCUMENTS,
+  bulkDownloadRequestSchema,
+  CATEGORIES_DEFAULT_LIMIT,
+  CATEGORIES_MAX_LIMIT,
+  categoriesQuerySchema,
+  categoriesResponseSchema,
   categorySummarySchema,
+  documentCategoryResponseSchema,
   documentDetailSchema,
   documentFileInfoSchema,
   documentMetadataResultSchema,
   documentMetadataSchema,
+  documentSmartTagsResponseSchema,
   documentSummarySchema,
+  downloadAuditEventSchema,
+  downloadDocumentQuerySchema,
+  downloadDocumentResponseSchema,
+  downloadDocumentSuccessResponseSchema,
+  previewDocumentResponseSchema,
+  previewDocumentSuccessResponseSchema,
   processingStatusSchema,
   recentDocumentListQuerySchema,
   recentDocumentListResponseSchema,
@@ -47,10 +61,15 @@ describe("document shared schemas", () => {
         filename: "laporan.pdf",
         processingStatus: "queued",
         createdAt: "2026-09-22T00:00:00.000Z",
-        tags: ["Strategy"],
+        tags: [
+          {
+            id: "33333333-3333-4333-8333-333333333333",
+            name: "Strategy",
+            createdAt: "2026-09-25T03:00:00.000Z",
+          },
+        ],
         category: "Reporting",
       });
-      expect(parsed).not.toHaveProperty("tags");
       expect(parsed).not.toHaveProperty("category");
     });
   });
@@ -126,6 +145,84 @@ describe("document shared schemas", () => {
     });
   });
 
+  describe("documentCategoryResponseSchema", () => {
+    it("accepts valid category data or null", () => {
+      const validWithCategory = {
+        success: true,
+        data: {
+          id: "11111111-1111-4111-8111-111111111111",
+          name: "Reporting",
+          slug: "reporting",
+          downloadEnabled: false,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      };
+      expect(documentCategoryResponseSchema.parse(validWithCategory)).toEqual(validWithCategory);
+
+      const validWithNull = {
+        success: true,
+        data: null,
+      };
+      expect(documentCategoryResponseSchema.parse(validWithNull)).toEqual(validWithNull);
+    });
+  });
+
+  describe("categoriesQuerySchema (Finding F8)", () => {
+    it("defaults limit to CATEGORIES_DEFAULT_LIMIT (50)", () => {
+      expect(categoriesQuerySchema.parse({})).toEqual({ limit: CATEGORIES_DEFAULT_LIMIT });
+    });
+
+    it("accepts valid custom limit within range [1, 100]", () => {
+      expect(categoriesQuerySchema.parse({ limit: 1 })).toEqual({ limit: 1 });
+      expect(categoriesQuerySchema.parse({ limit: "25" })).toEqual({ limit: 25 });
+      expect(categoriesQuerySchema.parse({ limit: CATEGORIES_MAX_LIMIT })).toEqual({
+        limit: CATEGORIES_MAX_LIMIT,
+      });
+    });
+
+    it("rejects non-numeric limit, limit < 1, and limit > CATEGORIES_MAX_LIMIT", () => {
+      expect(() => categoriesQuerySchema.parse({ limit: "invalid" })).toThrow();
+      expect(() => categoriesQuerySchema.parse({ limit: 0 })).toThrow();
+      expect(() => categoriesQuerySchema.parse({ limit: -5 })).toThrow();
+      expect(() => categoriesQuerySchema.parse({ limit: CATEGORIES_MAX_LIMIT + 1 })).toThrow();
+    });
+  });
+
+  describe("categoriesResponseSchema (Finding F8)", () => {
+    it("accepts array of categories within bound", () => {
+      const valid = {
+        success: true,
+        data: [
+          {
+            id: "11111111-1111-4111-8111-111111111111",
+            name: "Reporting",
+            slug: "reporting",
+            downloadEnabled: false,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        ],
+      };
+      expect(categoriesResponseSchema.parse(valid)).toEqual(valid);
+    });
+
+    it("rejects response exceeding CATEGORIES_MAX_LIMIT (100)", () => {
+      const oversized = {
+        success: true,
+        data: Array.from({ length: CATEGORIES_MAX_LIMIT + 1 }, (_, i) => ({
+          id: "11111111-1111-4111-8111-111111111111",
+          name: `Category ${i}`,
+          slug: `category-${i}`,
+          downloadEnabled: false,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        })),
+      };
+      expect(() => categoriesResponseSchema.parse(oversized)).toThrow();
+    });
+  });
+
   describe("smartTagSchema", () => {
     it("accepts valid smart tag", () => {
       const tag = {
@@ -144,6 +241,69 @@ describe("document shared schemas", () => {
           createdAt: new Date().toISOString(),
         }),
       ).toThrow();
+    });
+  });
+
+  describe("documentSmartTagsResponseSchema", () => {
+    it("accepts valid response with up to 3 smart tags", () => {
+      const response = {
+        success: true,
+        data: [
+          {
+            id: "11111111-1111-4111-8111-111111111111",
+            name: "finance",
+            createdAt: new Date().toISOString(),
+          },
+          {
+            id: "22222222-2222-4222-8222-222222222222",
+            name: "strategy",
+            createdAt: new Date().toISOString(),
+          },
+          {
+            id: "33333333-3333-4333-8333-333333333333",
+            name: "legal",
+            createdAt: new Date().toISOString(),
+          },
+        ],
+      };
+      expect(documentSmartTagsResponseSchema.parse(response)).toEqual(response);
+    });
+
+    it("accepts empty smart tags array", () => {
+      const response = {
+        success: true,
+        data: [],
+      };
+      expect(documentSmartTagsResponseSchema.parse(response)).toEqual(response);
+    });
+
+    it("rejects response with more than 3 smart tags", () => {
+      const response = {
+        success: true,
+        data: [
+          {
+            id: "11111111-1111-4111-8111-111111111111",
+            name: "tag-1",
+            createdAt: new Date().toISOString(),
+          },
+          {
+            id: "22222222-2222-4222-8222-222222222222",
+            name: "tag-2",
+            createdAt: new Date().toISOString(),
+          },
+          {
+            id: "33333333-3333-4333-8333-333333333333",
+            name: "tag-3",
+            createdAt: new Date().toISOString(),
+          },
+          {
+            id: "44444444-4444-4444-8444-444444444444",
+            name: "tag-4",
+            createdAt: new Date().toISOString(),
+          },
+        ],
+      };
+      expect(() => documentSmartTagsResponseSchema.parse(response)).toThrow();
     });
   });
 
@@ -249,6 +409,217 @@ describe("document shared schemas", () => {
         canDownload: false,
       };
       expect(documentDetailSchema.parse(detail)).toEqual(detail);
+    });
+  });
+
+  describe("downloadDocumentQuerySchema", () => {
+    it("parses empty query with defaults", () => {
+      const parsed = downloadDocumentQuerySchema.parse({});
+      expect(parsed).toEqual({ stream: false, expiresInSeconds: undefined });
+    });
+
+    it("parses stream boolean and strings", () => {
+      expect(downloadDocumentQuerySchema.parse({ stream: "true" })).toEqual({
+        stream: true,
+        expiresInSeconds: undefined,
+      });
+      expect(downloadDocumentQuerySchema.parse({ stream: "1" })).toEqual({
+        stream: true,
+        expiresInSeconds: undefined,
+      });
+      expect(downloadDocumentQuerySchema.parse({ stream: false })).toEqual({
+        stream: false,
+        expiresInSeconds: undefined,
+      });
+    });
+
+    it("parses valid expiresInSeconds", () => {
+      expect(downloadDocumentQuerySchema.parse({ expiresInSeconds: "300" })).toEqual({
+        stream: false,
+        expiresInSeconds: 300,
+      });
+      expect(downloadDocumentQuerySchema.parse({ expiresInSeconds: 60 })).toEqual({
+        stream: false,
+        expiresInSeconds: 60,
+      });
+      expect(downloadDocumentQuerySchema.parse({ expiresInSeconds: 900 })).toEqual({
+        stream: false,
+        expiresInSeconds: 900,
+      });
+    });
+
+    it("rejects expiresInSeconds outside 60-900 bounds with Indonesian messages", () => {
+      const minResult = downloadDocumentQuerySchema.safeParse({ expiresInSeconds: 59 });
+      expect(minResult.success).toBe(false);
+      if (!minResult.success) {
+        expect(minResult.error.issues[0]?.message).toBe("Masa berlaku URL minimal 60 detik");
+      }
+
+      const maxResult = downloadDocumentQuerySchema.safeParse({ expiresInSeconds: 901 });
+      expect(maxResult.success).toBe(false);
+      if (!maxResult.success) {
+        expect(maxResult.error.issues[0]?.message).toBe("Masa berlaku URL maksimal 900 detik");
+      }
+
+      const nanResult = downloadDocumentQuerySchema.safeParse({ expiresInSeconds: "abc" });
+      expect(nanResult.success).toBe(false);
+      if (!nanResult.success) {
+        expect(nanResult.error.issues[0]?.message).toBe("Masa berlaku URL harus berupa angka");
+      }
+
+      const floatResult = downloadDocumentQuerySchema.safeParse({ expiresInSeconds: 60.5 });
+      expect(floatResult.success).toBe(false);
+      if (!floatResult.success) {
+        expect(floatResult.error.issues[0]?.message).toBe(
+          "Masa berlaku URL harus berupa bilangan bulat",
+        );
+      }
+    });
+  });
+
+  describe("downloadDocumentResponseSchema and success response", () => {
+    it("accepts valid download response data", () => {
+      const valid = {
+        downloadUrl: "https://storage.local/bucket/documents/uuid/file.pdf?sig=abc",
+        filename: "laporan.pdf",
+        mimeType: "application/pdf",
+        fileSize: 1048576,
+        expiresInSeconds: 300,
+      };
+      expect(downloadDocumentResponseSchema.parse(valid)).toEqual(valid);
+
+      const envelope = {
+        success: true as const,
+        data: valid,
+      };
+      expect(downloadDocumentSuccessResponseSchema.parse(envelope)).toEqual(envelope);
+    });
+
+    it("rejects invalid downloadUrl or negative fileSize", () => {
+      expect(() =>
+        downloadDocumentResponseSchema.parse({
+          downloadUrl: "not-a-url",
+          filename: "laporan.pdf",
+          mimeType: "application/pdf",
+          fileSize: 1048576,
+          expiresInSeconds: 300,
+        }),
+      ).toThrow();
+
+      expect(() =>
+        downloadDocumentResponseSchema.parse({
+          downloadUrl: "https://storage.local/file.pdf",
+          filename: "laporan.pdf",
+          mimeType: "application/pdf",
+          fileSize: -1,
+          expiresInSeconds: 300,
+        }),
+      ).toThrow();
+    });
+  });
+
+  describe("previewDocumentResponseSchema and success response", () => {
+    it("accepts valid preview metadata without a storage URL", () => {
+      const valid = {
+        filename: "laporan.pdf",
+        mimeType: "application/pdf",
+        fileSize: 1048576,
+      };
+      expect(previewDocumentResponseSchema.parse(valid)).toEqual(valid);
+
+      const envelope = {
+        success: true as const,
+        data: valid,
+      };
+      expect(previewDocumentSuccessResponseSchema.parse(envelope)).toEqual(envelope);
+    });
+
+    it("drops any legacy previewUrl field instead of passing it through", () => {
+      const parsed = previewDocumentResponseSchema.parse({
+        previewUrl: "https://storage.local/bucket/documents/uuid/file.pdf?sig=abc",
+        filename: "laporan.pdf",
+        mimeType: "application/pdf",
+        fileSize: 1048576,
+      });
+      expect(Object.keys(parsed).sort()).toEqual(["fileSize", "filename", "mimeType"]);
+    });
+
+    it("rejects negative fileSize", () => {
+      expect(() =>
+        previewDocumentResponseSchema.parse({
+          filename: "laporan.pdf",
+          mimeType: "application/pdf",
+          fileSize: -1,
+        }),
+      ).toThrow();
+    });
+  });
+
+  describe("downloadAuditEventSchema", () => {
+    it("accepts valid audit event record", () => {
+      const event = {
+        id: "55555555-5555-4555-8555-555555555555",
+        userId: "11111111-1111-4111-8111-111111111111",
+        userName: "Member User",
+        userEmail: "member@example.com",
+        documentId: "22222222-2222-4222-8222-222222222222",
+        documentName: "laporan.pdf",
+        downloadedAt: new Date().toISOString(),
+      };
+      expect(downloadAuditEventSchema.parse(event)).toEqual(event);
+    });
+
+    it("accepts null/undefined userId and documentId for deleted references", () => {
+      const event = {
+        id: "55555555-5555-4555-8555-555555555555",
+        userId: null,
+        userName: null,
+        userEmail: null,
+        documentId: null,
+        documentName: "laporan.pdf",
+        downloadedAt: new Date().toISOString(),
+      };
+      expect(downloadAuditEventSchema.parse(event)).toEqual(event);
+    });
+  });
+
+  describe("bulkDownloadRequestSchema", () => {
+    it("accepts valid bulk download request with UUIDs", () => {
+      const payload = {
+        documentIds: [
+          "11111111-1111-4111-8111-111111111111",
+          "22222222-2222-4222-8222-222222222222",
+        ],
+      };
+      expect(bulkDownloadRequestSchema.parse(payload)).toEqual(payload);
+    });
+
+    it("rejects empty documentIds array", () => {
+      expect(() =>
+        bulkDownloadRequestSchema.parse({
+          documentIds: [],
+        }),
+      ).toThrow("Minimal satu dokumen harus dipilih");
+    });
+
+    it("rejects documentIds array containing invalid UUID", () => {
+      expect(() =>
+        bulkDownloadRequestSchema.parse({
+          documentIds: ["not-a-uuid"],
+        }),
+      ).toThrow("ID dokumen harus berupa UUID yang valid");
+    });
+
+    it("rejects documentIds array exceeding BULK_DOWNLOAD_MAX_DOCUMENTS (100)", () => {
+      const oversized = Array.from(
+        { length: BULK_DOWNLOAD_MAX_DOCUMENTS + 1 },
+        () => "11111111-1111-4111-8111-111111111111",
+      );
+      expect(() =>
+        bulkDownloadRequestSchema.parse({
+          documentIds: oversized,
+        }),
+      ).toThrow(`Maksimal ${BULK_DOWNLOAD_MAX_DOCUMENTS} dokumen per unduhan massal`);
     });
   });
 });

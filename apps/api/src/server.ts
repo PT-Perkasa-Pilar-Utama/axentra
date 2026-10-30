@@ -5,9 +5,26 @@ import { createQueueProducer, createRedisProbe } from "@axentra/queue";
 import { createS3StorageAdapter } from "@axentra/storage";
 import { createApp } from "./app";
 import { createAuthService } from "./modules/auth/auth.service";
+import { DrizzleAuthSessionStore } from "./modules/auth/auth.session.repository";
+import { DrizzleLoginAttemptStore } from "./modules/auth/auth.login-attempt.repository";
+import { DrizzleAuthUserRepository } from "./modules/auth/auth.user.repository";
+import { createRuntimeAuthenticator } from "./modules/auth/runtime-authenticator";
+import { DocumentDetailRepository } from "./modules/documents/documents.detail.repository";
 import { DocumentRepository } from "./modules/documents/documents.repository";
 import { createDocumentService } from "./modules/documents/documents.service";
+import { DrizzleDocumentContentHashRepository } from "./modules/documents/duplicate.repository";
 import { DrizzleDocumentMetadataRepository } from "./modules/documents/metadata.repository";
+import { DrizzleDocumentSmartTagsRepository } from "./modules/documents/smart-tags.repository";
+import { DrizzleDocumentCategoryRepository } from "./modules/documents/category.repository";
+import { DrizzleCategoriesRepository } from "./modules/categories/categories.repository";
+import { createCategoriesService } from "./modules/categories/categories.service";
+import { DrizzleDownloadRepository } from "./modules/documents/download.repository";
+import { DrizzlePreviewRepository } from "./modules/documents/preview.repository";
+
+import { DrizzleTopTagsRepository } from "./modules/tags/tags.repository";
+import { createTopTagsService } from "./modules/tags/tags.service";
+import { DrizzleSearchRepository } from "./modules/search/search.repository";
+import { createSearchService } from "./modules/search/search.service";
 
 const closeResourcesWithinDeadline = async (
   operations: Array<() => Promise<unknown>>,
@@ -42,7 +59,11 @@ async function start(): Promise<void> {
   });
   const database = createDatabaseClient(config.DATABASE_URL);
   const redis = createRedisProbe(config.REDIS_URL, config.REDIS_HEALTH_TIMEOUT_MS);
-  const queue = createQueueProducer(config.QUEUE_NAME, config.REDIS_URL);
+  const queue = createQueueProducer(
+    config.QUEUE_NAME,
+    config.REDIS_URL,
+    config.REDIS_HEALTH_TIMEOUT_MS,
+  );
   const storage = createS3StorageAdapter(config);
 
   try {
@@ -61,15 +82,31 @@ async function start(): Promise<void> {
     throw error;
   }
 
-  const authService = createAuthService();
+  const authService = createAuthService({
+    authenticator: createRuntimeAuthenticator(config, {
+      logger,
+      userRepository: new DrizzleAuthUserRepository(database.db),
+    }),
+    sessionStore: new DrizzleAuthSessionStore(database.db),
+    loginAttemptStore: new DrizzleLoginAttemptStore(database.db),
+  });
   const documentRepository = new DocumentRepository(database.db);
   const documentService = createDocumentService({
     repository: documentRepository,
+    detailRepository: new DocumentDetailRepository(database.db),
     storage,
     queue,
     logger,
     metadataRepository: new DrizzleDocumentMetadataRepository(database.db),
+    contentHashRepository: new DrizzleDocumentContentHashRepository(database.db),
+    smartTagsRepository: new DrizzleDocumentSmartTagsRepository(database.db),
+    categoryRepository: new DrizzleDocumentCategoryRepository(database.db),
+    downloadRepository: new DrizzleDownloadRepository(database.db),
+    previewRepository: new DrizzlePreviewRepository(database.db),
   });
+  const topTagsService = createTopTagsService(new DrizzleTopTagsRepository(database.db));
+  const searchService = createSearchService(new DrizzleSearchRepository(database.db));
+  const categoriesService = createCategoriesService(new DrizzleCategoriesRepository(database.db));
 
   const app = createApp({
     logger,
@@ -81,7 +118,12 @@ async function start(): Promise<void> {
     ],
     authService,
     documentService,
+    topTagsService,
+    searchService,
+    categoriesService,
     enableUploadRoute: true,
+    webOrigin: config.WEB_ORIGIN,
+    appEnvironment: config.APP_ENV,
   });
 
   const server = Bun.serve({

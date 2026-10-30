@@ -2,7 +2,7 @@
 
 | Layer           | Technology                                              |
 | --------------- | ------------------------------------------------------- |
-| Runtime         | Bun 1.3.12                                              |
+| Runtime         | Bun 1.4.3                                               |
 | Language        | TypeScript strict                                       |
 | Web             | React, Vite, React Router                               |
 | Server state    | TanStack Query                                          |

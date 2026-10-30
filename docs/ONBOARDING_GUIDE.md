@@ -2,17 +2,17 @@
 
 ## Axentra: Document Management System
 
-**Version:** 0.1.0  
+**Version:** 1.0.0<br>
 **Date:** 2026-09-16  
 **Author:** Arya Isnaidi (Tech Lead)  
 **Status:** Living Document
 
 For new developers joining Axentra. Read this before writing code.
 
-Axentra is currently at **Foundation v0.1.0**. The repository contains the approved engineering
+Axentra is currently at **Foundation v1.0.0**. The repository contains the approved engineering
 base for Web, API, Worker, database boundary, queue, storage, observability, CI, and documentation.
-Business features from US-01 through US-13 are planned but intentionally not implemented in the
-foundation release.
+Sprint 1-3 business routes and tables (AC-01.01 to AC-10.01) exist on `dev`. Sprint 4 (AC-11.01 to
+AC-13.01) is still planned.
 
 ---
 
@@ -48,7 +48,7 @@ Current stack:
 
 | Layer         | Technology                                                                    |
 | ------------- | ----------------------------------------------------------------------------- |
-| Runtime       | Bun 1.3.12                                                                    |
+| Runtime       | Bun 1.4.3                                                                     |
 | Language      | TypeScript strict                                                             |
 | Web           | React, Vite, React Router, TanStack Query, React Hook Form, Zod, Tailwind CSS |
 | API           | Hono REST API on Bun                                                          |
@@ -125,6 +125,10 @@ bun install
 Copy-Item .env.example .env
 ```
 
+Before starting the API or running `bun run db:seed`, populate
+`AUTH_LOCAL_IDENTITY_DIRECTORY` in the ignored local `.env` file following
+[Environment Configuration](technical-specs/11-environment-configuration.md).
+
 Review the generated `.env` before starting services. Local values should point to:
 
 | Dependency | Local value                    |
@@ -152,10 +156,25 @@ This starts:
 bun run db:migrate
 ```
 
-Foundation v0.1.0 intentionally has no business tables. Business schema appears only after a
-reviewed sprint task adds it.
+The committed migrations create the Sprint 1-3 business tables (documents, metadata, tags,
+categories, users, and download audit events) and the auth session tables. Further schema changes
+arrive only through a reviewed sprint card.
 
-### 3.5 Start app processes
+### 3.5 Inspect the local database
+
+With local PostgreSQL running and `DATABASE_URL` set in `.env`, start Drizzle Studio from the
+repository root:
+
+```powershell
+bun run db:studio
+```
+
+Open the local address printed in the terminal. Studio binds to `127.0.0.1` and is not exposed to
+other machines on the network. Keep the terminal running while you use Studio and press `Ctrl+C` to
+stop it. Studio connects to the database configured by `DATABASE_URL`; confirm that it points to
+your local database before editing any data.
+
+### 3.6 Start app processes
 
 Run each process in a separate terminal:
 
@@ -180,7 +199,7 @@ Open:
 | API readiness | `http://localhost:3001/api/v1/health/ready` |
 | MinIO console | `http://localhost:9001`                     |
 
-### 3.6 Run the checks
+### 3.7 Run the checks
 
 Baseline gate:
 

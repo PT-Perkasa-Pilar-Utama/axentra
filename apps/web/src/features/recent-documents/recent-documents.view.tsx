@@ -1,0 +1,130 @@
+import type React from "react";
+import { Link } from "react-router";
+import type { RecentDocumentsPresenter } from "./recent-documents.types";
+import { RecentDocumentActions } from "./recent-document-actions.view";
+import { DocumentSmartTags } from "./recent-document-smart-tags.view";
+
+export { RecentDocumentActions };
+export type { RecentDocumentActionsProps } from "./recent-document-actions.view";
+export { DownloadButton } from "./recent-document-download-button.view";
+export type { DownloadButtonProps } from "./recent-document-download-button.view";
+
+const emptyMessage = "Tidak ada hasil yang ditemukan";
+
+export type RecentDocumentsViewProps = {
+  presenter: RecentDocumentsPresenter;
+};
+
+export function RecentDocumentsView({ presenter }: RecentDocumentsViewProps): React.JSX.Element {
+  return (
+    <section aria-label="Semua dokumen">
+      <div className="mb-3 flex items-center justify-between gap-4">
+        <h2 className="text-sm font-semibold text-gray-900">Semua Dokumen</h2>
+        <RecentDocumentActions presenter={presenter} />
+      </div>
+
+      {presenter.downloadError && (
+        <p role="alert" className="mb-3 text-sm text-rose-600">
+          {presenter.downloadError}
+        </p>
+      )}
+
+      {presenter.isLoading && (
+        <div
+          className="flex min-h-48 items-center justify-center gap-2 rounded-2xl border border-[#e1e5e9] bg-white py-12 text-sm text-gray-500"
+          role="status"
+          aria-label="Memuat daftar dokumen"
+        >
+          <div
+            className="h-5 w-5 animate-spin rounded-full border-2 border-[#6fa84f] border-t-transparent"
+            aria-hidden="true"
+          />
+          Memuat dokumen...
+        </div>
+      )}
+
+      {presenter.isError && !presenter.isLoading && (
+        <div className="flex min-h-48 flex-col items-center justify-center gap-3 rounded-2xl border border-[#e1e5e9] bg-white py-12">
+          <p className="text-sm text-rose-600">Gagal memuat dokumen.</p>
+          <button
+            type="button"
+            onClick={presenter.retry}
+            className="rounded-md border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
+          >
+            Coba lagi
+          </button>
+        </div>
+      )}
+
+      {presenter.isEmpty && (
+        <p className="flex min-h-48 items-center justify-center rounded-2xl border border-[#e1e5e9] bg-white px-4 py-12 text-center text-sm text-gray-500">
+          {emptyMessage}
+        </p>
+      )}
+
+      {presenter.hasItems && (
+        <ul aria-label="Daftar dokumen" className="space-y-1.5">
+          {presenter.items.map((item) => (
+            <li
+              key={item.id}
+              className="grid min-h-[4.5rem] grid-cols-[1.25rem_minmax(0,1fr)] items-center gap-x-5 rounded-2xl border border-[#e1e5e9] bg-white px-5 py-3 md:grid-cols-[1.25rem_minmax(0,1.2fr)_minmax(0,1.5fr)_minmax(8rem,auto)_minmax(6rem,auto)] md:px-8"
+            >
+              <input
+                type="checkbox"
+                checked={item.isSelected}
+                onChange={() => presenter.toggleSelect(item.id)}
+                aria-label={`Pilih ${item.filename}`}
+                className="h-5 w-5 shrink-0 cursor-pointer rounded border-gray-300 accent-[#65a448] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#65a448] focus-visible:ring-offset-1"
+              />
+
+              <div className="min-w-0 flex-1">
+                <Link
+                  id={`recent-document-open-${item.id}`}
+                  to={`/documents/${item.id}`}
+                  aria-label={`Buka ${item.filename}`}
+                  className="block truncate rounded text-sm font-medium text-[#535a63] hover:text-[#477532] hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#477532]"
+                >
+                  {item.filename}
+                </Link>
+                <p className="mt-1 text-xs text-gray-500 md:hidden">
+                  {item.statusLabel} · {item.dateLabel}
+                </p>
+              </div>
+
+              <div className="col-start-2 mt-1 flex flex-wrap items-center gap-1.5 md:col-start-auto md:mt-0">
+                <DocumentSmartTags state={item.smartTags} status={item.processingStatus} />
+                {item.category.isLoading && item.processingStatus === "completed" && (
+                  <span
+                    className="h-5 w-16 animate-pulse rounded-full bg-emerald-100"
+                    aria-label="Memuat kategori"
+                  />
+                )}
+                {item.category.isError && item.processingStatus === "completed" && (
+                  <button
+                    type="button"
+                    onClick={item.category.retry}
+                    className="rounded text-xs text-rose-700 underline focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
+                  >
+                    Gagal memuat kategori — coba lagi
+                  </button>
+                )}
+                {item.category.name && (
+                  <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-800">
+                    {item.category.name}
+                  </span>
+                )}
+              </div>
+
+              <p className="hidden text-sm font-medium text-[#535a63] md:block">
+                {item.statusLabel}
+              </p>
+              <div className="hidden shrink-0 text-right md:block">
+                <p className="text-xs text-[#9aa2ad]">{item.dateLabel}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}

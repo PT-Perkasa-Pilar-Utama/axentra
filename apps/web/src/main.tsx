@@ -3,6 +3,8 @@ import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "react-router";
 import { router } from "./app/router";
+import { AuthSessionProvider } from "./features/auth/auth-session.context";
+import { SessionBootstrapGate } from "./features/auth/session-bootstrap-gate.view";
 import "./styles.css";
 
 const rootElement = document.getElementById("root");
@@ -20,7 +22,18 @@ const queryClient = new QueryClient({
 createRoot(rootElement).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <AuthSessionProvider
+        onUnauthorized={(currentPath) => {
+          void router.navigate("/login", {
+            state: { from: { pathname: currentPath || "/" } },
+            replace: true,
+          });
+        }}
+      >
+        <SessionBootstrapGate>
+          <RouterProvider router={router} />
+        </SessionBootstrapGate>
+      </AuthSessionProvider>
     </QueryClientProvider>
   </StrictMode>,
 );

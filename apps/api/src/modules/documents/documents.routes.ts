@@ -3,8 +3,17 @@ import type { ApiEnvironment } from "../../environment";
 import type { TokenVerifier } from "../../middleware/auth";
 import { defaultTokenVerifier, requireAuth, requireRole } from "../../middleware/auth";
 import { createDocumentUploadHandler } from "./documents.handler";
+import { createCheckDuplicateHandler } from "./duplicate.handler";
 import { createListRecentDocumentsHandler } from "./documents.list.handler";
 import { createGetDocumentMetadataHandler } from "./metadata.handler";
+import { createGetDocumentSmartTagsHandler } from "./smart-tags.handler";
+import { createGetDocumentCategoryHandler } from "./category.handler";
+import { createListRelatedDocumentsHandler } from "./related.handler";
+import { createGetDocumentDetailHandler } from "./documents.detail.handler";
+import { createDownloadDocumentHandler } from "./download.handler";
+import { createBulkDownloadHandler } from "./bulk-download.handler";
+import { createPreviewDocumentHandler } from "./preview.handler";
+import { createPreviewDocumentContentHandler } from "./preview-content.handler";
 import type { DocumentService } from "./documents.service";
 
 export type DocumentRouteDependencies = {
@@ -37,11 +46,74 @@ export function createDocumentRoutes(
     );
   }
 
+  routes.post(
+    "/check-duplicate",
+    requireAuth(verifier),
+    requireRole(["member_team", "head_of_team"]),
+    createCheckDuplicateHandler(dependencies),
+  );
+
+  routes.get(
+    "/:id",
+    requireAuth(verifier),
+    requireRole(["member_team", "head_of_team"]),
+    createGetDocumentDetailHandler(dependencies),
+  );
+
+  routes.get(
+    "/:id/related",
+    requireAuth(verifier),
+    requireRole(["member_team", "head_of_team"]),
+    createListRelatedDocumentsHandler(dependencies),
+  );
+
   routes.get(
     "/:id/metadata",
     requireAuth(verifier),
     requireRole(["member_team", "head_of_team"]),
     createGetDocumentMetadataHandler(dependencies),
+  );
+
+  routes.get(
+    "/:id/smart-tags",
+    requireAuth(verifier),
+    requireRole(["member_team", "head_of_team"]),
+    createGetDocumentSmartTagsHandler(dependencies),
+  );
+
+  routes.get(
+    "/:id/category",
+    requireAuth(verifier),
+    requireRole(["member_team", "head_of_team"]),
+    createGetDocumentCategoryHandler(dependencies),
+  );
+
+  routes.get(
+    "/:id/preview",
+    requireAuth(verifier),
+    requireRole(["member_team", "head_of_team", "admin"]),
+    createPreviewDocumentHandler(dependencies),
+  );
+
+  routes.get(
+    "/:id/preview/content",
+    requireAuth(verifier),
+    requireRole(["member_team", "head_of_team", "admin"]),
+    createPreviewDocumentContentHandler(dependencies),
+  );
+
+  routes.get(
+    "/:id/download",
+    requireAuth(verifier),
+    requireRole(["member_team", "head_of_team", "admin"]),
+    createDownloadDocumentHandler(dependencies),
+  );
+
+  routes.post(
+    "/bulk-download",
+    requireAuth(verifier),
+    requireRole(["member_team", "head_of_team", "admin"]),
+    createBulkDownloadHandler(dependencies),
   );
 
   return routes;

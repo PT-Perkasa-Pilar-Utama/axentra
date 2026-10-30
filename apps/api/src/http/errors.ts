@@ -1,6 +1,17 @@
 import type { ErrorDetail } from "@axentra/shared";
 
-export type ApplicationErrorStatus = 400 | 401 | 403 | 404 | 409 | 413 | 415 | 422 | 429 | 500;
+export type ApplicationErrorStatus =
+  | 400
+  | 401
+  | 403
+  | 404
+  | 409
+  | 413
+  | 415
+  | 422
+  | 429
+  | 500
+  | 503;
 
 export class AppError extends Error {
   public readonly code: string;
@@ -60,6 +71,20 @@ export class UnsupportedFileTypeError extends AppError {
 export class PayloadTooLargeError extends AppError {
   public constructor(message = "Ukuran file melebihi batas maksimum") {
     super("PAYLOAD_TOO_LARGE", message, 413);
+  }
+}
+
+export class TooManyRequestsError extends AppError {
+  public constructor(
+    message = "Terlalu banyak permintaan unduhan massal secara bersamaan, silakan coba beberapa saat lagi",
+  ) {
+    super("TOO_MANY_REQUESTS", message, 429);
+  }
+}
+
+export class DependencyUnavailableError extends AppError {
+  public constructor(code: string, message: string, details?: ReadonlyArray<ErrorDetail>) {
+    super(code, message, 503, details);
   }
 }
 

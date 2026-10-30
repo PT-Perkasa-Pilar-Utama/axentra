@@ -14,8 +14,8 @@ Expected areas:
 - Search bar.
 - Top Tags filter bar.
 - Category menu.
-- Selected-document toolbar for bulk download.
-- Empty state for no search results.
+- Selected-document toolbar for bulk download, with the button `Download Selected` (AC-10.01).
+- Empty state for no search results, with the copy `Tidak ada hasil yang ditemukan` (AC-06.04).
 
 ## Upload Area
 
@@ -47,5 +47,5 @@ Expected areas:
 - Preview viewer.
 - Smart Tags.
 - Category.
-- Related Documents section.
-- Download action when permission allows it.
+- "Dokumen Terkait" section.
+- "Download" button on the preview page when permission allows it.

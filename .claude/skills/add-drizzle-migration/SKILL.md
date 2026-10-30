@@ -5,7 +5,7 @@ description: Safely change the Axentra PostgreSQL schema with Drizzle.
 
 # Add an Axentra Drizzle migration
 
-Use for an approved task that changes packages/db/src/schema. Foundation v0.1.0 intentionally has no business tables; do not add domain tables without an approved card and acceptance criteria.
+Use for an approved task that changes packages/db/src/schema. Foundation v1.0.0 intentionally has no business tables; do not add domain tables without an approved card and acceptance criteria.
 
 ## Protocol
 

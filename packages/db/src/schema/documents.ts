@@ -1,6 +1,8 @@
 import {
   bigint,
+  check,
   index,
+  integer,
   jsonb,
   pgTable,
   text,
@@ -8,7 +10,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import { categories } from "./categories";
 import { processingStatusEnum } from "./enums";
 import { documentSmartTags } from "./tags";
@@ -21,6 +23,7 @@ export const documents = pgTable(
     categoryId: uuid("category_id").references(() => categories.id, { onDelete: "set null" }),
     processingStatus: processingStatusEnum("processing_status").default("queued").notNull(),
     errorMessage: text("error_message"),
+    processingRecoveryAttempts: integer("processing_recovery_attempts").default(0).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true, mode: "date" }),
@@ -29,6 +32,7 @@ export const documents = pgTable(
     index("documents_processing_status_idx").on(table.processingStatus),
     index("documents_category_id_idx").on(table.categoryId),
     index("documents_created_at_idx").on(table.createdAt),
+    index("documents_title_trgm_idx").using("gin", sql`${table.title} gin_trgm_ops`),
   ],
 );
 
@@ -49,7 +53,12 @@ export const documentFiles = pgTable(
   },
   (table) => [
     uniqueIndex("document_files_document_id_unique_idx").on(table.documentId),
+    check("document_files_file_size_non_negative_check", sql`${table.fileSize} >= 0`),
     index("document_files_storage_key_idx").on(table.storageKey),
+    index("document_files_original_name_trgm_idx").using(
+      "gin",
+      sql`${table.originalName} gin_trgm_ops`,
+    ),
   ],
 );
 
@@ -81,6 +90,7 @@ export const documentMetadata = pgTable(
       .notNull()
       .references(() => documents.id, { onDelete: "cascade" }),
     author: text("author"),
+    extractedText: text("extracted_text"),
     rawMetadata: jsonb("raw_metadata"),
     extractedAt: timestamp("extracted_at", { withTimezone: true, mode: "date" }),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
@@ -89,6 +99,10 @@ export const documentMetadata = pgTable(
   (table) => [
     uniqueIndex("document_metadata_document_id_unique_idx").on(table.documentId),
     index("document_metadata_author_idx").on(table.author),
+    index("document_metadata_extracted_text_trgm_idx").using(
+      "gin",
+      sql`${table.extractedText} gin_trgm_ops`,
+    ),
   ],
 );
 

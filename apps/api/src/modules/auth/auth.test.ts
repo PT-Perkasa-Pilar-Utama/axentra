@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { Hono } from "hono";
-import { createLogger } from "@axentra/observability";
+import { loadApiConfig } from "@axentra/config";
 import type {
   ApiErrorEnvelope,
   ApiSuccessEnvelope,
@@ -13,28 +13,18 @@ import { isAppError } from "../../http/errors";
 import { jsonError, jsonSuccess } from "../../http/responses";
 import { requireAuth, requireRole } from "../../middleware/auth";
 import { requestContextMiddleware } from "../../middleware/request-context";
-import { createAuthService } from "./auth.service";
-
-const logger = createLogger({
-  service: "axentra-api",
-  environment: "test",
-  version: "0.1.0",
-  level: "fatal",
-});
-
-const TEST_MEMBER: AuthUser = {
-  id: "11111111-1111-4111-8111-111111111111",
-  email: "sami@axentra.internal",
-  role: "member_team",
-  name: "Sami",
-};
-
-const TEST_HEAD: AuthUser = {
-  id: "22222222-2222-4222-8222-222222222222",
-  email: "arya@axentra.internal",
-  role: "head_of_team",
-  name: "Arya Isnaidi",
-};
+import { createInMemoryAuthService } from "./auth.memory-stores";
+import { createPasswordVerifier } from "./auth.password";
+import {
+  encodeDirectory,
+  logger,
+  runtimeConfig,
+  runtimeEnvironment,
+  TEST_HEAD,
+  TEST_MEMBER,
+} from "./auth.test-support";
+import { createLocalIdentityAuthenticator } from "./local-identity";
+import { createRuntimeAuthenticator } from "./runtime-authenticator";
 
 describe("Auth API Module", () => {
   describe("Production Startup Defenses (F1, F2)", () => {
@@ -83,7 +73,7 @@ describe("Auth API Module", () => {
       expect(headResponse.status).toBe(401);
     });
 
-    it("rejects login attempts in production when no credentials provider is configured (F2)", async () => {
+    it("rejects login attempts when the runtime has no identity directory (F2)", async () => {
       const response = await productionApp.request("/api/v1/auth/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -103,10 +93,8 @@ describe("Auth API Module", () => {
 
   describe("Session & Token Lifecycle with Injected AuthService", () => {
     let currentTime = 1_000_000_000;
-    const authService = createAuthService({
-      clock: () => currentTime,
-      accessTokenTtlMs: 15 * 60 * 1000, // 15 mins
-      refreshTokenTtlMs: 7 * 24 * 60 * 60 * 1000, // 7 days
+    const authService = createInMemoryAuthService({
+      clock: () => new Date(currentTime),
       authenticator: (credentials) => {
         if (
           credentials.email === TEST_MEMBER.email &&
@@ -146,7 +134,8 @@ describe("Auth API Module", () => {
         expect(body.data.user.email).toBe(TEST_MEMBER.email);
         expect(body.data.user.role).toBe("member_team");
         expect(body.data.token).toStartWith("ax_");
-        expect(body.data.refreshToken).toBeDefined();
+        expect(body.data).not.toHaveProperty("refreshToken");
+        expect(Date.parse(body.data.expiresAt)).toBe(currentTime + 15 * 60 * 1000);
       });
 
       it("returns 401 when password is wrong", async () => {
@@ -235,90 +224,10 @@ describe("Auth API Module", () => {
         expect(body.error.message).toBe("Token tidak valid atau telah kedaluwarsa");
       });
     });
-
-    describe("POST /api/v1/auth/refresh and POST /api/v1/auth/logout", () => {
-      it("refreshes active session and rotates token", async () => {
-        const loginRes = await app.request("/api/v1/auth/login", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            email: "sami@axentra.internal",
-            password: "correct-password",
-          }),
-        });
-        const loginData = (await loginRes.json()) as ApiSuccessEnvelope<LoginResponse>;
-        const oldToken = loginData.data.token;
-        const refreshToken = loginData.data.refreshToken ?? "";
-
-        // Refresh session
-        const refreshRes = await app.request("/api/v1/auth/refresh", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ refreshToken }),
-        });
-        expect(refreshRes.status).toBe(200);
-
-        const refreshData = (await refreshRes.json()) as ApiSuccessEnvelope<{
-          token: string;
-          refreshToken: string;
-        }>;
-        const newToken = refreshData.data.token;
-        expect(newToken).not.toBe(oldToken);
-
-        // Old token should now be invalid
-        const oldTokenCheck = await app.request("/api/v1/auth/me", {
-          headers: { authorization: `Bearer ${oldToken}` },
-        });
-        expect(oldTokenCheck.status).toBe(401);
-
-        // New token works
-        const newTokenCheck = await app.request("/api/v1/auth/me", {
-          headers: { authorization: `Bearer ${newToken}` },
-        });
-        expect(newTokenCheck.status).toBe(200);
-
-        // Using the same refresh token again fails (rotation)
-        const replayedRefresh = await app.request("/api/v1/auth/refresh", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ refreshToken }),
-        });
-        expect(replayedRefresh.status).toBe(401);
-      });
-
-      it("invalidates token on logout so subsequent requests fail", async () => {
-        const loginRes = await app.request("/api/v1/auth/login", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            email: "sami@axentra.internal",
-            password: "correct-password",
-          }),
-        });
-        const loginData = (await loginRes.json()) as ApiSuccessEnvelope<LoginResponse>;
-        const token = loginData.data.token;
-
-        // Logout
-        const logoutRes = await app.request("/api/v1/auth/logout", {
-          method: "POST",
-          headers: { authorization: `Bearer ${token}` },
-        });
-        expect(logoutRes.status).toBe(200);
-
-        const logoutData = (await logoutRes.json()) as ApiSuccessEnvelope<{ message: string }>;
-        expect(logoutData.data.message).toBe("Logout berhasil");
-
-        // Subsequent /me returns 401
-        const meRes = await app.request("/api/v1/auth/me", {
-          headers: { authorization: `Bearer ${token}` },
-        });
-        expect(meRes.status).toBe(401);
-      });
-    });
   });
 
   describe("requireRole Middleware & RBAC enforcement (F1, F3)", () => {
-    const authService = createAuthService({
+    const authService = createInMemoryAuthService({
       authenticator: (credentials) => {
         if (credentials.email === TEST_MEMBER.email) return TEST_MEMBER;
         if (credentials.email === TEST_HEAD.email) return TEST_HEAD;
@@ -418,7 +327,7 @@ describe("Auth API Module", () => {
 
   describe("App and AuthService Composition (F6)", () => {
     it("selects authService.tokenVerifier when only authService is injected in createApp", async () => {
-      const authService = createAuthService({
+      const authService = createInMemoryAuthService({
         authenticator: (credentials) => {
           if (
             credentials.email === TEST_MEMBER.email &&
@@ -470,7 +379,7 @@ describe("Auth API Module", () => {
         logger,
         version: "0.1.0",
         readinessChecks: [],
-        authService: createAuthService(),
+        authService: createInMemoryAuthService({ authenticator: () => null }),
       });
 
       // Credential logins fail closed with 401
@@ -488,5 +397,121 @@ describe("Auth API Module", () => {
       const meRes = await serverApp.request("/api/v1/auth/me");
       expect(meRes.status).toBe(401);
     });
+
+    it("issues a bearer token from the configured local identity directory [BE-S1-01]", async () => {
+      const directory = Buffer.from(
+        JSON.stringify([
+          {
+            id: TEST_MEMBER.id,
+            email: TEST_MEMBER.email,
+            role: TEST_MEMBER.role,
+            name: TEST_MEMBER.name,
+            passwordHash: await Bun.password.hash("local-member-password"),
+          },
+        ]),
+      ).toString("base64");
+      const authService = createInMemoryAuthService({
+        authenticator: createLocalIdentityAuthenticator(
+          directory,
+          createPasswordVerifier({ logger }),
+        ),
+      });
+      const app = createApp({
+        logger,
+        version: "0.1.0",
+        readinessChecks: [],
+        authService,
+      });
+
+      const rejected = await app.request("/api/v1/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: TEST_MEMBER.email,
+          password: "wrong-password",
+        }),
+      });
+      expect(rejected.status).toBe(401);
+
+      const loginRes = await app.request("/api/v1/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: TEST_MEMBER.email,
+          password: "local-member-password",
+        }),
+      });
+      expect(loginRes.status).toBe(200);
+      const loginBody = (await loginRes.json()) as ApiSuccessEnvelope<LoginResponse>;
+      expect(loginBody.data.token).toStartWith("ax_");
+      expect(loginBody.data.user.role).toBe("member_team");
+
+      const meRes = await app.request("/api/v1/auth/me", {
+        headers: { authorization: `Bearer ${loginBody.data.token}` },
+      });
+      expect(meRes.status).toBe(200);
+      const meBody = (await meRes.json()) as ApiSuccessEnvelope<AuthUser>;
+      expect(meBody.data.email).toBe(TEST_MEMBER.email);
+    });
+
+    it("accepts the tracked development credentials when APP_ENV is development [BE-S1-01]", async () => {
+      const app = createApp({
+        logger,
+        version: "0.1.0",
+        readinessChecks: [],
+        authService: createInMemoryAuthService({
+          authenticator: createRuntimeAuthenticator(
+            runtimeConfig("development", await memberDirectory()),
+            { logger },
+          ),
+        }),
+      });
+      const response = await app.request("/api/v1/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: "member@axentra.local",
+          password: "local-member-password",
+        }),
+      });
+      expect(response.status).toBe(200);
+    });
+
+    it("fails startup when the development identity directory is missing or malformed [BE-S1-01]", () => {
+      expect(() =>
+        loadApiConfig({
+          ...runtimeEnvironment("development"),
+          AUTH_LOCAL_IDENTITY_DIRECTORY: undefined,
+        }),
+      ).toThrow("AUTH_LOCAL_IDENTITY_DIRECTORY");
+      const malformed = loadApiConfig({
+        ...runtimeEnvironment("development"),
+        AUTH_LOCAL_IDENTITY_DIRECTORY: "not-a-directory",
+      });
+      expect(() => createRuntimeAuthenticator(malformed, { logger })).toThrow(
+        "AUTH_LOCAL_IDENTITY_DIRECTORY",
+      );
+    });
+
+    it("still requires AUTH_LOCAL_IDENTITY_DIRECTORY to be configured in production [BE-S1-01]", () => {
+      expect(() =>
+        loadApiConfig({
+          ...runtimeEnvironment("production"),
+          AUTH_LOCAL_IDENTITY_DIRECTORY: undefined,
+        }),
+      ).toThrow("AUTH_LOCAL_IDENTITY_DIRECTORY");
+    });
   });
 });
+
+async function memberDirectory(): Promise<string> {
+  return encodeDirectory([
+    {
+      id: "11111111-1111-4111-8111-111111111111",
+      email: "member@axentra.local",
+      role: "member_team",
+      name: "Member Team",
+      passwordHash: await Bun.password.hash("local-member-password"),
+    },
+  ]);
+}

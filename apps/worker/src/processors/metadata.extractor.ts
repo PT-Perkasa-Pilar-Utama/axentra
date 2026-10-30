@@ -31,18 +31,19 @@ function cleanAuthorString(raw: string): string | null {
   return cleaned;
 }
 
+// Scans the whole file; the upload size limit (50 MB) bounds the work. Compressed object streams
+// (FlateDecode /Type /ObjStm) are not inflated, so an /Author entry stored only inside one is not found.
 function extractFromPdfBuffer(buffer: Uint8Array): string | null {
-  const headLength = Math.min(buffer.length, 8192);
-  const headText = Buffer.from(buffer.subarray(0, headLength)).toString("latin1");
+  const fileText = Buffer.from(buffer).toString("latin1");
 
-  const authorMatch = headText.match(/\/Author\s*\(([^)\\]*(?:\\.[^)\\]*)*)\)/);
+  const authorMatch = fileText.match(/\/Author\s*\(([^)\\]*(?:\\.[^)\\]*)*)\)/);
   if (authorMatch?.[1]) {
     const unescaped = authorMatch[1].replace(/\\([()\\])/g, "$1");
     const cleaned = cleanAuthorString(unescaped);
     if (cleaned) return cleaned;
   }
 
-  const hexAuthorMatch = headText.match(/\/Author\s*<([0-9a-fA-F]+)>/);
+  const hexAuthorMatch = fileText.match(/\/Author\s*<([0-9a-fA-F]+)>/);
   if (hexAuthorMatch?.[1]) {
     try {
       const decoded = Buffer.from(hexAuthorMatch[1], "hex").toString("utf-8");

@@ -2,12 +2,12 @@
 
 ## Axentra: Document Management System
 
-**Version:** 0.1.0  
+**Version:** 1.0.0<br>
 **Date:** 2026-09-16  
 **Author:** Arya Isnaidi (Tech Lead)  
 **Status:** Living Document
 
-Use this guide when local development, infrastructure, health checks, tests, or planned DMS flows
+Use this guide when local development, infrastructure, health checks, tests, or DMS feature flows
 do not behave as expected.
 
 ---
@@ -25,7 +25,7 @@ do not behave as expected.
 9. [Web Issues](#9-web-issues)
 10. [Worker Issues](#10-worker-issues)
 11. [Test, Lint, Format, and Build Issues](#11-test-lint-format-and-build-issues)
-12. [Future DMS Feature Issues](#12-future-dms-feature-issues)
+12. [DMS Feature Issues](#12-dms-feature-issues)
 13. [Documentation Issues](#13-documentation-issues)
 14. [Escalation](#14-escalation)
 
@@ -285,10 +285,12 @@ Confirm local `DATABASE_URL` uses `localhost:5432`.
 
 ### 5.2 Migration reports no schema changes
 
-Expected for Foundation v0.1.0.
+Expected when the database already holds every committed migration in `packages/db/drizzle/`. The
+command still prints `Database migrations completed`.
 
-Foundation intentionally has no business tables. Domain tables are added only by reviewed sprint
-cards.
+A fresh database applies all committed migrations, which create the Sprint 1-3 business tables and
+the auth session tables. If a fresh database ends up with no tables, confirm that `DATABASE_URL`
+points at the database you expect (see 5.1). Domain tables are added only by reviewed sprint cards.
 
 ### 5.3 `drizzle.__drizzle_migrations` does not exist
 
@@ -671,10 +673,10 @@ Resolution:
 
 ---
 
-## 12. Future DMS Feature Issues
+## 12. DMS Feature Issues
 
-These features are planned and not implemented in Foundation v0.1.0. Use this section once the
-related sprint cards land.
+These entries cover the Sprint 1-3 DMS flows that exist on `dev`. Sprint 4 flows (analytics, the
+audit trail page, and the category permission toggle) are planned and have no entries yet.
 
 ### 12.1 Upload rejects a valid PDF or DOCX
 
@@ -782,7 +784,7 @@ Resolution:
 
 Resolution:
 
-- Mark it as `Planned`, `Deferred`, or `Foundation v0.1.0 excludes this`.
+- Mark it as `Planned`, `Deferred`, or `Foundation v1.0.0 excludes this`.
 - Do not imply business APIs exist until code, tests, and verification prove they exist.
 
 ---

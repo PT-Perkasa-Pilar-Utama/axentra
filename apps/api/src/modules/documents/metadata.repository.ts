@@ -32,6 +32,7 @@ export type DocumentMetadataRecord = {
   id: string;
   documentId: string;
   author: string | null;
+  extractedText: string | null;
   rawMetadata: Record<string, unknown> | null;
   extractedAt: Date | null;
   createdAt: Date;
@@ -41,6 +42,7 @@ export type DocumentMetadataRecord = {
 export type SaveMetadataInput = {
   documentId: string;
   author: string | null;
+  extractedText?: string | null | undefined;
   rawMetadata?: Record<string, unknown> | null | undefined;
   extractedAt?: Date | null | undefined;
 };
@@ -55,6 +57,7 @@ export type DocumentMetadataRow = {
   id: string;
   documentId: string;
   author: string | null;
+  extractedText?: string | null | undefined;
   rawMetadata: unknown;
   extractedAt: Date | null;
   createdAt: Date;
@@ -66,6 +69,7 @@ export function mapDocumentMetadataRow(row: DocumentMetadataRow): DocumentMetada
     id: row.id,
     documentId: row.documentId,
     author: row.author,
+    extractedText: row.extractedText ?? null,
     rawMetadata: parseRawMetadata(row.rawMetadata),
     extractedAt: row.extractedAt,
     createdAt: row.createdAt,
@@ -100,6 +104,7 @@ export class DrizzleDocumentMetadataRepository implements IDocumentMetadataRepos
         id: documentMetadata.id,
         documentId: documentMetadata.documentId,
         author: documentMetadata.author,
+        extractedText: documentMetadata.extractedText,
         rawMetadata: documentMetadata.rawMetadata,
         extractedAt: documentMetadata.extractedAt,
         createdAt: documentMetadata.createdAt,
@@ -122,6 +127,7 @@ export class DrizzleDocumentMetadataRepository implements IDocumentMetadataRepos
       .values({
         documentId: data.documentId,
         author: data.author,
+        extractedText: data.extractedText ?? null,
         rawMetadata: data.rawMetadata ?? null,
         extractedAt: data.extractedAt ?? now,
         updatedAt: now,
@@ -130,6 +136,7 @@ export class DrizzleDocumentMetadataRepository implements IDocumentMetadataRepos
         target: documentMetadata.documentId,
         set: {
           author: data.author,
+          extractedText: data.extractedText ?? null,
           rawMetadata: data.rawMetadata ?? null,
           extractedAt: data.extractedAt ?? now,
           updatedAt: now,
@@ -179,6 +186,7 @@ export class InMemoryDocumentMetadataRepository implements IDocumentMetadataRepo
       const updated: DocumentMetadataRecord = {
         ...existing,
         author: data.author,
+        extractedText: data.extractedText ?? existing.extractedText,
         rawMetadata: data.rawMetadata ?? null,
         extractedAt: data.extractedAt ?? now,
         updatedAt: now,
@@ -192,6 +200,7 @@ export class InMemoryDocumentMetadataRepository implements IDocumentMetadataRepo
       id,
       documentId: data.documentId,
       author: data.author,
+      extractedText: data.extractedText ?? null,
       rawMetadata: data.rawMetadata ?? null,
       extractedAt: data.extractedAt ?? now,
       createdAt: now,

@@ -1,6 +1,6 @@
 # User Stories
 
-Source: BA workbook `Doc_BA_DMS (Document Management System)_Versi 1 (1).xlsx`, sheet
+Source: BA workbook `Doc_BA_DMS (Document Management System)_Versi 1 (2).xlsx`, sheet
 `User Story`.
 
 Format per entry: `### US-XX - <Title>` then `Persona`, `Action`, and `Business value`.
@@ -22,13 +22,13 @@ Format per entry: `### US-XX - <Title>` then `Persona`, `Action`, and `Business 
 ### US-03 - Melihat Metadata Dokumen
 
 - **Persona:** Member Team
-- **Action:** bisa melihat metadata seperti penulis yang diekstrak otomatis dari dokumen
+- **Action:** bisa melihat metadata (seperti penulis) yang diekstrak secara otomatis dari dokumen
 - **Business value:** sehingga tidak perlu mengisi data secara manual dan informasi menjadi konsisten
 
-### US-04 - Memfilter Hasil Pencarian dengan Tag Otomatis
+### US-04 - Memfilter hasil pencarian dengan Tag Otomatis
 
 - **Persona:** Member Team
-- **Action:** bisa menemukan dokumen berdasarkan tag relevan yang dibuat otomatis oleh sistem AI
+- **Action:** bisa menemukan dokumen berdasarkan tag relevan yang dibuat otomatis oleh sistem (AI)
 - **Business value:** agar penemuan dokumen berdasarkan topik menjadi lebih mudah
 
 ### US-05 - Menemukan Dokumen via Kategori Otomatis
@@ -49,7 +49,7 @@ Format per entry: `### US-XX - <Title>` then `Persona`, `Action`, and `Business 
 - **Action:** bisa melihat daftar saran dokumen yang relevan saat membuka sebuah dokumen
 - **Business value:** agar dapat menemukan pengetahuan terkait yang mungkin tidak terpikirkan untuk dicari
 
-### US-08 - Melihat Preview Dokumen
+### US-08 - Melihat preview Dokumen
 
 - **Persona:** Member Team
 - **Action:** melihat isi dokumen tanpa download
@@ -64,22 +64,22 @@ Format per entry: `### US-XX - <Title>` then `Persona`, `Action`, and `Business 
 ### US-10 - Mengunduh Dokumen Massal
 
 - **Persona:** Member Team
-- **Action:** bisa memilih beberapa dokumen sekaligus dan mengunduhnya dalam satu file `.zip`
+- **Action:** bisa mengunduh beberapa dokumen sekaligus dan mengunduhnya dalam satu file format `.zip`
 - **Business value:** menghemat waktu saat membutuhkan banyak referensi sekaligus
 
 ### US-11 - Melihat Dasbor Analitik
 
 - **Persona:** Head of Team
-- **Action:** bisa melihat dasbor sederhana berisi metrik penggunaan sistem
+- **Action:** bisa melihat Dasbor sederhana berisi metrik penggunaan sistem
 - **Business value:** sehingga dapat memahami adopsi tim dan menunjukkan nilai dari sistem
 
 ### US-12 - Melihat Audit Trail
 
 - **Persona:** Head of Team
-- **Action:** bisa melihat log siapa saja yang telah mengunduh dokumen tertentu
+- **Action:** bisa melihat log/catatan siapa saja yang telah mengunduh dokumen tertentu
 - **Business value:** agar dapat melakukan tracking siapa yang mendownload data tertentu
 
-### US-13 - Mengatur Perizinan Dokumen
+### US-13 - Mengatur perizinan dokumen
 
 - **Persona:** Head of Team
 - **Action:** bisa membatasi hak akses download berdasarkan kategori dokumen
