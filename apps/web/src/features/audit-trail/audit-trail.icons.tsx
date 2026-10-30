@@ -23,27 +23,6 @@ export function ChevronIcon({ direction }: { direction: "left" | "right" }): Rea
   );
 }
 
-export function CloseIcon(): React.JSX.Element {
-  return (
-    <svg aria-hidden="true" fill="none" viewBox="0 0 24 24">
-      <path d="m6 6 12 12M18 6 6 18" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
-    </svg>
-  );
-}
-
-export function HomeIcon(): React.JSX.Element {
-  return (
-    <svg aria-hidden="true" fill="none" viewBox="0 0 24 24">
-      <path
-        d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-6v-7h-4v7H4a1 1 0 0 1-1-1z"
-        stroke="currentColor"
-        strokeLinejoin="round"
-        strokeWidth="1.8"
-      />
-    </svg>
-  );
-}
-
 export function AuditIcon(): React.JSX.Element {
   return (
     <svg aria-hidden="true" fill="none" viewBox="0 0 24 24">

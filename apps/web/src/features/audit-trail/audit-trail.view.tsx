@@ -1,43 +1,44 @@
 import type React from "react";
-import { Link } from "react-router";
 import {
-  AUDIT_PAGE_SIZE,
   useAuditTrailPresenter,
-  type AuditDocumentGroup,
   type AuditTrailPresenter,
+  type AuditTrailRow,
 } from "./audit-trail.presenter";
-import { useUserSessionBadgePresenter } from "../auth/user-session-badge.presenter";
-import { AuditLogDrawer } from "./audit-trail-drawer.view";
-import { AuditIcon, ChevronIcon, HomeIcon, SearchIcon } from "./audit-trail.icons";
+import { AuditIcon, ChevronIcon, SearchIcon } from "./audit-trail.icons";
 import "./audit-trail.css";
 
 export type AuditTrailViewProps = {
   presenter?: AuditTrailPresenter;
 };
 
-function AuditDocumentRow({
-  document,
-  onOpen,
-}: {
-  document: AuditDocumentGroup;
-  onOpen: () => void;
-}): React.JSX.Element {
+function AuditTableRow({ row }: { row: AuditTrailRow }): React.JSX.Element {
   return (
-    <button className="audit-trail__document-row" onClick={onOpen} type="button">
-      <span className="audit-trail__row-main">
-        <strong className="audit-trail__document-name">{document.documentName}</strong>
-        <span className="audit-trail__download-count">{document.totalDownloads} unduhan</span>
-      </span>
-      <time className="audit-trail__date" dateTime={document.latestDownloadedAt}>
-        {document.latestDateFormatted}
-      </time>
-    </button>
+    <tr className="audit-trail__table-row">
+      <td className="audit-trail__cell-user">
+        <strong className="audit-trail__user-name">{row.displayUser}</strong>
+        {row.userEmail && row.userEmail !== row.displayUser && (
+          <span className="audit-trail__user-email">{row.userEmail}</span>
+        )}
+      </td>
+      <td className="audit-trail__cell-document">
+        <span className="audit-trail__document-name">{row.documentName}</span>
+      </td>
+      <td className="audit-trail__cell-time">
+        <time dateTime={row.downloadedAt}>{row.downloadedAtFormatted}</time>
+      </td>
+    </tr>
   );
 }
 
-function AuditTrailContent({ presenter }: { presenter: AuditTrailPresenter }): React.JSX.Element {
+export function AuditTrailView({
+  presenter: presenterProp,
+}: AuditTrailViewProps = {}): React.JSX.Element {
+  const defaultPresenter = useAuditTrailPresenter();
+  const presenter = presenterProp ?? defaultPresenter;
+
   return (
-    <>
+    <main className="audit-trail-page" data-testid="audit-trail-page">
+      <title>Audit Trail | Axentra</title>
       <header className="audit-trail__header">
         <h1>Audit Trail</h1>
         <label className="audit-trail__search">
@@ -45,7 +46,7 @@ function AuditTrailContent({ presenter }: { presenter: AuditTrailPresenter }): R
           <span className="sr-only">Cari dokumen atau pengguna</span>
           <input
             onChange={(event) => presenter.setKeyword(event.currentTarget.value)}
-            placeholder="Cari"
+            placeholder="Cari dokumen atau pengguna..."
             type="search"
             value={presenter.keyword}
           />
@@ -76,14 +77,21 @@ function AuditTrailContent({ presenter }: { presenter: AuditTrailPresenter }): R
 
       {presenter.isLoading && (
         <div aria-busy="true" className="audit-trail__state" role="status">
-          <div className="audit-trail__skeleton" />
-          <div className="audit-trail__skeleton" />
-          <div className="audit-trail__skeleton" />
+          <div className="audit-trail__skeleton motion-safe:animate-pulse" />
+          <div className="audit-trail__skeleton motion-safe:animate-pulse" />
+          <div className="audit-trail__skeleton motion-safe:animate-pulse" />
           <span className="sr-only">Memuat riwayat unduhan...</span>
         </div>
       )}
 
-      {presenter.isError && (
+      {presenter.isAccessDenied && (
+        <div className="audit-trail__state" role="alert">
+          <h2>Akses Dibatasi</h2>
+          <p>Anda tidak memiliki izin untuk melihat riwayat unduhan.</p>
+        </div>
+      )}
+
+      {presenter.isError && !presenter.isAccessDenied && (
         <div className="audit-trail__state" role="alert">
           <p>Riwayat unduhan gagal dimuat.</p>
           <button
@@ -110,82 +118,31 @@ function AuditTrailContent({ presenter }: { presenter: AuditTrailPresenter }): R
       )}
 
       {!presenter.isLoading && !presenter.isError && !presenter.isEmpty && (
-        <section aria-label="Daftar aktivitas unduhan" className="audit-trail__list">
-          {presenter.items.map((document) => (
-            <AuditDocumentRow
-              document={document}
-              key={document.key}
-              onOpen={() => presenter.openDetail(document.key)}
-            />
-          ))}
-        </section>
+        <div className="audit-trail__table-container">
+          <table className="audit-trail__table" aria-label="Riwayat Unduhan Dokumen">
+            <thead>
+              <tr>
+                <th scope="col">Pengguna</th>
+                <th scope="col">Nama Dokumen</th>
+                <th scope="col">Waktu Unduh</th>
+              </tr>
+            </thead>
+            <tbody>
+              {presenter.rows.map((row) => (
+                <AuditTableRow key={row.id} row={row} />
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {!presenter.isLoading && !presenter.isError && presenter.totalItems > 0 && (
         <p className="audit-trail__result-count">
-          Menampilkan {(presenter.page - 1) * AUDIT_PAGE_SIZE + 1}–
-          {Math.min(presenter.page * AUDIT_PAGE_SIZE, presenter.totalItems)} dari{" "}
-          {presenter.totalItems} dokumen
+          Menampilkan {(presenter.page - 1) * presenter.pageSize + 1}–
+          {Math.min(presenter.page * presenter.pageSize, presenter.totalItems)} dari{" "}
+          {presenter.totalItems} aktivitas unduhan
         </p>
       )}
-
-      {presenter.selectedDocument && (
-        <AuditLogDrawer document={presenter.selectedDocument} onClose={presenter.closeDetail} />
-      )}
-    </>
-  );
-}
-
-export function AuditTrailView({
-  presenter: presenterProp,
-}: AuditTrailViewProps = {}): React.JSX.Element {
-  const session = useUserSessionBadgePresenter();
-  const defaultPresenter = useAuditTrailPresenter();
-  const presenter = presenterProp ?? defaultPresenter;
-
-  return (
-    <main className="audit-trail" data-testid="audit-trail-page">
-      <title>Audit Trail | Axentra</title>
-      <aside aria-label="Navigasi utama" className="audit-trail__sidebar">
-        <div className="audit-trail__brand">
-          <img alt="PERKASA" src="/src/assets/perkasa-logo-sidebar.png" />
-        </div>
-        <nav aria-label="Navigasi utama">
-          <Link className="audit-trail__nav-link" to="/dashboard">
-            <HomeIcon />
-            <span>Dashboard</span>
-          </Link>
-          <span aria-current="page" className="audit-trail__nav-link is-active">
-            <AuditIcon />
-            <span>Audit Trail</span>
-          </span>
-        </nav>
-
-        {session && (
-          <div className="audit-trail__profile">
-            <span aria-hidden="true" className="audit-trail__avatar">
-              {session.initials}
-            </span>
-            <span className="audit-trail__profile-info">
-              <strong>{session.displayName}</strong>
-              <span>{session.roleLabel}</span>
-            </span>
-            <button
-              aria-label="Keluar dari akun"
-              className="audit-trail__logout-btn"
-              disabled={session.isLoggingOut}
-              onClick={() => void session.handleLogout()}
-              type="button"
-            >
-              {session.logoutLabel}
-            </button>
-          </div>
-        )}
-      </aside>
-
-      <div className="audit-trail__workspace">
-        <AuditTrailContent presenter={presenter} />
-      </div>
     </main>
   );
 }
