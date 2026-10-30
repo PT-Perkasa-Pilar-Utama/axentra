@@ -31,7 +31,7 @@ export const router = createBrowserRouter([
     ],
   },
   {
-    element: <ProtectedRoute allowedRoles={["head_of_team", "admin"]} />,
+    element: <ProtectedRoute allowedRoles={["head_of_team"]} />,
     children: [
       {
         path: "/audit-trail",
