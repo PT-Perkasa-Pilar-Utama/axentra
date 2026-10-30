@@ -71,7 +71,7 @@ OK GET /categories
 ### Analytics (Sprint 4)
 
 ```text
-PLANNED GET /analytics/summary
+OK GET /analytics/summary
 ```
 
 ### Audit (Sprint 4)

@@ -15,6 +15,12 @@ export {
   downloadAuditListQuerySchema,
   downloadAuditListResponseSchema,
 } from "./audit";
+export type { AnalyticsSummary, AnalyticsSummaryResponse } from "./analytics";
+export {
+  ANALYTICS_UPLOAD_WINDOW_DAYS,
+  analyticsSummaryResponseSchema,
+  analyticsSummarySchema,
+} from "./analytics";
 export type { AuthUser, LoginRequest, LoginResponse, UserRole } from "./auth";
 export {
   USER_ROLES,

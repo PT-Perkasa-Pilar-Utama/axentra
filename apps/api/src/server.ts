@@ -27,6 +27,8 @@ import { DrizzleSearchRepository } from "./modules/search/search.repository";
 import { createSearchService } from "./modules/search/search.service";
 import { DrizzleAuditRepository } from "./modules/audit/audit.repository";
 import { createAuditService } from "./modules/audit/audit.service";
+import { DrizzleAnalyticsRepository } from "./modules/analytics/analytics.repository";
+import { createAnalyticsService } from "./modules/analytics/analytics.service";
 
 const closeResourcesWithinDeadline = async (
   operations: Array<() => Promise<unknown>>,
@@ -110,6 +112,7 @@ async function start(): Promise<void> {
   const searchService = createSearchService(new DrizzleSearchRepository(database.db));
   const categoriesService = createCategoriesService(new DrizzleCategoriesRepository(database.db));
   const auditService = createAuditService(new DrizzleAuditRepository(database.db));
+  const analyticsService = createAnalyticsService(new DrizzleAnalyticsRepository(database.db));
 
   const app = createApp({
     logger,
@@ -125,6 +128,7 @@ async function start(): Promise<void> {
     searchService,
     categoriesService,
     auditService,
+    analyticsService,
     enableUploadRoute: true,
     webOrigin: config.WEB_ORIGIN,
     appEnvironment: config.APP_ENV,

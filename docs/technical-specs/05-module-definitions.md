@@ -57,7 +57,7 @@ The Audit and Permission category rows note the parts that already exist.
 
 | Module              | Planned Responsibility                                                                                                                                                                                                     |
 | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Analytics           | Head of Team summary metrics for total documents and uploads in last 7 days. Planned endpoint: `GET /analytics/summary`.                                                                                                   |
+| Analytics           | Implemented (BE-S4-01): Head of Team summary metrics for total documents and uploads in the last 7 days via `GET /api/v1/analytics/summary` (`apps/api/src/modules/analytics`).                                         |
 | Audit               | Download log showing who downloaded which document and when. `download_audit_events` writes and `GET /api/v1/audit/downloads` (`BE-S4-02`) are implemented; the Web screen and `admin` access (`BE-S4-08`) remain planned. |
 | Permission category | Head of Team controls Member Team download permission per category. Download gating is already enforced; the permission endpoints (`GET` and `PATCH /permission-categories`) and their screen are planned.                 |
 
