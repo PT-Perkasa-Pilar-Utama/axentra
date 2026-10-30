@@ -21,6 +21,8 @@ import { createCategoriesRoutes } from "./modules/categories/categories.routes";
 import type { CategoriesService } from "./modules/categories/categories.service";
 import { createAuditRoutes } from "./modules/audit/audit.routes";
 import type { IAuditService } from "./modules/audit/audit.service";
+import { createAnalyticsRoutes } from "./modules/analytics/analytics.routes";
+import type { AnalyticsService } from "./modules/analytics/analytics.service";
 
 export type AppDependencies = {
   logger: Logger;
@@ -33,6 +35,7 @@ export type AppDependencies = {
   searchService?: SearchService | undefined;
   categoriesService?: CategoriesService | undefined;
   auditService?: IAuditService | undefined;
+  analyticsService?: AnalyticsService | undefined;
   enableUploadRoute?: boolean | undefined;
   // The one browser origin allowed to call the API with credentials. Outside production it defaults to the
   // local Web dev server.
@@ -130,6 +133,16 @@ export function createApp(dependencies: AppDependencies): Hono<ApiEnvironment> {
       createAuditRoutes({
         tokenVerifier,
         auditService: dependencies.auditService,
+      }),
+    );
+  }
+
+  if (dependencies.analyticsService) {
+    app.route(
+      "/api/v1/analytics",
+      createAnalyticsRoutes({
+        tokenVerifier,
+        analyticsService: dependencies.analyticsService,
       }),
     );
   }
