@@ -1,6 +1,6 @@
 # Peran Admin (usulan)
 
-**Disetujui BA (Azizah, 29 Oktober 2026) untuk cakupan PROP-ADM-01, 02, 03, dan 05 pada Sprint 4. PROP-ADM-04 tidak termasuk. Pertanyaan 1, 5, 7, dan 9 masih terbuka.**
+**Disetujui BA (Azizah, 29 Oktober 2026) untuk cakupan PROP-ADM-01, 02, 03, dan 05 pada Sprint 4. PROP-ADM-04 tidak termasuk. Keputusan pertanyaan ada di bagian "Keputusan yang sudah diambil".**
 
 Peran ini belum ada di BA workbook `Doc_BA_DMS (Document Management System)_Versi 1 (2).xlsx`.
 Sumber BA yang disetujui berhenti di US-13 dan AC-13.01. Karena itu dokumen ini ada di
@@ -14,8 +14,8 @@ Tech Lead (29 Oktober 2026). Sejak BA menyetujui cakupan PROP-ADM-01, 02, 03, da
 di bawah berstatus usulan, kecuali yang diberi sumber BA.
 
 Peran `admin` sudah tercantum di [09-authentication.md](../technical-specs/09-authentication.md).
-Desain halaman belum diputuskan. Rencananya memakai ulang template desain yang ada, lalu
-menambahkan fitur khusus Admin.
+Desain halaman Admin ada di Figma "Axentra – Admin (Sprint 4)". Semua halaman memakai satu
+`AppShell` bersama (lihat [13-app-shell.md](../technical-specs/13-app-shell.md)).
 
 ## Ringkasan untuk dibacakan
 
@@ -48,6 +48,8 @@ memantau ringkasan sistem.
 
 **Pertanyaan 1 (arti "tugas")** disetujui 2026-10-29 sesuai usulan: tugas Admin berarti dokumen dan hak unduh yang menjadi milik akun Member Team dan Head of Team. Hak unduh di sini berarti hak yang dikelola Admin, bukan hak Admin untuk mengunduh isi dokumen (lihat pertanyaan 9). Pertanyaan 2, 3, 4, dan 8 mengikuti usulan default.
 
+**Pertanyaan 8 (nama menu dan template)** diputuskan 2026-10-30 oleh Tech Lead: menu Admin adalah `Dashboard`, `Manajemen Akun`, `Manajemen Dokumen`, dan `Audit Trail`. Label `Dashboard Admin` tidak dipakai. Template memakai satu `AppShell` bersama untuk semua peran; hanya menu dan isi halaman yang berbeda.
+
 ## Pertanyaan terbuka untuk Tech Lead dan BA
 
 Dokumen ini memuat 9 pertanyaan terbuka.
@@ -69,7 +71,7 @@ Dokumen ini memuat 9 pertanyaan terbuka.
 7. **Admin melihat isi dokumen pengguna?** Usulan: Admin melihat detail dokumen dan metadata.
    Preview isi dokumen belum diusulkan. API saat ini sudah mengizinkan Admin membuka pratinjau
    dokumen aktif (lihat pertanyaan 9). Konfirmasi.
-8. **Nama menu dan template.** Nama menu (`Dasbor Admin`, `Manajemen Akun`, `Manajemen Dokumen`)
+8. **Nama menu dan template.** Nama menu (`Dashboard`, `Manajemen Akun`, `Manajemen Dokumen`)
    dan label tombol masih usulan. Konfirmasi template desain yang dipakai ulang.
 9. **Unduh oleh Admin.** Apakah Admin boleh mengunduh dokumen, dan apakah izin unduh kategori
    berlaku untuknya? Kode saat ini mengizinkan Admin mengunduh dokumen dari semua kategori tanpa
@@ -97,7 +99,7 @@ Dokumen ini memuat 9 pertanyaan terbuka.
 Format sama dengan [user-story.md](../business/user-story.md). Semua penanda di bawah berstatus
 usulan.
 
-### PROP-ADM-01 - Melihat Dasbor Admin
+### PROP-ADM-01 - Melihat Dashboard Admin
 
 - **Persona:** Admin
 - **Action:** bisa melihat dasbor ringkasan berisi jumlah pengguna per peran, jumlah dokumen,
@@ -147,8 +149,8 @@ boleh dijadikan aturan sebelum diputuskan.
 
 ```gherkin
 Given saya seorang Admin
-And saya berada di halaman Dasbor Admin
-When saya membuka Dasbor Admin
+And saya berada di halaman Dashboard Admin
+When saya membuka Dashboard Admin
 Then saya melihat kartu data jumlah pengguna untuk setiap peran: Member Team, Head of Team, dan Admin
 ```
 
@@ -156,8 +158,8 @@ Then saya melihat kartu data jumlah pengguna untuk setiap peran: Member Team, He
 
 ```gherkin
 Given saya seorang Admin
-And saya berada di halaman Dasbor Admin
-When saya membuka Dasbor Admin
+And saya berada di halaman Dashboard Admin
+When saya membuka Dashboard Admin
 Then saya melihat kartu data yang menampilkan jumlah total dokumen di sistem
 And saya melihat kartu data yang menampilkan jumlah dokumen yang diunggah dalam 7 hari terakhir
 ```
@@ -166,8 +168,8 @@ And saya melihat kartu data yang menampilkan jumlah dokumen yang diunggah dalam 
 
 ```gherkin
 Given saya seorang Admin
-And saya berada di halaman Dasbor Admin
-When saya membuka Dasbor Admin
+And saya berada di halaman Dashboard Admin
+When saya membuka Dashboard Admin
 Then saya melihat ringkasan aktivitas unduhan, termasuk jumlah unduhan dan waktu unduhan terbaru
 ```
 

@@ -25,7 +25,7 @@ Use React Hook Form + Zod only when the task is a form. Use Bahasa Indonesia cop
 ## Workflow
 
 1. Read the task card, acceptance criteria, and any supplied Figma reference.
-2. Inspect existing components, tokens, and API contracts before creating new ones.
+2. Inspect existing components, tokens, and API contracts before creating new ones. Authenticated pages render inside the shared `AppShell`; read docs/technical-specs/13-app-shell.md and never build a new sidebar or layout.
 3. Implement loading, empty, error, success, keyboard, and mobile states.
 4. Add tests for each acceptance criterion and prove persistence against the API.
 5. Run bun run complete-check before the PR.
@@ -36,3 +36,4 @@ Use React Hook Form + Zod only when the task is a form. Use Bahasa Indonesia cop
 - [ ] API errors are rendered without leaking server details.
 - [ ] Primary actions are keyboard accessible and visibly disabled while pending.
 - [ ] No foreign-project terminology or invented business scope remains.
+- [ ] The page uses the shared `AppShell`, and menu changes live only in the role menu config.
