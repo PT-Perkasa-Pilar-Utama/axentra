@@ -15,7 +15,7 @@ export type PermissionCategory = CategorySummary;
 const parseLimitQueryValue = (value: unknown, fallback: number): unknown => {
   if (value === undefined || value === "") return fallback;
   if (typeof value === "number") return value;
-  if (typeof value === "string" && /^\d+$/.test(value)) return Number(value);
+  if (typeof value === "string" && /^-?\d+$/.test(value)) return Number(value);
   return Number.NaN;
 };
 

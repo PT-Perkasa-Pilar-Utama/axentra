@@ -30,8 +30,15 @@ describe("permissionCategoriesQuerySchema", () => {
   });
 
   it("rejects non-positive, out-of-range, non-integer, whitespace, and non-primitive values", () => {
-    expect(permissionCategoriesQuerySchema.safeParse({ limit: "0" }).success).toBe(false);
-    expect(permissionCategoriesQuerySchema.safeParse({ limit: "-1" }).success).toBe(false);
+    expect(permissionCategoriesQuerySchema.safeParse({ limit: "0" })).toEqual({
+      success: false,
+      error: expect.anything(),
+    });
+    const negativeRes = permissionCategoriesQuerySchema.safeParse({ limit: "-1" });
+    expect(negativeRes.success).toBe(false);
+    if (!negativeRes.success) {
+      expect(negativeRes.error.issues[0]?.message).toBe("Limit minimal 1");
+    }
     expect(
       permissionCategoriesQuerySchema.safeParse({
         limit: String(PERMISSION_CATEGORIES_MAX_LIMIT + 1),
