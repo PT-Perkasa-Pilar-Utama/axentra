@@ -156,6 +156,8 @@ describe("Audit Trail Feature (FE-S4-02 / AC-12.01)", () => {
     if (!firstCard) throw new Error("Missing audit card");
     await act(async () => fireEvent.click(firstCard));
     const drawer = await screen.findByRole("dialog", { name: "Log Detail" });
+    const closeButton = within(drawer).getByRole("button", { name: "Tutup detail log" });
+    expect(document.activeElement).toBe(closeButton);
     expect(within(drawer).getByText("File Name")).toBeTruthy();
     expect(within(drawer).getByText("DocumentCustomer.pdf")).toBeTruthy();
     expect(within(drawer).getByText("Download Log")).toBeTruthy();
@@ -165,9 +167,10 @@ describe("Audit Trail Feature (FE-S4-02 / AC-12.01)", () => {
       fireEvent.click(screen.getByRole("button", { name: "Tutup detail log" })),
     );
     expect(screen.queryByRole("dialog", { name: "Log Detail" })).toBeNull();
+    expect(document.activeElement).toBe(firstCard);
   });
 
-  test("Escape closes drawer and returns focus to the document card", async () => {
+  test("traps Tab focus inside drawer, locks scroll, and returns focus on Escape", async () => {
     globalThis.fetch = mockFetch(async () =>
       auditPageResponse(sampleAuditEvents, {
         page: 1,
@@ -181,10 +184,20 @@ describe("Audit Trail Feature (FE-S4-02 / AC-12.01)", () => {
     const card = cards[0];
     if (!card) throw new Error("Missing audit card");
     await act(async () => fireEvent.click(card));
-    expect(await screen.findByRole("dialog", { name: "Log Detail" })).toBeTruthy();
+    const drawer = await screen.findByRole("dialog", { name: "Log Detail" });
+    const closeButton = within(drawer).getByRole("button", { name: "Tutup detail log" });
+    expect(document.activeElement).toBe(closeButton);
+    expect(document.body.style.overflow).toBe("hidden");
+
+    await act(async () => fireEvent.keyDown(window, { key: "Tab" }));
+    expect(document.activeElement).toBe(closeButton);
+    await act(async () => fireEvent.keyDown(window, { key: "Tab", shiftKey: true }));
+    expect(document.activeElement).toBe(closeButton);
+
     await act(async () => fireEvent.keyDown(window, { key: "Escape" }));
     expect(screen.queryByRole("dialog", { name: "Log Detail" })).toBeNull();
     expect(document.activeElement).toBe(card);
+    expect(document.body.style.overflow).toBe("");
   });
 
   test("search matches document name, downloader name, and email on the loaded server page", async () => {

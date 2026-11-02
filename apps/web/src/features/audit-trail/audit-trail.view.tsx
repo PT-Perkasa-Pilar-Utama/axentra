@@ -46,11 +46,13 @@ function AuditDetailDrawer({
   rows,
   onClose,
   closeButtonRef,
+  drawerRef,
 }: {
   row: AuditTrailRow;
   rows: AuditTrailRow[];
   onClose: () => void;
   closeButtonRef: React.RefObject<HTMLButtonElement | null>;
+  drawerRef: React.RefObject<HTMLElement | null>;
 }): React.JSX.Element {
   return (
     <div className="audit-trail__drawer-backdrop" onMouseDown={onClose}>
@@ -59,6 +61,7 @@ function AuditDetailDrawer({
         aria-modal="true"
         className="audit-trail__drawer"
         onMouseDown={(event) => event.stopPropagation()}
+        ref={drawerRef}
         role="dialog"
       >
         <header className="audit-trail__drawer-header">
@@ -108,6 +111,7 @@ export function AuditTrailView({
   const presenter = presenterProp ?? defaultPresenter;
   const [selectedRow, setSelectedRow] = useState<AuditTrailRow | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const drawerRef = useRef<HTMLElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
 
   const closeDrawer = (): void => {
@@ -117,12 +121,43 @@ export function AuditTrailView({
 
   useEffect(() => {
     if (!selectedRow) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     closeButtonRef.current?.focus();
+
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") closeDrawer();
+      if (event.key === "Escape") {
+        closeDrawer();
+        return;
+      }
+      if (event.key === "Tab") {
+        const drawer = drawerRef.current;
+        if (!drawer) return;
+        const focusable = drawer.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        );
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        const active = document.activeElement;
+        if (!drawer.contains(active)) {
+          event.preventDefault();
+          (event.shiftKey ? last : first)?.focus();
+        } else if (event.shiftKey && active === first) {
+          event.preventDefault();
+          last?.focus();
+        } else if (!event.shiftKey && active === last) {
+          event.preventDefault();
+          first?.focus();
+        }
+      }
     };
+
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
   }, [selectedRow]);
 
   const documentGroups = new Map<string, AuditTrailRow[]>();
@@ -254,6 +289,7 @@ export function AuditTrailView({
           rows={selectedRows}
           onClose={closeDrawer}
           closeButtonRef={closeButtonRef}
+          drawerRef={drawerRef}
         />
       )}
     </section>
