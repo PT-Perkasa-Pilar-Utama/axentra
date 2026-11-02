@@ -1,4 +1,5 @@
 import { createBrowserRouter } from "react-router";
+import { AppShell } from "./app-shell.view";
 import { FoundationPage } from "./foundation-page";
 import { MemberTeamDashboardPage } from "./member-team-dashboard.page";
 import { DocumentUploadPage } from "../features/document-upload/document-upload.view";
@@ -35,7 +36,11 @@ export const router = createBrowserRouter([
     children: [
       {
         path: "/audit-trail",
-        element: <AuditTrailView />,
+        element: (
+          <AppShell>
+            <AuditTrailView />
+          </AppShell>
+        ),
       },
     ],
   },

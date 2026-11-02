@@ -9,6 +9,27 @@
 
 ---
 
+### Run 3 — AppShell & Drawer walkthrough (working tree, 2026-11-02)
+
+Dijalankan di browser Chromium lokal terhadap stack Axentra. Kategori audit berasal dari API lokal, bukan fixture browser. Backend audit unduhan mencatat tiga event pada `sample-reporting.pdf`.
+
+| Atribut          | Rincian                                                                                                                                                                                       |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Commit dasar** | Branch FE-S4-02 di-rebase ke `origin/dev` `c0f1a7d`; UI Run 3 belum di-commit saat screenshot diambil.                                                                                        |
+| **Environment**  | Web `http://localhost:5173`, API `http://localhost:3001`, Bun 1.4.3, Windows 11, Chromium (Chrome DevTools MCP).                                                                              |
+| **Role**         | `head_of_team` (`head@axentra.local`), sesi lokal aktif.                                                                                                                                      |
+| **Input**        | Tiga audit events dari API untuk `sample-reporting.pdf`; tidak memasukkan data upload/Admin karena kontrak `GET /audit/downloads` hanya berisi unduhan.                                       |
+| **Expected**     | Sidebar bersama menandai Auditrail aktif; daftar menampilkan dokumen, user, waktu; klik dokumen membuka drawer kanan dengan event unduhan terkait dan backdrop blur.                          |
+| **Observed**     | Sidebar logo PERKASA dan menu terlihat, Auditrail aktif; kartu `sample-reporting.pdf` menampilkan user dan waktu WIB. Klik membuka Log Detail, backdrop blur, tiga event unduhan ditampilkan. |
+| **Result**       | Lulus untuk walkthrough UI lokal; **bukan** approval akhir AC atau sign-off Tech Lead.                                                                                                        |
+| **Screenshot**   | [`audit-trail-live.png`](audit-trail-live.png) dan [`audit-trail-drawer-live.png`](audit-trail-drawer-live.png).                                                                              |
+
+![Audit Trail with AppShell](audit-trail-live.png)
+
+![Audit Detail Drawer and Backdrop Blur](audit-trail-drawer-live.png)
+
+---
+
 ### Run 2 — Walkthrough Round 2 (Commit `4611066e319e4d836daf9c94b2a25dda9e59080b`)
 
 Dijalankan pada stack lokal terintegrasi (Hono API, MinIO, PostgreSQL, Redis, React/Vite Web) dengan backend `BE-S4-02` (`GET /api/v1/audit/downloads`) yang telah di-merge ke `dev`:

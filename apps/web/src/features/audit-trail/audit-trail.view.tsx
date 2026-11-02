@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import type React from "react";
 import {
   useAuditTrailPresenter,
@@ -5,28 +6,98 @@ import {
   type AuditTrailRow,
 } from "./audit-trail.presenter";
 import { AuditIcon, ChevronIcon, SearchIcon } from "./audit-trail.icons";
+import { CloseIcon } from "../document-detail/document-icons";
 import "./audit-trail.css";
 
 export type AuditTrailViewProps = {
   presenter?: AuditTrailPresenter;
 };
 
-function AuditTableRow({ row }: { row: AuditTrailRow }): React.JSX.Element {
+function AuditDocumentCard({
+  rows,
+  onOpen,
+}: {
+  rows: AuditTrailRow[];
+  onOpen: (row: AuditTrailRow, target: HTMLElement) => void;
+}): React.JSX.Element | null {
+  const first = rows[0];
+  if (!first) return null;
+
   return (
-    <tr className="audit-trail__table-row">
-      <td className="audit-trail__cell-user">
-        <strong className="audit-trail__user-name">{row.displayUser}</strong>
-        {row.userEmail && row.userEmail !== row.displayUser && (
-          <span className="audit-trail__user-email">{row.userEmail}</span>
-        )}
-      </td>
-      <td className="audit-trail__cell-document">
-        <span className="audit-trail__document-name">{row.documentName}</span>
-      </td>
-      <td className="audit-trail__cell-time">
-        <time dateTime={row.downloadedAt}>{row.downloadedAtFormatted}</time>
-      </td>
-    </tr>
+    <button
+      className="audit-trail__document-card"
+      onClick={(event) => onOpen(first, event.currentTarget)}
+      type="button"
+    >
+      <span className="audit-trail__document-card-main">
+        <strong>{first.documentName}</strong>
+        <span>
+          {first.displayUser}
+          {first.userEmail && first.userEmail !== first.displayUser ? ` · ${first.userEmail}` : ""}
+        </span>
+      </span>
+      <time dateTime={first.downloadedAt}>{first.downloadedAtFormatted}</time>
+    </button>
+  );
+}
+
+function AuditDetailDrawer({
+  row,
+  rows,
+  onClose,
+  closeButtonRef,
+}: {
+  row: AuditTrailRow;
+  rows: AuditTrailRow[];
+  onClose: () => void;
+  closeButtonRef: React.RefObject<HTMLButtonElement | null>;
+}): React.JSX.Element {
+  return (
+    <div className="audit-trail__drawer-backdrop" onMouseDown={onClose}>
+      <aside
+        aria-labelledby="audit-trail-drawer-title"
+        aria-modal="true"
+        className="audit-trail__drawer"
+        onMouseDown={(event) => event.stopPropagation()}
+        role="dialog"
+      >
+        <header className="audit-trail__drawer-header">
+          <h2 id="audit-trail-drawer-title">Log Detail</h2>
+          <button
+            aria-label="Tutup detail log"
+            className="audit-trail__drawer-close"
+            onClick={onClose}
+            ref={closeButtonRef}
+            type="button"
+          >
+            <CloseIcon />
+          </button>
+        </header>
+
+        <div className="audit-trail__drawer-content">
+          <section className="audit-trail__detail-field" aria-label="Nama dokumen">
+            <span>File Name</span>
+            <strong>{row.documentName}</strong>
+          </section>
+          <section className="audit-trail__detail-field" aria-label="Waktu unduh">
+            <span>Waktu Unduh</span>
+            <strong>
+              <time dateTime={row.downloadedAt}>{row.downloadedAtFormatted}</time>
+            </strong>
+          </section>
+          <section className="audit-trail__download-log" aria-labelledby="audit-trail-log-heading">
+            <h3 id="audit-trail-log-heading">Download Log</h3>
+            {rows.map((event) => (
+              <div className="audit-trail__download-log-row" key={event.id}>
+                <time dateTime={event.downloadedAt}>{event.downloadedAtFormatted}</time>
+                <span className="audit-trail__download-log-rule" aria-hidden="true" />
+                <span className="audit-trail__download-log-user">{event.displayUser}</span>
+              </div>
+            ))}
+          </section>
+        </div>
+      </aside>
+    </div>
   );
 }
 
@@ -35,6 +106,45 @@ export function AuditTrailView({
 }: AuditTrailViewProps = {}): React.JSX.Element {
   const defaultPresenter = useAuditTrailPresenter();
   const presenter = presenterProp ?? defaultPresenter;
+  const [selectedRow, setSelectedRow] = useState<AuditTrailRow | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+
+  const closeDrawer = (): void => {
+    setSelectedRow(null);
+    returnFocusRef.current?.focus();
+  };
+
+  useEffect(() => {
+    if (!selectedRow) return;
+    closeButtonRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") closeDrawer();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedRow]);
+
+  const documentGroups = new Map<string, AuditTrailRow[]>();
+  for (const row of presenter.rows) {
+    const key = row.documentId ?? `deleted-document:${row.documentName}`;
+    const group = documentGroups.get(key) ?? [];
+    group.push(row);
+    documentGroups.set(key, group);
+  }
+
+  const selectedRows = selectedRow
+    ? presenter.rows.filter((row) =>
+        selectedRow.documentId
+          ? row.documentId === selectedRow.documentId
+          : row.documentName === selectedRow.documentName,
+      )
+    : [];
+
+  const openDrawer = (row: AuditTrailRow, target: HTMLElement): void => {
+    returnFocusRef.current = target;
+    setSelectedRow(row);
+  };
 
   return (
     <section
@@ -44,53 +154,49 @@ export function AuditTrailView({
     >
       <title>Audit Trail | Axentra</title>
       <header className="audit-trail__header">
-        <h1 id="audit-trail-heading">Audit Trail</h1>
-        <div className="audit-trail__search-container">
-          <label className="audit-trail__search">
-            <SearchIcon />
-            <span className="sr-only">Cari dokumen atau pengguna</span>
-            <input
-              onChange={(event) => presenter.setKeyword(event.currentTarget.value)}
-              placeholder="Cari pada halaman ini (nama, dokumen, email)..."
-              type="search"
-              value={presenter.keyword}
-            />
-          </label>
-          {presenter.keyword.trim().length > 0 && (
-            <span className="audit-trail__search-hint" role="status">
-              Menyaring baris pada halaman {presenter.page}
-            </span>
-          )}
-        </div>
+        <h1 id="audit-trail-heading">Auditrail</h1>
+        <label className="audit-trail__search">
+          <SearchIcon />
+          <span className="sr-only">Cari dokumen atau pengguna</span>
+          <input
+            onChange={(event) => presenter.setKeyword(event.currentTarget.value)}
+            placeholder="Search"
+            type="search"
+            value={presenter.keyword}
+          />
+        </label>
       </header>
 
-      <nav aria-label="Paginasi riwayat unduhan" className="audit-trail__pagination">
-        <button
-          aria-label="Halaman sebelumnya"
-          disabled={!presenter.hasPrevPage}
-          onClick={presenter.prevPage}
-          type="button"
-        >
-          <ChevronIcon direction="left" />
-        </button>
-        <span className="audit-trail__page-number" role="status">
-          Halaman {presenter.page} dari {presenter.totalPages}
-        </span>
-        <button
-          aria-label="Halaman berikutnya"
-          disabled={!presenter.hasNextPage}
-          onClick={presenter.nextPage}
-          type="button"
-        >
-          <ChevronIcon direction="right" />
-        </button>
-      </nav>
+      <div className="audit-trail__toolbar">
+        <span className="audit-trail__scope-note">Riwayat unduhan dokumen</span>
+        <nav aria-label="Paginasi riwayat unduhan" className="audit-trail__pagination">
+          <button
+            aria-label="Halaman sebelumnya"
+            disabled={!presenter.hasPrevPage}
+            onClick={presenter.prevPage}
+            type="button"
+          >
+            <ChevronIcon direction="left" />
+          </button>
+          <span className="audit-trail__page-number" role="status">
+            {presenter.page}
+          </span>
+          <button
+            aria-label="Halaman berikutnya"
+            disabled={!presenter.hasNextPage}
+            onClick={presenter.nextPage}
+            type="button"
+          >
+            <ChevronIcon direction="right" />
+          </button>
+        </nav>
+      </div>
 
       {presenter.isLoading && (
-        <div aria-busy="true" className="audit-trail__state" role="status">
-          <div className="audit-trail__skeleton motion-safe:animate-pulse" />
-          <div className="audit-trail__skeleton motion-safe:animate-pulse" />
-          <div className="audit-trail__skeleton motion-safe:animate-pulse" />
+        <div aria-busy="true" className="audit-trail__skeleton-list" role="status">
+          {Array.from({ length: 5 }).map((_, index) => (
+            <div className="audit-trail__skeleton motion-safe:animate-pulse" key={index} />
+          ))}
           <span className="sr-only">Memuat riwayat unduhan...</span>
         </div>
       )}
@@ -127,21 +233,10 @@ export function AuditTrailView({
       )}
 
       {!presenter.isLoading && !presenter.isError && !presenter.isEmpty && (
-        <div className="audit-trail__table-container">
-          <table aria-label="Riwayat Unduhan Dokumen" className="audit-trail__table">
-            <thead>
-              <tr>
-                <th scope="col">Pengguna</th>
-                <th scope="col">Nama Dokumen</th>
-                <th scope="col">Waktu Unduh</th>
-              </tr>
-            </thead>
-            <tbody>
-              {presenter.rows.map((row) => (
-                <AuditTableRow key={row.id} row={row} />
-              ))}
-            </tbody>
-          </table>
+        <div className="audit-trail__document-list" aria-label="Daftar aktivitas unduhan">
+          {[...documentGroups.entries()].map(([key, rows]) => (
+            <AuditDocumentCard key={key} rows={rows} onOpen={openDrawer} />
+          ))}
         </div>
       )}
 
@@ -151,6 +246,15 @@ export function AuditTrailView({
             ? `${presenter.rows.length} hasil pada halaman ${presenter.page}; total ${presenter.totalItems} aktivitas unduhan`
             : `Menampilkan ${presenter.firstItem}–${presenter.lastItem} dari ${presenter.totalItems} aktivitas unduhan`}
         </p>
+      )}
+
+      {selectedRow && (
+        <AuditDetailDrawer
+          row={selectedRow}
+          rows={selectedRows}
+          onClose={closeDrawer}
+          closeButtonRef={closeButtonRef}
+        />
       )}
     </section>
   );
