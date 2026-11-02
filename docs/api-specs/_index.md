@@ -83,7 +83,7 @@ OK      GET /audit/downloads
 ### Permission Category (Sprint 4)
 
 ```text
-PLANNED GET   /permission-categories
+OK      GET   /permission-categories
 PLANNED PATCH /permission-categories/:categoryId
 ```
 
