@@ -21,6 +21,18 @@ export {
   analyticsSummaryResponseSchema,
   analyticsSummarySchema,
 } from "./analytics";
+export type {
+  PermissionCategoriesQuery,
+  PermissionCategoriesResponse,
+  PermissionCategory,
+} from "./permission-categories";
+export {
+  PERMISSION_CATEGORIES_DEFAULT_LIMIT,
+  PERMISSION_CATEGORIES_MAX_LIMIT,
+  permissionCategoriesQuerySchema,
+  permissionCategoriesResponseSchema,
+  permissionCategorySchema,
+} from "./permission-categories";
 export type { AuthUser, LoginRequest, LoginResponse, UserRole } from "./auth";
 export {
   USER_ROLES,

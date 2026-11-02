@@ -2,7 +2,7 @@
 
 Source: BA user stories US-12 and US-13.
 
-`GET /api/v1/audit/downloads` is implemented (`BE-S4-02`, `AC-12.01`). Permission category APIs remain planned.
+`GET /api/v1/audit/downloads` (`BE-S4-02`, `AC-12.01`) and `GET /api/v1/permission-categories` (`BE-S4-03`, partial `AC-13.01` for listing categories and their download permission status) are implemented. `PATCH /api/v1/permission-categories/:categoryId` (`BE-S4-04`) remains planned.
 
 ## Download Audit Trail
 
@@ -76,7 +76,69 @@ Error responses:
 
 ### `GET /api/v1/permission-categories`
 
-Returns categories and their Member Team download permission status.
+Status: **Implemented** (`BE-S4-03`, partial `AC-13.01`; toggle behavior is tracked in `BE-S4-04`).
+
+Authorization:
+
+- Requires authentication (`Bearer` access token).
+- Allowed role: `head_of_team` (`member_team` and `admin` receive `403 FORBIDDEN`).
+
+Query parameters:
+
+| Parameter | Type    | Default | Constraints         | Description                         |
+| --------- | ------- | ------- | ------------------- | ----------------------------------- |
+| `limit`   | integer | `50`    | `1 <= limit <= 100` | Maximum number of categories listed |
+
+Behavior:
+
+- Returns categories ordered alphabetically (`name ASC, id ASC`) with their Member Team download permission status (`downloadEnabled`).
+- Reads `categories` with a `LEFT JOIN` on `category_download_permissions`. Categories without a permission record or newly auto-created categories default to `downloadEnabled: false`.
+- Returns `"data": []` when no categories exist.
+
+Response (`200 OK`):
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "11111111-1111-4111-8111-111111111111",
+      "name": "Contract",
+      "slug": "contract",
+      "downloadEnabled": true,
+      "createdAt": "2026-09-22T00:00:00.000Z",
+      "updatedAt": "2026-09-22T00:00:00.000Z"
+    },
+    {
+      "id": "22222222-2222-4222-8222-222222222222",
+      "name": "Reporting",
+      "slug": "reporting",
+      "downloadEnabled": false,
+      "createdAt": "2026-09-22T00:00:00.000Z",
+      "updatedAt": "2026-09-22T00:00:00.000Z"
+    }
+  ]
+}
+```
+
+Item fields (`PermissionCategory` in `@axentra/shared`):
+
+| Field             | Type            | Purpose                                                |
+| ----------------- | --------------- | ------------------------------------------------------ |
+| `id`              | `string` (UUID) | Category identifier                                    |
+| `name`            | `string`        | Category display name                                  |
+| `slug`            | `string`        | URL-friendly category slug                             |
+| `downloadEnabled` | `boolean`       | Whether Member Team can download documents in category |
+| `createdAt`       | `string` (ISO)  | Category creation timestamp                            |
+| `updatedAt`       | `string` (ISO)  | Category last update timestamp                         |
+
+Error responses:
+
+| Status | Code               | When                                          |
+| ------ | ------------------ | --------------------------------------------- |
+| `400`  | `VALIDATION_ERROR` | `limit` is not a valid integer in `1..100`    |
+| `401`  | `UNAUTHORIZED`     | Missing or invalid `Bearer` token             |
+| `403`  | `FORBIDDEN`        | Authenticated user role is not `head_of_team` |
 
 ### `PATCH /api/v1/permission-categories/:categoryId`
 
