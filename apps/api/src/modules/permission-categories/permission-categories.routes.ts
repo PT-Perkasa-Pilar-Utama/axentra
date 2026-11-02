@@ -2,7 +2,10 @@ import { Hono } from "hono";
 import type { ApiEnvironment } from "../../environment";
 import type { TokenVerifier } from "../../middleware/auth";
 import { defaultTokenVerifier, requireAuth, requireRole } from "../../middleware/auth";
-import { createListPermissionCategoriesHandler } from "./permission-categories.handler";
+import {
+  createListPermissionCategoriesHandler,
+  createUpdatePermissionCategoryHandler,
+} from "./permission-categories.handler";
 import type { IPermissionCategoriesService } from "./permission-categories.service";
 
 export type PermissionCategoriesRouteDependencies = {
@@ -21,6 +24,13 @@ export function createPermissionCategoriesRoutes(
     requireAuth(verifier),
     requireRole("head_of_team"),
     createListPermissionCategoriesHandler(dependencies),
+  );
+
+  routes.patch(
+    "/:categoryId",
+    requireAuth(verifier),
+    requireRole("head_of_team"),
+    createUpdatePermissionCategoryHandler(dependencies),
   );
 
   return routes;

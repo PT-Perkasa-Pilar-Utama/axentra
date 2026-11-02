@@ -2,7 +2,11 @@ import type { Context } from "hono";
 import type { ApiEnvironment } from "../../environment";
 import { ValidationError } from "../../http/errors";
 import { jsonSuccess } from "../../http/responses";
-import { permissionCategoriesQuerySchema } from "./permission-categories.schema";
+import {
+  permissionCategoriesQuerySchema,
+  permissionCategoryIdParamSchema,
+  updatePermissionCategoryRequestSchema,
+} from "./permission-categories.schema";
 import type { IPermissionCategoriesService } from "./permission-categories.service";
 
 export type PermissionCategoriesHandlerDependencies = {
@@ -30,5 +34,40 @@ export function createListPermissionCategoriesHandler(
       parsed.data.limit,
     );
     return jsonSuccess(context, categories, 200);
+  };
+}
+
+export function createUpdatePermissionCategoryHandler(
+  dependencies: PermissionCategoriesHandlerDependencies,
+): (context: Context<ApiEnvironment>) => Promise<Response> {
+  return async (context: Context<ApiEnvironment>): Promise<Response> => {
+    const parsedParam = permissionCategoryIdParamSchema.safeParse({
+      categoryId: context.req.param("categoryId"),
+    });
+
+    if (!parsedParam.success) {
+      const details = parsedParam.error.issues.map((issue) => ({
+        field: issue.path.join(".") || "categoryId",
+        message: issue.message,
+      }));
+      throw new ValidationError("Data tidak valid", details);
+    }
+
+    const rawBody: unknown = await context.req.json().catch(() => null);
+    const parsedBody = updatePermissionCategoryRequestSchema.safeParse(rawBody);
+
+    if (!parsedBody.success) {
+      const details = parsedBody.error.issues.map((issue) => ({
+        field: issue.path.join(".") || "body",
+        message: issue.message,
+      }));
+      throw new ValidationError("Data tidak valid", details);
+    }
+
+    const updated = await dependencies.permissionCategoriesService.updateCategoryDownloadPermission(
+      parsedParam.data.categoryId,
+      parsedBody.data.downloadEnabled,
+    );
+    return jsonSuccess(context, updated, 200);
   };
 }

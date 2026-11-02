@@ -1,15 +1,22 @@
 import crypto from "node:crypto";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import type {
   DatabaseClient,
   closeDatabase as CloseDatabase,
   createDatabaseClient as CreateDatabaseClient,
 } from "@axentra/db";
 import { createLogger } from "@axentra/observability";
-import { permissionCategoriesResponseSchema, type ApiErrorEnvelope } from "@axentra/shared";
+import {
+  downloadDocumentSuccessResponseSchema,
+  permissionCategoriesResponseSchema,
+  updatePermissionCategoryResponseSchema,
+  type ApiErrorEnvelope,
+} from "@axentra/shared";
 import { createApp } from "../apps/api/src/app";
 import type { TokenVerifier } from "../apps/api/src/middleware/auth";
+import { createDocumentService } from "../apps/api/src/modules/documents/documents.service";
+import { DrizzleDownloadRepository } from "../apps/api/src/modules/documents/download.repository";
 import { DrizzlePermissionCategoriesRepository } from "../apps/api/src/modules/permission-categories/permission-categories.repository";
 import { createPermissionCategoriesService } from "../apps/api/src/modules/permission-categories/permission-categories.service";
 import {
@@ -49,7 +56,7 @@ const tokenVerifier: TokenVerifier = {
   },
 };
 
-describe("Permission categories API PostgreSQL integration (BE-S4-03 / AC-13.01)", () => {
+describe("Permission categories API PostgreSQL integration (BE-S4-03, BE-S4-04 / AC-13.01)", () => {
   let database: DatabaseClient | undefined;
   let databaseUrl = "";
   let closeDatabase: typeof CloseDatabase;
@@ -167,6 +174,171 @@ describe("Permission categories API PostgreSQL integration (BE-S4-03 / AC-13.01)
         await database.db
           .delete(schema.categories)
           .where(inArray(schema.categories.id, categoryIds));
+      }
+    },
+  );
+
+  integrationTest(
+    "toggles category download permission via PATCH /api/v1/permission-categories/:categoryId and gates member_team document download",
+    async () => {
+      if (database === undefined) {
+        throw new Error("PostgreSQL integration database was not initialized");
+      }
+
+      const schema = await import("@axentra/db");
+      const suffix = crypto.randomUUID();
+      const memberUserId = crypto.randomUUID();
+      const reportingCategoryId = crypto.randomUUID();
+      const missingCategoryId = crypto.randomUUID();
+      const documentId = crypto.randomUUID();
+      const fileId = crypto.randomUUID();
+
+      try {
+        await database.db.insert(schema.users).values({
+          id: memberUserId,
+          email: `permcat-member-${suffix}@axentra.local`,
+          name: "Member Team",
+          passwordHash: "dummy-hash",
+          role: "member_team",
+        });
+
+        await database.db.insert(schema.categories).values({
+          id: reportingCategoryId,
+          name: `00-PermCat-Reporting-${suffix}`,
+          slug: `permcat-reporting-${suffix}`,
+        });
+
+        await database.db.insert(schema.documents).values({
+          id: documentId,
+          title: `Laporan-${suffix}.pdf`,
+          categoryId: reportingCategoryId,
+          processingStatus: "completed",
+        });
+
+        await database.db.insert(schema.documentFiles).values({
+          id: fileId,
+          documentId,
+          storageKey: `documents/${documentId}/Laporan-${suffix}.pdf`,
+          originalName: `Laporan-${suffix}.pdf`,
+          mimeType: "application/pdf",
+          fileSize: 128,
+          fileExtension: "pdf",
+        });
+
+        const app = createApp({
+          logger: testLogger,
+          version: "0.1.0",
+          readinessChecks: [],
+          tokenVerifier: {
+            verifyToken(token: string) {
+              if (token === "valid-member-token") {
+                return {
+                  id: memberUserId,
+                  email: `permcat-member-${suffix}@axentra.local`,
+                  role: "member_team",
+                  name: "Member Team",
+                };
+              }
+              return tokenVerifier.verifyToken(token);
+            },
+          },
+          documentService: createDocumentService({
+            downloadRepository: new DrizzleDownloadRepository(database.db),
+          }),
+          permissionCategoriesService: createPermissionCategoriesService(
+            new DrizzlePermissionCategoriesRepository(database.db),
+          ),
+        });
+
+        const deniedBeforeToggle = await app.request(`/api/v1/documents/${documentId}/download`, {
+          method: "GET",
+          headers: {
+            Authorization: "Bearer valid-member-token",
+          },
+        });
+        expect(deniedBeforeToggle.status).toBe(403);
+
+        const activateRes = await app.request(
+          `/api/v1/permission-categories/${reportingCategoryId}`,
+          {
+            method: "PATCH",
+            headers: {
+              Authorization: "Bearer valid-head-token",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ downloadEnabled: true }),
+          },
+        );
+        expect(activateRes.status).toBe(200);
+        const activated = updatePermissionCategoryResponseSchema.parse(await activateRes.json());
+        expect(activated.data.id).toBe(reportingCategoryId);
+        expect(activated.data.downloadEnabled).toBe(true);
+
+        const allowedAfterActivate = await app.request(`/api/v1/documents/${documentId}/download`, {
+          method: "GET",
+          headers: {
+            Authorization: "Bearer valid-member-token",
+          },
+        });
+        expect(allowedAfterActivate.status).toBe(200);
+        const downloadBody = downloadDocumentSuccessResponseSchema.parse(
+          await allowedAfterActivate.json(),
+        );
+        expect(downloadBody.data.filename).toBe(`Laporan-${suffix}.pdf`);
+
+        const deactivateRes = await app.request(
+          `/api/v1/permission-categories/${reportingCategoryId}`,
+          {
+            method: "PATCH",
+            headers: {
+              Authorization: "Bearer valid-head-token",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ downloadEnabled: false }),
+          },
+        );
+        expect(deactivateRes.status).toBe(200);
+        const deactivated = updatePermissionCategoryResponseSchema.parse(
+          await deactivateRes.json(),
+        );
+        expect(deactivated.data.downloadEnabled).toBe(false);
+
+        const deniedAfterDeactivate = await app.request(
+          `/api/v1/documents/${documentId}/download`,
+          {
+            method: "GET",
+            headers: {
+              Authorization: "Bearer valid-member-token",
+            },
+          },
+        );
+        expect(deniedAfterDeactivate.status).toBe(403);
+
+        const notFoundRes = await app.request(
+          `/api/v1/permission-categories/${missingCategoryId}`,
+          {
+            method: "PATCH",
+            headers: {
+              Authorization: "Bearer valid-head-token",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ downloadEnabled: true }),
+          },
+        );
+        expect(notFoundRes.status).toBe(404);
+        const notFoundBody = (await notFoundRes.json()) as ApiErrorEnvelope;
+        expect(notFoundBody.error.code).toBe("NOT_FOUND");
+      } finally {
+        assertDisposableTestDatabase(databaseUrl);
+        assertClientConnectedToDisposableDatabase(database, databaseUrl);
+        await database.db
+          .delete(schema.downloadAuditEvents)
+          .where(eq(schema.downloadAuditEvents.documentId, documentId));
+        await database.db.delete(schema.documents).where(eq(schema.documents.id, documentId));
+        await database.db
+          .delete(schema.categories)
+          .where(eq(schema.categories.id, reportingCategoryId));
+        await database.db.delete(schema.users).where(eq(schema.users.id, memberUserId));
       }
     },
   );

@@ -4,7 +4,10 @@ import {
   PERMISSION_CATEGORIES_MAX_LIMIT,
   permissionCategoriesQuerySchema,
   permissionCategoriesResponseSchema,
+  permissionCategoryIdParamSchema,
   permissionCategorySchema,
+  updatePermissionCategoryRequestSchema,
+  updatePermissionCategoryResponseSchema,
 } from "./permission-categories";
 
 describe("permissionCategoriesQuerySchema", () => {
@@ -91,5 +94,74 @@ describe("permissionCategoriesResponseSchema", () => {
         data: items,
       }).success,
     ).toBe(false);
+  });
+});
+
+describe("permissionCategoryIdParamSchema", () => {
+  it("accepts a valid UUID categoryId", () => {
+    const validId = "11111111-1111-4111-8111-111111111111";
+    expect(permissionCategoryIdParamSchema.parse({ categoryId: validId })).toEqual({
+      categoryId: validId,
+    });
+  });
+
+  it("rejects non-UUID or empty categoryId values", () => {
+    for (const invalid of ["", "not-a-uuid", "12345", "11111111-1111-4111-8111-11111111111z"]) {
+      const parsed = permissionCategoryIdParamSchema.safeParse({ categoryId: invalid });
+      expect(parsed.success).toBe(false);
+      if (!parsed.success) {
+        expect(parsed.error.issues[0]?.message).toBe("ID kategori harus berupa UUID yang valid");
+      }
+    }
+  });
+});
+
+describe("updatePermissionCategoryRequestSchema", () => {
+  it("accepts boolean downloadEnabled values", () => {
+    expect(updatePermissionCategoryRequestSchema.parse({ downloadEnabled: true })).toEqual({
+      downloadEnabled: true,
+    });
+    expect(updatePermissionCategoryRequestSchema.parse({ downloadEnabled: false })).toEqual({
+      downloadEnabled: false,
+    });
+  });
+
+  it("rejects missing, non-boolean, and unknown properties", () => {
+    expect(updatePermissionCategoryRequestSchema.safeParse({}).success).toBe(false);
+    expect(
+      updatePermissionCategoryRequestSchema.safeParse({ downloadEnabled: "true" }).success,
+    ).toBe(false);
+    expect(updatePermissionCategoryRequestSchema.safeParse({ downloadEnabled: 1 }).success).toBe(
+      false,
+    );
+    expect(updatePermissionCategoryRequestSchema.safeParse({ downloadEnabled: null }).success).toBe(
+      false,
+    );
+    expect(
+      updatePermissionCategoryRequestSchema.safeParse({
+        downloadEnabled: true,
+        unexpected: "value",
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe("updatePermissionCategoryResponseSchema", () => {
+  it("validates a single permission category response envelope", () => {
+    const item = {
+      id: "11111111-1111-4111-8111-111111111111",
+      name: "Reporting",
+      slug: "reporting",
+      downloadEnabled: true,
+      createdAt: "2026-10-30T08:00:00.000Z",
+      updatedAt: "2026-10-30T08:05:00.000Z",
+    };
+
+    expect(
+      updatePermissionCategoryResponseSchema.safeParse({
+        success: true,
+        data: item,
+      }).success,
+    ).toBe(true);
   });
 });
