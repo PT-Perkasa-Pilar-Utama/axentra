@@ -1,11 +1,29 @@
-import { downloadAuditEventSchema, type DownloadAuditEvent } from "@axentra/shared";
-import { z } from "zod";
-import { apiRequest } from "../../lib/api-client";
+import {
+  DOWNLOAD_AUDIT_DEFAULT_LIMIT,
+  DOWNLOAD_AUDIT_DEFAULT_PAGE,
+  downloadAuditListQuerySchema,
+  downloadAuditEventSchema,
+  type DownloadAuditEvent,
+  type PaginationMeta,
+} from "@axentra/shared";
+import { apiRequestPage } from "../../lib/api-client";
 
-export const downloadAuditEventsResponseSchema = z.array(downloadAuditEventSchema);
+export type DownloadAuditPage = {
+  items: DownloadAuditEvent[];
+  meta: PaginationMeta;
+};
 
 export type { DownloadAuditEvent };
 
-export async function listDownloadAuditEvents(): Promise<DownloadAuditEvent[]> {
-  return apiRequest("/audit/downloads?limit=100", downloadAuditEventsResponseSchema);
+export async function listDownloadAuditEvents(
+  page = DOWNLOAD_AUDIT_DEFAULT_PAGE,
+  limit = DOWNLOAD_AUDIT_DEFAULT_LIMIT,
+): Promise<DownloadAuditPage> {
+  const query = downloadAuditListQuerySchema.parse({ page, limit });
+  const params = new URLSearchParams({ page: String(query.page), limit: String(query.limit) });
+  const { data, meta } = await apiRequestPage(
+    `/audit/downloads?${params.toString()}`,
+    downloadAuditEventSchema.array(),
+  );
+  return { items: data, meta };
 }

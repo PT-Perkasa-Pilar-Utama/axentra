@@ -28,6 +28,11 @@
   font-weight: 700;
 }
 
+.audit-trail__search-container {
+  width: 100%;
+  max-width: 20rem;
+}
+
 .audit-trail__search {
   display: flex;
   align-items: center;
@@ -41,7 +46,7 @@
 }
 
 .audit-trail__search:focus-within {
-  outline: 2px solid #477532;
+  outline: 2px solid var(--sidebar-accent, #477532);
   outline-offset: 2px;
 }
 
@@ -92,7 +97,7 @@
 
 .audit-trail__pagination button:focus-visible,
 .audit-trail__retry-button:focus-visible {
-  outline: 3px solid #477532;
+  outline: 3px solid var(--sidebar-accent, #65a448);
   outline-offset: 2px;
 }
 
@@ -220,8 +225,8 @@
   padding: 0.5rem 1.125rem;
   border: none;
   border-radius: 0.5rem;
-  background-color: #477532;
-  color: #ffffff;
+  background-color: var(--sidebar-accent, #65a448);
+  color: var(--sidebar-surface, #25282e);
   font-size: 0.875rem;
   font-weight: 600;
   cursor: pointer;
@@ -229,6 +234,7 @@
 
 .audit-trail__retry-button:hover {
   background-color: #365b26;
+  color: #ffffff;
 }
 
 .audit-trail__skeleton {

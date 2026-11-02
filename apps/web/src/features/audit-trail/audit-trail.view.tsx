@@ -37,23 +37,34 @@ export function AuditTrailView({
   const presenter = presenterProp ?? defaultPresenter;
 
   return (
-    <main className="audit-trail-page" data-testid="audit-trail-page">
+    <section
+      aria-labelledby="audit-trail-heading"
+      className="audit-trail-page"
+      data-testid="audit-trail-page"
+    >
       <title>Audit Trail | Axentra</title>
       <header className="audit-trail__header">
-        <h1>Audit Trail</h1>
-        <label className="audit-trail__search">
-          <SearchIcon />
-          <span className="sr-only">Cari dokumen atau pengguna</span>
-          <input
-            onChange={(event) => presenter.setKeyword(event.currentTarget.value)}
-            placeholder="Cari dokumen atau pengguna..."
-            type="search"
-            value={presenter.keyword}
-          />
-        </label>
+        <h1 id="audit-trail-heading">Audit Trail</h1>
+        <div className="audit-trail__search-container">
+          <label className="audit-trail__search">
+            <SearchIcon />
+            <span className="sr-only">Cari dokumen atau pengguna</span>
+            <input
+              onChange={(event) => presenter.setKeyword(event.currentTarget.value)}
+              placeholder="Cari pada halaman ini (nama, dokumen, email)..."
+              type="search"
+              value={presenter.keyword}
+            />
+          </label>
+          {presenter.keyword.trim().length > 0 && (
+            <span className="audit-trail__search-hint" role="status">
+              Menyaring baris pada halaman {presenter.page}
+            </span>
+          )}
+        </div>
       </header>
 
-      <div className="audit-trail__pagination" aria-label="Paginasi riwayat unduhan">
+      <nav aria-label="Paginasi riwayat unduhan" className="audit-trail__pagination">
         <button
           aria-label="Halaman sebelumnya"
           disabled={!presenter.hasPrevPage}
@@ -62,8 +73,8 @@ export function AuditTrailView({
         >
           <ChevronIcon direction="left" />
         </button>
-        <span aria-current="page" className="audit-trail__page-number">
-          {presenter.page}
+        <span className="audit-trail__page-number" role="status">
+          Halaman {presenter.page} dari {presenter.totalPages}
         </span>
         <button
           aria-label="Halaman berikutnya"
@@ -73,7 +84,7 @@ export function AuditTrailView({
         >
           <ChevronIcon direction="right" />
         </button>
-      </div>
+      </nav>
 
       {presenter.isLoading && (
         <div aria-busy="true" className="audit-trail__state" role="status">
@@ -110,16 +121,14 @@ export function AuditTrailView({
             <AuditIcon />
           </span>
           <p>
-            {presenter.keyword
-              ? "Tidak ada hasil untuk pencarian ini."
-              : "Belum ada riwayat unduhan."}
+            {presenter.keyword ? "Tidak ada hasil pada halaman ini." : "Belum ada riwayat unduhan."}
           </p>
         </div>
       )}
 
       {!presenter.isLoading && !presenter.isError && !presenter.isEmpty && (
         <div className="audit-trail__table-container">
-          <table className="audit-trail__table" aria-label="Riwayat Unduhan Dokumen">
+          <table aria-label="Riwayat Unduhan Dokumen" className="audit-trail__table">
             <thead>
               <tr>
                 <th scope="col">Pengguna</th>
@@ -137,12 +146,12 @@ export function AuditTrailView({
       )}
 
       {!presenter.isLoading && !presenter.isError && presenter.totalItems > 0 && (
-        <p className="audit-trail__result-count">
-          Menampilkan {(presenter.page - 1) * presenter.pageSize + 1}–
-          {Math.min(presenter.page * presenter.pageSize, presenter.totalItems)} dari{" "}
-          {presenter.totalItems} aktivitas unduhan
+        <p className="audit-trail__result-count" aria-live="polite">
+          {presenter.keyword.trim()
+            ? `${presenter.rows.length} hasil pada halaman ${presenter.page}; total ${presenter.totalItems} aktivitas unduhan`
+            : `Menampilkan ${presenter.firstItem}–${presenter.lastItem} dari ${presenter.totalItems} aktivitas unduhan`}
         </p>
       )}
-    </main>
+    </section>
   );
 }

@@ -1,8 +1,10 @@
 import { useCallback, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { DownloadAuditEvent } from "./audit-trail.api";
+import { DOWNLOAD_AUDIT_MAX_PAGE, downloadAuditListQuerySchema } from "@axentra/shared";
+import type { DownloadAuditEvent, DownloadAuditPage } from "./audit-trail.api";
 import { listDownloadAuditEvents } from "./audit-trail.api";
 import { formatAuditDateTime } from "./audit-trail.format";
+import { ApiClientError } from "../../lib/api-client";
 
 export const AUDIT_DOWNLOADS_QUERY_KEY = ["audit-downloads"] as const;
 export const AUDIT_PAGE_SIZE = 10;
@@ -13,18 +15,20 @@ export type AuditTrailRow = DownloadAuditEvent & {
 };
 
 export type AuditTrailPresenterOptions = {
-  auditFetchFn?: () => Promise<DownloadAuditEvent[]>;
+  auditFetchFn?: (page: number, limit: number) => Promise<DownloadAuditPage>;
   pageSize?: number;
 };
 
 export type AuditTrailPresenter = {
   isLoading: boolean;
+  isChangingPage: boolean;
   isError: boolean;
   isAccessDenied: boolean;
   isEmpty: boolean;
   rows: AuditTrailRow[];
   totalItems: number;
-  pageSize: number;
+  firstItem: number;
+  lastItem: number;
   keyword: string;
   setKeyword: (keyword: string) => void;
   page: number;
@@ -37,75 +41,88 @@ export type AuditTrailPresenter = {
 };
 
 export function mapAuditEvents(events: readonly DownloadAuditEvent[]): AuditTrailRow[] {
-  return [...events]
-    .sort((a, b) => Date.parse(b.downloadedAt) - Date.parse(a.downloadedAt))
-    .map((event) => ({
-      ...event,
-      displayUser: event.userName?.trim() || event.userEmail?.trim() || "Pengguna",
-      downloadedAtFormatted: formatAuditDateTime(event.downloadedAt),
-    }));
+  return events.map((event) => ({
+    ...event,
+    displayUser: event.userName?.trim() || event.userEmail?.trim() || "Pengguna",
+    downloadedAtFormatted: formatAuditDateTime(event.downloadedAt),
+  }));
 }
 
 export function useAuditTrailPresenter(
   options: AuditTrailPresenterOptions = {},
 ): AuditTrailPresenter {
   const fetchFn = options.auditFetchFn ?? listDownloadAuditEvents;
-  const pageSize = options.pageSize ?? AUDIT_PAGE_SIZE;
-  const [keyword, setKeywordState] = useState("");
-  const [page, setPage] = useState(1);
+  const { limit } = downloadAuditListQuerySchema.parse({
+    limit: options.pageSize ?? AUDIT_PAGE_SIZE,
+  });
+  const [keyword, setKeyword] = useState("");
+  const [requestedPage, setRequestedPage] = useState(1);
 
   const query = useQuery({
-    queryKey: AUDIT_DOWNLOADS_QUERY_KEY,
-    queryFn: fetchFn,
+    queryKey: [...AUDIT_DOWNLOADS_QUERY_KEY, requestedPage, limit],
+    queryFn: () => fetchFn(requestedPage, limit),
     staleTime: 30_000,
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[2] === limit ? previous : undefined,
+    retry: (failureCount, error) =>
+      !(error instanceof ApiClientError && error.status >= 400 && error.status < 500) &&
+      failureCount < 1,
   });
-  const rows = useMemo(() => mapAuditEvents(query.data ?? []), [query.data]);
-  const filteredRows = useMemo(() => {
+
+  const meta = query.data?.meta;
+  const page = meta?.page ?? requestedPage;
+  const pageSize = meta?.limit ?? limit;
+  const totalItems = meta?.total ?? 0;
+  const totalPages = Math.min(
+    DOWNLOAD_AUDIT_MAX_PAGE,
+    Math.max(1, Math.ceil(totalItems / pageSize)),
+  );
+  // A deleted event can shrink the result set while the user is on its last page.
+  if (meta && !query.isPlaceholderData && requestedPage > totalPages) {
+    setRequestedPage(totalPages);
+  }
+
+  const events = query.data?.items;
+  const pageRows = useMemo(() => mapAuditEvents(events ?? []), [events]);
+  // The API has no search parameter. Never imply this filters the entire audit history.
+  const rows = useMemo(() => {
     const term = keyword.trim().toLocaleLowerCase("id-ID");
-    if (!term) return rows;
-    return rows.filter((row) =>
+    return pageRows.filter((row) =>
       [row.documentName, row.displayUser, row.userEmail ?? ""]
         .join(" ")
         .toLocaleLowerCase("id-ID")
         .includes(term),
     );
-  }, [rows, keyword]);
+  }, [pageRows, keyword]);
 
-  const totalItems = filteredRows.length;
-  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
-  const currentPage = Math.min(page, totalPages);
-  const paginatedRows = useMemo(
-    () => filteredRows.slice((currentPage - 1) * pageSize, currentPage * pageSize),
-    [currentPage, filteredRows, pageSize],
-  );
-  const setKeyword = useCallback((value: string): void => {
-    setKeywordState(value);
-    setPage(1);
-  }, []);
-  const prevPage = useCallback((): void => setPage((value) => Math.max(1, value - 1)), []);
+  const prevPage = useCallback((): void => setRequestedPage(Math.max(1, page - 1)), [page]);
   const nextPage = useCallback(
-    (): void => setPage((value) => Math.min(totalPages, value + 1)),
-    [totalPages],
+    (): void => setRequestedPage(Math.min(totalPages, page + 1)),
+    [page, totalPages],
   );
   const retry = useCallback(async (): Promise<void> => {
     await query.refetch();
   }, [query]);
+  const isAccessDenied = query.error instanceof ApiClientError && query.error.status === 403;
+  const canNavigate = !query.isPending && !query.isPlaceholderData && !isAccessDenied;
+  const offset = (page - 1) * pageSize;
 
   return {
     isLoading: query.isPending,
+    isChangingPage: query.isPlaceholderData,
     isError: query.isError,
-    isAccessDenied:
-      query.error instanceof Error && "status" in query.error && query.error.status === 403,
-    isEmpty: !query.isPending && !query.isError && filteredRows.length === 0,
-    rows: paginatedRows,
+    isAccessDenied,
+    isEmpty: !query.isPending && !query.isError && rows.length === 0,
+    rows,
     totalItems,
-    pageSize,
+    firstItem: pageRows.length > 0 ? offset + 1 : 0,
+    lastItem: pageRows.length > 0 ? offset + pageRows.length : 0,
     keyword,
     setKeyword,
-    page: currentPage,
+    page,
     totalPages,
-    hasPrevPage: currentPage > 1,
-    hasNextPage: currentPage < totalPages,
+    hasPrevPage: canNavigate && page > 1,
+    hasNextPage: canNavigate && !query.isError && page < totalPages,
     prevPage,
     nextPage,
     retry,
