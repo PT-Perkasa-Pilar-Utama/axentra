@@ -1,8 +1,8 @@
 import type { Context } from "hono";
-import { permissionCategoriesQuerySchema } from "@axentra/shared";
 import type { ApiEnvironment } from "../../environment";
 import { ValidationError } from "../../http/errors";
 import { jsonSuccess } from "../../http/responses";
+import { permissionCategoriesQuerySchema } from "./permission-categories.schema";
 import type { IPermissionCategoriesService } from "./permission-categories.service";
 
 export type PermissionCategoriesHandlerDependencies = {

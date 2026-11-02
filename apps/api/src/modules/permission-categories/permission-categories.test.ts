@@ -170,7 +170,17 @@ describe("GET /api/v1/permission-categories - Task BE-S4-03 (AC-13.01)", () => {
       permissionCategoriesService,
     });
 
-    for (const invalidLimit of ["0", "-1", "101", "2.5", "not-a-number", "%20%20"]) {
+    for (const invalidLimit of [
+      "0",
+      "-1",
+      "101",
+      "2.5",
+      "0x10",
+      "1e1",
+      "%2010%20",
+      "not-a-number",
+      "%20%20",
+    ]) {
       const res = await app.request(`/api/v1/permission-categories?limit=${invalidLimit}`, {
         method: "GET",
         headers: {

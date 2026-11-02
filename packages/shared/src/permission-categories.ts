@@ -14,9 +14,9 @@ export type PermissionCategory = CategorySummary;
 
 const parseLimitQueryValue = (value: unknown, fallback: number): unknown => {
   if (value === undefined || value === "") return fallback;
-  if (typeof value !== "number" && typeof value !== "string") return Number.NaN;
-  if (typeof value === "string" && value.trim() === "") return Number.NaN;
-  return value;
+  if (typeof value === "number") return value;
+  if (typeof value === "string" && /^\d+$/.test(value)) return Number(value);
+  return Number.NaN;
 };
 
 export const permissionCategoriesQuerySchema = z.object({

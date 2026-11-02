@@ -38,6 +38,9 @@ describe("permissionCategoriesQuerySchema", () => {
       }).success,
     ).toBe(false);
     expect(permissionCategoriesQuerySchema.safeParse({ limit: "2.5" }).success).toBe(false);
+    expect(permissionCategoriesQuerySchema.safeParse({ limit: "0x10" }).success).toBe(false);
+    expect(permissionCategoriesQuerySchema.safeParse({ limit: "1e1" }).success).toBe(false);
+    expect(permissionCategoriesQuerySchema.safeParse({ limit: " 10 " }).success).toBe(false);
     expect(permissionCategoriesQuerySchema.safeParse({ limit: "abc" }).success).toBe(false);
     expect(permissionCategoriesQuerySchema.safeParse({ limit: "   " }).success).toBe(false);
     expect(permissionCategoriesQuerySchema.safeParse({ limit: true }).success).toBe(false);

@@ -2,7 +2,7 @@
 
 Source: BA user stories US-12 and US-13.
 
-`GET /api/v1/audit/downloads` (`BE-S4-02`, `AC-12.01`) and `GET /api/v1/permission-categories` (`BE-S4-03`, `AC-13.01`) are implemented. `PATCH /api/v1/permission-categories/:categoryId` remains planned.
+`GET /api/v1/audit/downloads` (`BE-S4-02`, `AC-12.01`) and `GET /api/v1/permission-categories` (`BE-S4-03`, partial `AC-13.01` for listing categories and their download permission status) are implemented. `PATCH /api/v1/permission-categories/:categoryId` (`BE-S4-04`) remains planned.
 
 ## Download Audit Trail
 
@@ -76,7 +76,7 @@ Error responses:
 
 ### `GET /api/v1/permission-categories`
 
-Status: **Implemented** (`BE-S4-03`, `AC-13.01`).
+Status: **Implemented** (`BE-S4-03`, partial `AC-13.01`; toggle behavior is tracked in `BE-S4-04`).
 
 Authorization:
 
