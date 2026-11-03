@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { eq, inArray } from "drizzle-orm";
+import { asc, eq, inArray, sql } from "drizzle-orm";
 import type {
   DatabaseClient,
   closeDatabase as CloseDatabase,
@@ -478,27 +478,53 @@ describe("Permission categories API PostgreSQL integration (BE-S4-03, BE-S4-04 /
           ),
         });
 
-        // Execute two overlapping PATCH requests concurrently on the same category:
-        // Request A sets false, Request B sets true.
-        const [resA, resB] = await Promise.all([
-          app.request(`/api/v1/permission-categories/${categoryId}`, {
-            method: "PATCH",
-            headers: {
-              Authorization: "Bearer valid-head-token",
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ downloadEnabled: false }),
-          }),
-          app.request(`/api/v1/permission-categories/${categoryId}`, {
-            method: "PATCH",
-            headers: {
-              Authorization: "Bearer valid-head-token",
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ downloadEnabled: true }),
-          }),
-        ]);
+        // Acquire an exclusive lock on the category using a separate transaction T_gate.
+        // This holds the category locked so that any incoming PATCH requests are forced to queue
+        // on the category lock concurrently, deterministically guaranteeing an overlap.
+        let gateHasLock = false;
+        let gateCanCommit = false;
 
+        const gatePromise = database.db.transaction(async (tx) => {
+          await tx.execute(sql`SELECT id FROM categories WHERE id = ${categoryId} FOR UPDATE`);
+          gateHasLock = true;
+          while (!gateCanCommit) {
+            await new Promise((resolve) => setTimeout(resolve, 10));
+          }
+        });
+
+        // Wait until T_gate has acquired the exclusive lock
+        while (!gateHasLock) {
+          await new Promise((resolve) => setTimeout(resolve, 5));
+        }
+
+        // Fire both PATCH requests concurrently while T_gate holds the lock:
+        // Request A sets false, Request B sets true.
+        const patchAPromise = app.request(`/api/v1/permission-categories/${categoryId}`, {
+          method: "PATCH",
+          headers: {
+            Authorization: "Bearer valid-head-token",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ downloadEnabled: false }),
+        });
+
+        const patchBPromise = app.request(`/api/v1/permission-categories/${categoryId}`, {
+          method: "PATCH",
+          headers: {
+            Authorization: "Bearer valid-head-token",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ downloadEnabled: true }),
+        });
+
+        // Give both PATCH requests time to reach PostgreSQL and block on the category lock
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        // Release the gate lock so both PATCH requests unblock and serialize in the database
+        gateCanCommit = true;
+        await gatePromise;
+
+        const [resA, resB] = await Promise.all([patchAPromise, patchBPromise]);
         expect(resA.status).toBe(200);
         expect(resB.status).toBe(200);
 
@@ -506,10 +532,7 @@ describe("Permission categories API PostgreSQL integration (BE-S4-03, BE-S4-04 /
           .select()
           .from(schema.categoryPermissionAuditEvents)
           .where(eq(schema.categoryPermissionAuditEvents.categoryId, categoryId))
-          .orderBy(
-            schema.categoryPermissionAuditEvents.changedAt,
-            schema.categoryPermissionAuditEvents.id,
-          );
+          .orderBy(asc(schema.categoryPermissionAuditEvents.changedAt));
 
         expect(auditEvents).toHaveLength(2);
 

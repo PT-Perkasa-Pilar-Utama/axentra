@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import {
   categories,
@@ -111,13 +111,11 @@ export class DrizzlePermissionCategoriesRepository implements IPermissionCategor
       );
     }
 
-    const now = new Date();
-
-    // 1. Lock the parent category row first by updating updated_at.
+    // 1. Lock the parent category row first by updating updated_at using clock_timestamp().
     // In PostgreSQL READ COMMITTED, this exclusive row lock serializes concurrent transactions on the same category.
     const [categoryRow] = await this.sqlDb
       .update(categories)
-      .set({ updatedAt: now })
+      .set({ updatedAt: sql`clock_timestamp()` })
       .where(eq(categories.id, categoryId))
       .returning({
         id: categories.id,
@@ -146,17 +144,19 @@ export class DrizzlePermissionCategoriesRepository implements IPermissionCategor
       .values({
         categoryId,
         downloadEnabled,
-        createdAt: now,
-        updatedAt: now,
+        createdAt: sql`clock_timestamp()`,
+        updatedAt: sql`clock_timestamp()`,
       })
       .onConflictDoUpdate({
         target: categoryDownloadPermissions.categoryId,
         set: {
           downloadEnabled,
-          updatedAt: now,
+          updatedAt: sql`clock_timestamp()`,
         },
       });
 
+    // 3. Record the audit event using clock_timestamp() AFTER acquiring the lock.
+    // clock_timestamp() guarantees that the timestamp strictly follows the serialization order.
     await this.sqlDb.insert(categoryPermissionAuditEvents).values({
       categoryId,
       categoryName: categoryRow.name,
@@ -165,7 +165,7 @@ export class DrizzlePermissionCategoriesRepository implements IPermissionCategor
       userEmail: actor.userEmail ?? null,
       previousDownloadEnabled,
       newDownloadEnabled: downloadEnabled,
-      changedAt: now,
+      changedAt: sql`clock_timestamp()`,
     });
 
     return toPermissionCategory({ ...categoryRow, downloadEnabled });
