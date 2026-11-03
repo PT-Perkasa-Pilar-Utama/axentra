@@ -212,8 +212,27 @@ describe("Permission Categories Feature (FE-S4-03 / AC-13.01)", () => {
       await screen.findByText("Anda tidak memiliki izin untuk mengatur izin unduh kategori."),
     ).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Coba lagi" })).toBeNull();
+    expect(screen.queryByText("Belum ada kategori dokumen.")).toBeNull();
     expect(screen.queryByText("Internal role forbidden")).toBeNull();
     expect(requestCount).toBe(1);
+  });
+
+  test("shows a real error on API 404 without fixture categories or fake toggles", async () => {
+    let patchCount = 0;
+    globalThis.fetch = mockFetch(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "PATCH") patchCount += 1;
+      return new Response(
+        JSON.stringify({ success: false, error: { code: "NOT_FOUND", message: "not found" } }),
+        { status: 404, headers: { "content-type": "application/json" } },
+      );
+    });
+
+    renderPermissionCategories(headOfTeamSession);
+
+    expect(await screen.findByText("Daftar kategori gagal dimuat.")).toBeTruthy();
+    expect(screen.queryByText("Reporting")).toBeNull();
+    expect(screen.queryByRole("list", { name: "Daftar izin kategori dokumen" })).toBeNull();
+    expect(patchCount).toBe(0);
   });
 
   test("shows safe error and retries transient API failure", async () => {
