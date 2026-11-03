@@ -8,6 +8,7 @@ import { ApiClientError } from "../../lib/api-client";
 
 export const AUDIT_DOWNLOADS_QUERY_KEY = ["audit-downloads"] as const;
 export const AUDIT_PAGE_SIZE = 10;
+export const AUDIT_DOWNLOADS_STALE_TIME_MS = 30_000;
 
 export type AuditTrailRow = DownloadAuditEvent & {
   displayUser: string;
@@ -57,11 +58,10 @@ export function useAuditTrailPresenter(
   });
   const [keyword, setKeyword] = useState("");
   const [requestedPage, setRequestedPage] = useState(1);
-
   const query = useQuery({
     queryKey: [...AUDIT_DOWNLOADS_QUERY_KEY, requestedPage, limit],
     queryFn: () => fetchFn(requestedPage, limit),
-    staleTime: 30_000,
+    staleTime: AUDIT_DOWNLOADS_STALE_TIME_MS,
     placeholderData: (previous, previousQuery) =>
       previousQuery?.queryKey[2] === limit ? previous : undefined,
     retry: (failureCount, error) =>
@@ -77,7 +77,7 @@ export function useAuditTrailPresenter(
     DOWNLOAD_AUDIT_MAX_PAGE,
     Math.max(1, Math.ceil(totalItems / pageSize)),
   );
-  // A deleted event can shrink the result set while the user is on its last page.
+  // Reset after deletions shrink the result set; conditional render updates settle before paint.
   if (meta && !query.isPlaceholderData && requestedPage > totalPages) {
     setRequestedPage(totalPages);
   }

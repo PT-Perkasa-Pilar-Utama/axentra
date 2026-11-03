@@ -9,24 +9,28 @@
 
 ---
 
-### Run 3 — AppShell & Drawer walkthrough (Commit `918496346ecf45ba972b076319613080b79ac516`, 2026-11-02)
+### Run 3 — Walkthrough UI AppShell & Drawer (Commit `918496346ecf45ba972b076319613080b79ac516`, 2026-11-02)
 
-Dijalankan di browser Chromium lokal terhadap stack Axentra. Kategori audit berasal dari API lokal, bukan fixture browser. Backend audit unduhan mencatat tiga event pada `sample-reporting.pdf`.
+Historical walkthrough from the pre-accessibility-fix commit. It demonstrated the shell and drawer with local API data, but does not verify the current review head `7920bda` or the Round 3 changes. Re-run is blocked in the current environment because Docker Desktop's Linux engine is unavailable; API startup returns `ECONNREFUSED`.
 
-| Atribut         | Rincian                                                                                                                                                                                       |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Commit**      | `918496346ecf45ba972b076319613080b79ac516` (short `9184963`), rebased pada `origin/dev` `c0f1a7d`.                                                                                            |
-| **Environment** | Web `http://localhost:5173`, API `http://localhost:3001`, Bun 1.4.3, Windows 11, Chromium (Chrome DevTools MCP).                                                                              |
-| **Role**        | `head_of_team` (`head@axentra.local`), sesi lokal aktif.                                                                                                                                      |
-| **Input**       | Tiga audit events dari API untuk `sample-reporting.pdf`; tidak memasukkan data upload/Admin karena kontrak `GET /audit/downloads` hanya berisi unduhan.                                       |
-| **Expected**    | Sidebar bersama menandai Auditrail aktif; daftar menampilkan dokumen, user, waktu; klik dokumen membuka drawer kanan dengan event unduhan terkait dan backdrop blur.                          |
-| **Observed**    | Sidebar logo PERKASA dan menu terlihat, Auditrail aktif; kartu `sample-reporting.pdf` menampilkan user dan waktu WIB. Klik membuka Log Detail, backdrop blur, tiga event unduhan ditampilkan. |
-| **Result**      | Lulus untuk walkthrough UI lokal; **bukan** approval akhir AC atau sign-off Tech Lead.                                                                                                        |
-| **Screenshot**  | [`audit-trail-live.png`](audit-trail-live.png) dan [`audit-trail-drawer-live.png`](audit-trail-drawer-live.png).                                                                              |
+| Atribut         | Rincian                                                                                                                                                                                                         |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Commit**      | `918496346ecf45ba972b076319613080b79ac516` (short `9184963`); historical only, not the current head.                                                                                                            |
+| **Environment** | Historical local Axentra stack, Bun 1.4.3, Windows 11, Chromium (Chrome DevTools MCP).                                                                                                                          |
+| **Role**        | Historical local `head_of_team` (`head@axentra.local`).                                                                                                                                                         |
+| **Input**       | Historically three API download events for `sample-reporting.pdf`; no upload/Admin data was included because the endpoint covers downloads only.                                                                |
+| **Expected**    | Head of Team sees each download event's user, document, and time; selecting an event opens the detail drawer and blurred backdrop.                                                                              |
+| **Observed**    | Historical UI showed the shared shell and drawer with three download events. Per-event main-list presentation, focus containment, and return-to-trigger behavior were not verified there.                       |
+| **Result**      | Historical walkthrough only. **Current-head re-verification: Blocked** — Docker engine unavailable (`docker compose ...` cannot connect to `dockerDesktopLinuxEngine`); API startup failed with `ECONNREFUSED`. |
+| **Screenshot**  | Historical screenshots [`audit-trail-live.png`](audit-trail-live.png) and [`audit-trail-drawer-live.png`](audit-trail-drawer-live.png); not evidence for the current head.                                      |
 
-![Audit Trail with AppShell](audit-trail-live.png)
+![Historical Audit Trail with AppShell](audit-trail-live.png)
 
-![Audit Detail Drawer and Backdrop Blur](audit-trail-drawer-live.png)
+![Historical Audit Detail Drawer](audit-trail-drawer-live.png)
+
+#### Pending current-head re-verification
+
+Run the AC-12.01 browser flow on the final pushed commit after Docker Desktop is available. Record the full commit SHA, environment, Head of Team test account, API-backed data, per-event main list, drawer focus containment/return, and fresh screenshots. Until then, AC-12.01 live verification remains **Blocked / release pending**.
 
 ---
 

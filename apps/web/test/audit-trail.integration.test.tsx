@@ -134,11 +134,16 @@ describe("Audit Trail Feature (FE-S4-02 / AC-12.01)", () => {
     renderAuditTrail(headOfTeamSession);
     expect(await screen.findByRole("heading", { name: "Auditrail" })).toBeTruthy();
     const list = screen.getByLabelText("Daftar aktivitas unduhan");
-    expect(within(list).getAllByRole("button")).toHaveLength(2);
-    expect(within(list).getByText("DocumentCustomer.pdf")).toBeTruthy();
+    const eventCards = within(list).getAllByRole("button");
+    expect(eventCards).toHaveLength(sampleAuditEvents.length);
+    expect(within(list).getAllByText("DocumentCustomer.pdf")).toHaveLength(2);
     expect(within(list).getByText("ProjectAnalysis.docx")).toBeTruthy();
+    expect(within(list).getByText(/Aprisal Manuril/)).toBeTruthy();
+    expect(within(list).getByText(/Fuaad Masadi/)).toBeTruthy();
     expect(within(list).getByText("18/06/2026 16:34 WIB")).toBeTruthy();
+    expect(within(list).getByText("18/06/2026 10:34 WIB")).toBeTruthy();
     expect(within(list).getByText("22/01/2026 17:00 WIB")).toBeTruthy();
+    expect(screen.getByText("Menampilkan 1–3 dari 3 aktivitas unduhan")).toBeTruthy();
   });
 
   test("opens and closes the Log Detail drawer, retaining every download event", async () => {
@@ -155,18 +160,18 @@ describe("Audit Trail Feature (FE-S4-02 / AC-12.01)", () => {
     const firstCard = cards[0];
     if (!firstCard) throw new Error("Missing audit card");
     await act(async () => fireEvent.click(firstCard));
-    const drawer = await screen.findByRole("dialog", { name: "Log Detail" });
+    const drawer = await screen.findByRole("dialog", { name: "Detail Log" });
     const closeButton = within(drawer).getByRole("button", { name: "Tutup detail log" });
     expect(document.activeElement).toBe(closeButton);
-    expect(within(drawer).getByText("File Name")).toBeTruthy();
+    expect(within(drawer).getByText("Nama Dokumen")).toBeTruthy();
     expect(within(drawer).getByText("DocumentCustomer.pdf")).toBeTruthy();
-    expect(within(drawer).getByText("Download Log")).toBeTruthy();
+    expect(within(drawer).getByText("Riwayat Unduhan")).toBeTruthy();
     expect(within(drawer).getByText("Aprisal Manuril")).toBeTruthy();
     expect(within(drawer).getByText("Fuaad Masadi")).toBeTruthy();
     await act(async () =>
       fireEvent.click(screen.getByRole("button", { name: "Tutup detail log" })),
     );
-    expect(screen.queryByRole("dialog", { name: "Log Detail" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Detail Log" })).toBeNull();
     expect(document.activeElement).toBe(firstCard);
   });
 
@@ -184,7 +189,7 @@ describe("Audit Trail Feature (FE-S4-02 / AC-12.01)", () => {
     const card = cards[0];
     if (!card) throw new Error("Missing audit card");
     await act(async () => fireEvent.click(card));
-    const drawer = await screen.findByRole("dialog", { name: "Log Detail" });
+    const drawer = await screen.findByRole("dialog", { name: "Detail Log" });
     const closeButton = within(drawer).getByRole("button", { name: "Tutup detail log" });
     expect(document.activeElement).toBe(closeButton);
     expect(document.body.style.overflow).toBe("hidden");
@@ -195,7 +200,7 @@ describe("Audit Trail Feature (FE-S4-02 / AC-12.01)", () => {
     expect(document.activeElement).toBe(closeButton);
 
     await act(async () => fireEvent.keyDown(window, { key: "Escape" }));
-    expect(screen.queryByRole("dialog", { name: "Log Detail" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Detail Log" })).toBeNull();
     expect(document.activeElement).toBe(card);
     expect(document.body.style.overflow).toBe("");
   });
@@ -210,16 +215,19 @@ describe("Audit Trail Feature (FE-S4-02 / AC-12.01)", () => {
     );
     renderAuditTrail(headOfTeamSession);
     const list = await screen.findByLabelText("Daftar aktivitas unduhan");
-    const input = screen.getByPlaceholderText("Search");
+    const input = screen.getByPlaceholderText("Cari dokumen atau pengguna");
     await act(async () => fireEvent.change(input, { target: { value: "aprisal@axentra.test" } }));
     expect(within(list).getByText("DocumentCustomer.pdf")).toBeTruthy();
     expect(within(list).queryByText("ProjectAnalysis.docx")).toBeNull();
     await act(async () => fireEvent.change(input, { target: { value: "ProjectAnalysis" } }));
     expect(within(list).getByText("ProjectAnalysis.docx")).toBeTruthy();
     expect(within(list).queryByText("DocumentCustomer.pdf")).toBeNull();
+
+    await act(async () => fireEvent.change(input, { target: { value: "nonexistent-query" } }));
+    expect(screen.getByText("Tidak ada hasil yang ditemukan")).toBeTruthy();
   });
 
-  test("F17: requests server pages and updates navigation using response metadata", async () => {
+  test("requests server pages and updates navigation using response metadata", async () => {
     let lastRequestedPage = 1;
     let lastRequestedLimit = 10;
     globalThis.fetch = mockFetch(async (input) => {
@@ -244,7 +252,7 @@ describe("Audit Trail Feature (FE-S4-02 / AC-12.01)", () => {
     expect(next.hasAttribute("disabled")).toBe(true);
   });
 
-  test("F17: supports audit histories beyond 100 items", async () => {
+  test("supports audit histories beyond 100 items", async () => {
     let requestedPage = 1;
     globalThis.fetch = mockFetch(async (input) => {
       const { page, limit } = readAuditPageRequest(input);

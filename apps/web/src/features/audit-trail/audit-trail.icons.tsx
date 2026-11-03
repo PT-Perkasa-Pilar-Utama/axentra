@@ -9,7 +9,11 @@ export function SearchIcon(): React.JSX.Element {
   );
 }
 
-export function ChevronIcon({ direction }: { direction: "left" | "right" }): React.JSX.Element {
+export type ChevronIconProps = {
+  direction: "left" | "right";
+};
+
+export function ChevronIcon({ direction }: ChevronIconProps): React.JSX.Element {
   return (
     <svg aria-hidden="true" fill="none" viewBox="0 0 24 24">
       <path

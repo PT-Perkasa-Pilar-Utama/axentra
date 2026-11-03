@@ -1,0 +1,121 @@
+.audit-trail__drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  justify-content: flex-end;
+  background-color: rgba(15, 23, 42, 0.2);
+  backdrop-filter: blur(8px);
+}
+
+.audit-trail__drawer {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 28rem;
+  height: 100%;
+  padding: 1.75rem;
+  border-top-left-radius: 1.5rem;
+  border-bottom-left-radius: 1.5rem;
+  background-color: #ffffff;
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.12);
+  overflow-y: auto;
+}
+
+.audit-trail__drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+
+.audit-trail__drawer-header h2 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.audit-trail__drawer-close {
+  display: grid;
+  place-items: center;
+  padding: 0.375rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.audit-trail__drawer-close:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.audit-trail__drawer-close:focus-visible {
+  outline: 3px solid var(--sidebar-accent, #65a448);
+  outline-offset: 2px;
+}
+
+.audit-trail__drawer-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.audit-trail__detail-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid #f1f5f9;
+  border-radius: 0.875rem;
+  background: #f8fafc;
+}
+
+.audit-trail__detail-field span {
+  color: #64748b;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.audit-trail__detail-field strong {
+  color: #0f172a;
+  font-size: 1rem;
+}
+
+.audit-trail__download-log h3 {
+  margin: 0.5rem 0 0.875rem;
+  color: #0f172a;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.audit-trail__download-log-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 0;
+}
+
+.audit-trail__download-log-row time {
+  color: #64748b;
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+
+.audit-trail__download-log-rule {
+  flex: 1;
+  border-bottom: 1px dotted #cbd5e1;
+}
+
+.audit-trail__download-log-user {
+  padding: 0.25rem 0.75rem;
+  border: 1px solid #a7f3d0;
+  border-radius: 9999px;
+  background: #ecfdf5;
+  color: #065f46;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
