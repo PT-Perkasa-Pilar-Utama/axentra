@@ -64,7 +64,7 @@ export type IPermissionCategoriesRepository = {
   updateCategoryDownloadPermission: (
     categoryId: string,
     downloadEnabled: boolean,
-    actor?: UpdateCategoryPermissionActor,
+    actor: UpdateCategoryPermissionActor,
   ) => Promise<PermissionCategory | null>;
   transaction?: <T>(
     callback: (txRepo: IPermissionCategoriesRepository) => Promise<T>,
@@ -103,7 +103,7 @@ export class DrizzlePermissionCategoriesRepository implements IPermissionCategor
   public async updateCategoryDownloadPermission(
     categoryId: string,
     downloadEnabled: boolean,
-    actor?: UpdateCategoryPermissionActor,
+    actor: UpdateCategoryPermissionActor,
   ): Promise<PermissionCategory | null> {
     if (!this.inTransaction) {
       return await this.transaction((txRepo) =>
@@ -111,14 +111,10 @@ export class DrizzlePermissionCategoriesRepository implements IPermissionCategor
       );
     }
 
-    const [existingPermission] = await this.sqlDb
-      .select({ downloadEnabled: categoryDownloadPermissions.downloadEnabled })
-      .from(categoryDownloadPermissions)
-      .where(eq(categoryDownloadPermissions.categoryId, categoryId))
-      .limit(1);
-    const previousDownloadEnabled = existingPermission?.downloadEnabled ?? null;
-
     const now = new Date();
+
+    // 1. Lock the parent category row first by updating updated_at.
+    // In PostgreSQL READ COMMITTED, this exclusive row lock serializes concurrent transactions on the same category.
     const [categoryRow] = await this.sqlDb
       .update(categories)
       .set({ updatedAt: now })
@@ -134,6 +130,16 @@ export class DrizzlePermissionCategoriesRepository implements IPermissionCategor
     if (!categoryRow) {
       return null;
     }
+
+    // 2. Read the current permission state AFTER acquiring the category lock.
+    // In READ COMMITTED, this select reads the latest committed state, guaranteeing that any preceding
+    // overlapping transaction has committed its changes.
+    const [existingPermission] = await this.sqlDb
+      .select({ downloadEnabled: categoryDownloadPermissions.downloadEnabled })
+      .from(categoryDownloadPermissions)
+      .where(eq(categoryDownloadPermissions.categoryId, categoryId))
+      .limit(1);
+    const previousDownloadEnabled = existingPermission?.downloadEnabled ?? null;
 
     await this.sqlDb
       .insert(categoryDownloadPermissions)
@@ -154,9 +160,9 @@ export class DrizzlePermissionCategoriesRepository implements IPermissionCategor
     await this.sqlDb.insert(categoryPermissionAuditEvents).values({
       categoryId,
       categoryName: categoryRow.name,
-      userId: actor?.userId ?? null,
-      userName: actor?.userName ?? null,
-      userEmail: actor?.userEmail ?? null,
+      userId: actor.userId ?? null,
+      userName: actor.userName ?? null,
+      userEmail: actor.userEmail ?? null,
       previousDownloadEnabled,
       newDownloadEnabled: downloadEnabled,
       changedAt: now,
@@ -194,7 +200,7 @@ export class InMemoryPermissionCategoriesRepository implements IPermissionCatego
   public async updateCategoryDownloadPermission(
     categoryId: string,
     downloadEnabled: boolean,
-    actor?: UpdateCategoryPermissionActor,
+    actor: UpdateCategoryPermissionActor,
   ): Promise<PermissionCategory | null> {
     const existing = this.categories.get(categoryId);
     if (!existing) {
@@ -212,9 +218,9 @@ export class InMemoryPermissionCategoriesRepository implements IPermissionCatego
     this.auditEvents.push({
       categoryId,
       categoryName: existing.name,
-      userId: actor?.userId ?? null,
-      userName: actor?.userName ?? null,
-      userEmail: actor?.userEmail ?? null,
+      userId: actor.userId ?? null,
+      userName: actor.userName ?? null,
+      userEmail: actor.userEmail ?? null,
       previousDownloadEnabled,
       newDownloadEnabled: downloadEnabled,
       changedAt: now,

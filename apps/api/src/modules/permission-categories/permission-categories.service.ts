@@ -10,7 +10,7 @@ export type IPermissionCategoriesService = {
   updateCategoryDownloadPermission: (
     categoryId: string,
     downloadEnabled: boolean,
-    actor?: UpdateCategoryPermissionActor,
+    actor: UpdateCategoryPermissionActor,
   ) => Promise<PermissionCategory>;
 };
 
@@ -26,7 +26,7 @@ export class PermissionCategoriesService implements IPermissionCategoriesService
   public async updateCategoryDownloadPermission(
     categoryId: string,
     downloadEnabled: boolean,
-    actor?: UpdateCategoryPermissionActor,
+    actor: UpdateCategoryPermissionActor,
   ): Promise<PermissionCategory> {
     const applyUpdate = async (
       repo: IPermissionCategoriesRepository,

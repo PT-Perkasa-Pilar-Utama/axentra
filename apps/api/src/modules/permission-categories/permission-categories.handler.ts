@@ -59,9 +59,12 @@ export function createUpdatePermissionCategoryHandler(
     let rawBody: unknown;
     try {
       rawBody = await context.req.json();
-    } catch {
+    } catch (error: unknown) {
+      // JSON body parsing failed (e.g. empty body or malformed syntax).
+      // Explicitly bind the caught error and map it to VALIDATION_ERROR per CODE_REVIEW_CHECKLIST.
+      const causeMessage = error instanceof Error ? error.message : "Malformed JSON syntax";
       throw new ValidationError("Data tidak valid", [
-        { field: "body", message: "Format payload body tidak valid" },
+        { field: "body", message: `Format payload body tidak valid: ${causeMessage}` },
       ]);
     }
 

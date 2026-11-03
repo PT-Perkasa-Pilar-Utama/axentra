@@ -422,4 +422,122 @@ describe("Permission categories API PostgreSQL integration (BE-S4-03, BE-S4-04 /
       }
     },
   );
+
+  integrationTest(
+    "serializes overlapping PATCH requests on the same category and preserves consistent previous -> new audit trail (F5)",
+    async () => {
+      if (database === undefined) {
+        throw new Error("PostgreSQL integration database was not initialized");
+      }
+
+      const schema = await import("@axentra/db");
+      const suffix = crypto.randomUUID();
+      const headUserId = crypto.randomUUID();
+      const categoryId = crypto.randomUUID();
+
+      try {
+        await database.db.insert(schema.users).values({
+          id: headUserId,
+          email: `permcat-concurrent-${suffix}@axentra.local`,
+          name: "Head of Team Concurrent",
+          passwordHash: "dummy-hash",
+          role: "head_of_team",
+        });
+
+        await database.db.insert(schema.categories).values({
+          id: categoryId,
+          name: `00-PermCat-Concurrent-${suffix}`,
+          slug: `permcat-concurrent-${suffix}`,
+        });
+
+        // Set initial permission state: true
+        await database.db.insert(schema.categoryDownloadPermissions).values({
+          categoryId,
+          downloadEnabled: true,
+        });
+
+        const app = createApp({
+          logger: testLogger,
+          version: "0.1.0",
+          readinessChecks: [],
+          tokenVerifier: {
+            verifyToken(token: string) {
+              if (token === "valid-head-token") {
+                return {
+                  id: headUserId,
+                  email: `permcat-concurrent-${suffix}@axentra.local`,
+                  role: "head_of_team",
+                  name: "Head of Team Concurrent",
+                };
+              }
+              return null;
+            },
+          },
+          permissionCategoriesService: createPermissionCategoriesService(
+            new DrizzlePermissionCategoriesRepository(database.db),
+          ),
+        });
+
+        // Execute two overlapping PATCH requests concurrently on the same category:
+        // Request A sets false, Request B sets true.
+        const [resA, resB] = await Promise.all([
+          app.request(`/api/v1/permission-categories/${categoryId}`, {
+            method: "PATCH",
+            headers: {
+              Authorization: "Bearer valid-head-token",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ downloadEnabled: false }),
+          }),
+          app.request(`/api/v1/permission-categories/${categoryId}`, {
+            method: "PATCH",
+            headers: {
+              Authorization: "Bearer valid-head-token",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ downloadEnabled: true }),
+          }),
+        ]);
+
+        expect(resA.status).toBe(200);
+        expect(resB.status).toBe(200);
+
+        const auditEvents = await database.db
+          .select()
+          .from(schema.categoryPermissionAuditEvents)
+          .where(eq(schema.categoryPermissionAuditEvents.categoryId, categoryId))
+          .orderBy(
+            schema.categoryPermissionAuditEvents.changedAt,
+            schema.categoryPermissionAuditEvents.id,
+          );
+
+        expect(auditEvents).toHaveLength(2);
+
+        // The first event must start from the initial state: true.
+        expect(auditEvents[0]?.previousDownloadEnabled).toBe(true);
+
+        // The second event's previous state must match the first event's new state,
+        // proving row lock serialization worked and previous state was read after acquiring the lock.
+        expect(auditEvents[1]?.previousDownloadEnabled).toBe(auditEvents[0]?.newDownloadEnabled);
+
+        // The final state in category_download_permissions must match the second audit event's new state.
+        const [finalPermission] = await database.db
+          .select()
+          .from(schema.categoryDownloadPermissions)
+          .where(eq(schema.categoryDownloadPermissions.categoryId, categoryId));
+        expect(finalPermission?.downloadEnabled).toBe(auditEvents[1]?.newDownloadEnabled);
+      } finally {
+        assertDisposableTestDatabase(databaseUrl);
+        assertClientConnectedToDisposableDatabase(database, databaseUrl);
+        await database.db
+          .delete(schema.categoryPermissionAuditEvents)
+          .where(eq(schema.categoryPermissionAuditEvents.categoryId, categoryId));
+        await database.db
+          .delete(schema.categoryDownloadPermissions)
+          .where(eq(schema.categoryDownloadPermissions.categoryId, categoryId));
+        await database.db.delete(schema.categories).where(eq(schema.categories.id, categoryId));
+        await database.db.delete(schema.users).where(eq(schema.users.id, headUserId));
+      }
+    },
+  );
 });

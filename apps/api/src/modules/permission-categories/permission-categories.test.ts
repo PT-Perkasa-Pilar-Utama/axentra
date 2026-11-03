@@ -328,7 +328,7 @@ class RecordingPermissionCategoriesRepository extends InMemoryPermissionCategori
   public override async updateCategoryDownloadPermission(
     categoryId: string,
     downloadEnabled: boolean,
-    actor?: UpdateCategoryPermissionActor,
+    actor: UpdateCategoryPermissionActor,
   ): Promise<PermissionCategory | null> {
     if (this.inTransaction) this.updatesInsideTransaction += 1;
     else this.updatesOutsideTransaction += 1;
@@ -637,7 +637,17 @@ describe("PATCH /api/v1/permission-categories/:categoryId - Task BE-S4-04 (AC-13
     });
     const service = createPermissionCategoriesService(repository);
 
-    const updated = await service.updateCategoryDownloadPermission(reportingCategoryId, true);
+    const testActor: UpdateCategoryPermissionActor = {
+      userId: "usr-head-1",
+      userName: "Head of Team User",
+      userEmail: "head@axentra.local",
+    };
+
+    const updated = await service.updateCategoryDownloadPermission(
+      reportingCategoryId,
+      true,
+      testActor,
+    );
 
     expect(repository.transactionCount).toBe(1);
     expect(repository.updatesInsideTransaction).toBe(1);
@@ -650,8 +660,14 @@ describe("PATCH /api/v1/permission-categories/:categoryId - Task BE-S4-04 (AC-13
     const repository = new RecordingPermissionCategoriesRepository();
     const service = createPermissionCategoriesService(repository);
 
+    const testActor: UpdateCategoryPermissionActor = {
+      userId: "usr-head-1",
+      userName: "Head of Team User",
+      userEmail: "head@axentra.local",
+    };
+
     await expect(
-      service.updateCategoryDownloadPermission(reportingCategoryId, true),
+      service.updateCategoryDownloadPermission(reportingCategoryId, true, testActor),
     ).rejects.toBeInstanceOf(NotFoundError);
     expect(repository.transactionCount).toBe(1);
     expect(repository.rolledBack).toBe(1);
