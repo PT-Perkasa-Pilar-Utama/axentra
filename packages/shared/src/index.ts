@@ -25,13 +25,19 @@ export type {
   PermissionCategoriesQuery,
   PermissionCategoriesResponse,
   PermissionCategory,
+  PermissionCategoryIdParam,
+  UpdatePermissionCategoryRequest,
+  UpdatePermissionCategoryResponse,
 } from "./permission-categories";
 export {
   PERMISSION_CATEGORIES_DEFAULT_LIMIT,
   PERMISSION_CATEGORIES_MAX_LIMIT,
   permissionCategoriesQuerySchema,
   permissionCategoriesResponseSchema,
+  permissionCategoryIdParamSchema,
   permissionCategorySchema,
+  updatePermissionCategoryRequestSchema,
+  updatePermissionCategoryResponseSchema,
 } from "./permission-categories";
 export type { AuthUser, LoginRequest, LoginResponse, UserRole } from "./auth";
 export {

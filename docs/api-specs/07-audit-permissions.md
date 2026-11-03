@@ -2,7 +2,7 @@
 
 Source: BA user stories US-12 and US-13.
 
-`GET /api/v1/audit/downloads` (`BE-S4-02`, `AC-12.01`) and `GET /api/v1/permission-categories` (`BE-S4-03`, partial `AC-13.01` for listing categories and their download permission status) are implemented. `PATCH /api/v1/permission-categories/:categoryId` (`BE-S4-04`) remains planned.
+`GET /api/v1/audit/downloads` (`BE-S4-02`, `AC-12.01`), `GET /api/v1/permission-categories` (`BE-S4-03`, partial `AC-13.01`), and `PATCH /api/v1/permission-categories/:categoryId` (`BE-S4-04`, partial `AC-13.01`) are implemented at the API level; the permission category UI toggle (`FE-S4-03`) and end-to-end acceptance verification (`QA-S4-01`) remain planned.
 
 ## Download Audit Trail
 
@@ -76,7 +76,7 @@ Error responses:
 
 ### `GET /api/v1/permission-categories`
 
-Status: **Implemented** (`BE-S4-03`, partial `AC-13.01`; toggle behavior is tracked in `BE-S4-04`).
+Status: **Implemented** (`BE-S4-03`, partial `AC-13.01`: category list and download permission status API; UI toggle `FE-S4-03` and AC verification `QA-S4-01` remain planned).
 
 Authorization:
 
@@ -142,7 +142,20 @@ Error responses:
 
 ### `PATCH /api/v1/permission-categories/:categoryId`
 
-Planned request:
+Status: **Implemented** (`BE-S4-04`, partial `AC-13.01`: category download permission toggle API and API-level download gating; UI toggle `FE-S4-03` and AC verification `QA-S4-01` remain planned).
+
+Authorization:
+
+- Requires authentication (`Bearer` access token).
+- Allowed role: `head_of_team` (`member_team` and `admin` receive `403 FORBIDDEN`).
+
+Path parameters (`PermissionCategoryIdParam` in `@axentra/shared`):
+
+| Parameter    | Type            | Constraints | Description                |
+| ------------ | --------------- | ----------- | -------------------------- |
+| `categoryId` | `string` (UUID) | Valid UUID  | Target category identifier |
+
+Request body (`UpdatePermissionCategoryRequest` in `@axentra/shared`):
 
 ```json
 {
@@ -150,8 +163,38 @@ Planned request:
 }
 ```
 
-Planned behavior:
+| Field             | Type      | Required | Description                                                |
+| ----------------- | --------- | -------- | ---------------------------------------------------------- |
+| `downloadEnabled` | `boolean` | Yes      | Whether Member Team can download documents in the category |
 
-- Head of Team toggles category from inactive to active.
-- When category is active, Member Team can download documents in that category.
-- New auto-created categories default to inactive download permission.
+Behavior:
+
+- Runs inside a database transaction: updates `categories.updated_at`, upserts `category_download_permissions` (`download_enabled`, `updated_at`) for `categoryId`, and writes an immutable audit event to `category_permission_audit_events` with category details, actor (`head_of_team` user ID, name, email), previous permission state, new permission state, and timestamp.
+- When `downloadEnabled` is `true`, `member_team` can download documents assigned to that category (`AC-13.01`).
+- When `downloadEnabled` is `false`, `member_team` downloads for documents in that category are rejected with `403 FORBIDDEN`.
+- New auto-created categories default to `downloadEnabled: false` until toggled active by `head_of_team`.
+
+Response (`200 OK`):
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "22222222-2222-4222-8222-222222222222",
+    "name": "Reporting",
+    "slug": "reporting",
+    "downloadEnabled": true,
+    "createdAt": "2026-09-22T00:00:00.000Z",
+    "updatedAt": "2026-11-02T09:00:00.000Z"
+  }
+}
+```
+
+Error responses:
+
+| Status | Code               | When                                                                            |
+| ------ | ------------------ | ------------------------------------------------------------------------------- |
+| `400`  | `VALIDATION_ERROR` | `categoryId` is not a valid UUID, or body is not `{ downloadEnabled: boolean }` |
+| `401`  | `UNAUTHORIZED`     | Missing or invalid `Bearer` token                                               |
+| `403`  | `FORBIDDEN`        | Authenticated user role is not `head_of_team`                                   |
+| `404`  | `NOT_FOUND`        | Category with `categoryId` does not exist                                       |

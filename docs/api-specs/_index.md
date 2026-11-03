@@ -84,7 +84,7 @@ OK      GET /audit/downloads
 
 ```text
 OK      GET   /permission-categories
-PLANNED PATCH /permission-categories/:categoryId
+OK      PATCH /permission-categories/:categoryId
 ```
 
 ## Documents

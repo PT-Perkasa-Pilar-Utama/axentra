@@ -21,6 +21,11 @@ export {
   smartTags,
   smartTagsRelations,
 } from "./tags";
-export { downloadAuditEvents, downloadAuditEventsRelations } from "./audit";
+export {
+  downloadAuditEvents,
+  downloadAuditEventsRelations,
+  categoryPermissionAuditEvents,
+  categoryPermissionAuditEventsRelations,
+} from "./audit";
 export { authLoginAttempts, authRotatedRefreshTokens, authSessions } from "./auth";
 export { users } from "./users";

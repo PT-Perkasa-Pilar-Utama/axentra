@@ -40,3 +40,26 @@ export const permissionCategoriesResponseSchema = z.object({
 });
 
 export type PermissionCategoriesResponse = z.infer<typeof permissionCategoriesResponseSchema>;
+
+export const permissionCategoryIdParamSchema = z.object({
+  categoryId: z.string().uuid({ message: "ID kategori harus berupa UUID yang valid" }),
+});
+
+export type PermissionCategoryIdParam = z.infer<typeof permissionCategoryIdParamSchema>;
+
+export const updatePermissionCategoryRequestSchema = z
+  .object({
+    downloadEnabled: z.boolean({ message: "Status izin unduh harus berupa boolean" }),
+  })
+  .strict();
+
+export type UpdatePermissionCategoryRequest = z.infer<typeof updatePermissionCategoryRequestSchema>;
+
+export const updatePermissionCategoryResponseSchema = z.object({
+  success: z.literal(true),
+  data: permissionCategorySchema,
+});
+
+export type UpdatePermissionCategoryResponse = z.infer<
+  typeof updatePermissionCategoryResponseSchema
+>;
