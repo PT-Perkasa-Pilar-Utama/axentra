@@ -1,12 +1,16 @@
 import type { PermissionCategory } from "@axentra/shared";
 import { NotFoundError } from "../../http/errors";
-import type { IPermissionCategoriesRepository } from "./permission-categories.repository";
+import type {
+  IPermissionCategoriesRepository,
+  UpdateCategoryPermissionActor,
+} from "./permission-categories.repository";
 
 export type IPermissionCategoriesService = {
   listPermissionCategories: (limit?: number) => Promise<ReadonlyArray<PermissionCategory>>;
   updateCategoryDownloadPermission: (
     categoryId: string,
     downloadEnabled: boolean,
+    actor?: UpdateCategoryPermissionActor,
   ) => Promise<PermissionCategory>;
 };
 
@@ -22,11 +26,16 @@ export class PermissionCategoriesService implements IPermissionCategoriesService
   public async updateCategoryDownloadPermission(
     categoryId: string,
     downloadEnabled: boolean,
+    actor?: UpdateCategoryPermissionActor,
   ): Promise<PermissionCategory> {
     const applyUpdate = async (
       repo: IPermissionCategoriesRepository,
     ): Promise<PermissionCategory> => {
-      const updated = await repo.updateCategoryDownloadPermission(categoryId, downloadEnabled);
+      const updated = await repo.updateCategoryDownloadPermission(
+        categoryId,
+        downloadEnabled,
+        actor,
+      );
       if (!updated) {
         throw new NotFoundError("Kategori tidak ditemukan");
       }

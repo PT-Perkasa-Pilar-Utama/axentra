@@ -11,16 +11,16 @@ packages/db/src/schema/index.ts
 
 ## Implemented Database Boundary
 
-| Concern           | Status      | Description                                                                                |
-| ----------------- | ----------- | ------------------------------------------------------------------------------------------ |
-| PostgreSQL client | Implemented | `postgres` connection pool via `createDatabaseClient`                                      |
-| Drizzle boundary  | Implemented | Type-safe schema definitions and relation mappings in `@axentra/db`                        |
-| Migration runner  | Implemented | Standalone runner in `src/migrate.ts` executing committed SQL                              |
-| Health check      | Implemented | Ping query (`SELECT 1`) validating database readiness                                      |
-| Document core     | Implemented | 8 domain tables covering documents, files, metadata, categories, tags (DB-S1-01)           |
-| Identity/Users    | Implemented | `users` table (DB-S1-01) is read by the production authenticator                           |
-| Auth sessions     | Implemented | `auth_sessions`, `auth_rotated_refresh_tokens`, and `auth_login_attempts` (sections 11-13) |
-| Audit trail       | Implemented | `download_audit_events` schema and migration added (BE-S3-02)                              |
+| Concern           | Status      | Description                                                                                                      |
+| ----------------- | ----------- | ---------------------------------------------------------------------------------------------------------------- |
+| PostgreSQL client | Implemented | `postgres` connection pool via `createDatabaseClient`                                                            |
+| Drizzle boundary  | Implemented | Type-safe schema definitions and relation mappings in `@axentra/db`                                              |
+| Migration runner  | Implemented | Standalone runner in `src/migrate.ts` executing committed SQL                                                    |
+| Health check      | Implemented | Ping query (`SELECT 1`) validating database readiness                                                            |
+| Document core     | Implemented | 8 domain tables covering documents, files, metadata, categories, tags (DB-S1-01)                                 |
+| Identity/Users    | Implemented | `users` table (DB-S1-01) is read by the production authenticator                                                 |
+| Auth sessions     | Implemented | `auth_sessions`, `auth_rotated_refresh_tokens`, and `auth_login_attempts` (sections 11-13)                       |
+| Audit trail       | Implemented | `download_audit_events` and `category_permission_audit_events` schemas and migrations added (BE-S3-02, BE-S4-04) |
 
 ## Table Conventions
 
@@ -307,6 +307,29 @@ attempt in the window sets `locked_until` 15 minutes ahead. A successful login d
 **Indexes:**
 
 - `auth_login_attempts_email_hash_unique_idx` UNIQUE on `(email_hash)` (conflict target of the attempt upsert)
+
+#### 14. `category_permission_audit_events`
+
+Point-in-time facts recording mutations to category download permissions (`AC-13.01`, `BE-S4-04`).
+Created by migration `packages/db/drizzle/0005_add_category_permission_audit_events.sql`.
+
+| Column                      | Type          | Constraints                              | Description                                      |
+| --------------------------- | ------------- | ---------------------------------------- | ------------------------------------------------ |
+| `id`                        | `uuid`        | Primary Key, default random              | Unique event identifier                          |
+| `category_id`               | `uuid`        | Nullable, FK -> `categories.id` SET NULL | Mutated category identifier                      |
+| `category_name`             | `text`        | NOT NULL                                 | Category display name snapshot                   |
+| `user_id`                   | `uuid`        | Nullable, FK -> `users.id` SET NULL      | User identifier who performed the toggle         |
+| `user_name`                 | `text`        | Nullable                                 | User display name snapshot                       |
+| `user_email`                | `text`        | Nullable                                 | User email address snapshot                      |
+| `previous_download_enabled` | `boolean`     | Nullable                                 | Previous download permission state (null if new) |
+| `new_download_enabled`      | `boolean`     | NOT NULL                                 | New download permission state                    |
+| `changed_at`                | `timestamptz` | NOT NULL, default now()                  | Mutation timestamp                               |
+
+**Indexes:**
+
+- `category_permission_audit_events_category_id_idx` on `(category_id)`
+- `category_permission_audit_events_user_id_idx` on `(user_id)`
+- `category_permission_audit_events_changed_at_idx` on `(changed_at)`
 
 ---
 

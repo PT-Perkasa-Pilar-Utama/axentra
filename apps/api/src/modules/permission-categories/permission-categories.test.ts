@@ -16,6 +16,7 @@ import {
   resolvePermissionCategoriesLimit,
   toPermissionCategory,
   type IPermissionCategoriesRepository,
+  type UpdateCategoryPermissionActor,
 } from "./permission-categories.repository";
 import { createPermissionCategoriesService } from "./permission-categories.service";
 
@@ -327,10 +328,11 @@ class RecordingPermissionCategoriesRepository extends InMemoryPermissionCategori
   public override async updateCategoryDownloadPermission(
     categoryId: string,
     downloadEnabled: boolean,
+    actor?: UpdateCategoryPermissionActor,
   ): Promise<PermissionCategory | null> {
     if (this.inTransaction) this.updatesInsideTransaction += 1;
     else this.updatesOutsideTransaction += 1;
-    return super.updateCategoryDownloadPermission(categoryId, downloadEnabled);
+    return super.updateCategoryDownloadPermission(categoryId, downloadEnabled, actor);
   }
 
   public override async transaction<T>(
@@ -416,6 +418,26 @@ describe("PATCH /api/v1/permission-categories/:categoryId - Task BE-S4-04 (AC-13
     expect(deactivateRes.status).toBe(200);
     const deactivated = updatePermissionCategoryResponseSchema.parse(await deactivateRes.json());
     expect(deactivated.data.downloadEnabled).toBe(false);
+
+    expect(repository.auditEvents).toHaveLength(2);
+    expect(repository.auditEvents[0]).toMatchObject({
+      categoryId: reportingCategoryId,
+      categoryName: "Reporting",
+      previousDownloadEnabled: false,
+      newDownloadEnabled: true,
+      userId: "usr-head-1",
+      userName: "Head of Team User",
+      userEmail: "head@axentra.local",
+    });
+    expect(repository.auditEvents[1]).toMatchObject({
+      categoryId: reportingCategoryId,
+      categoryName: "Reporting",
+      previousDownloadEnabled: true,
+      newDownloadEnabled: false,
+      userId: "usr-head-1",
+      userName: "Head of Team User",
+      userEmail: "head@axentra.local",
+    });
   });
 
   it("returns 404 NOT_FOUND when categoryId does not exist", async () => {
@@ -446,6 +468,7 @@ describe("PATCH /api/v1/permission-categories/:categoryId - Task BE-S4-04 (AC-13
     expect(body.success).toBe(false);
     expect(body.error.code).toBe("NOT_FOUND");
     expect(body.error.message).toBe("Kategori tidak ditemukan");
+    expect(repository.auditEvents).toHaveLength(0);
   });
 
   it("returns 400 VALIDATION_ERROR when categoryId is not a valid UUID", async () => {
@@ -633,5 +656,6 @@ describe("PATCH /api/v1/permission-categories/:categoryId - Task BE-S4-04 (AC-13
     expect(repository.transactionCount).toBe(1);
     expect(repository.rolledBack).toBe(1);
     expect(repository.categories.size).toBe(0);
+    expect(repository.auditEvents).toHaveLength(0);
   });
 });

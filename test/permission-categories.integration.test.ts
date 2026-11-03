@@ -187,6 +187,7 @@ describe("Permission categories API PostgreSQL integration (BE-S4-03, BE-S4-04 /
 
       const schema = await import("@axentra/db");
       const suffix = crypto.randomUUID();
+      const headUserId = crypto.randomUUID();
       const memberUserId = crypto.randomUUID();
       const reportingCategoryId = crypto.randomUUID();
       const missingCategoryId = crypto.randomUUID();
@@ -194,13 +195,22 @@ describe("Permission categories API PostgreSQL integration (BE-S4-03, BE-S4-04 /
       const fileId = crypto.randomUUID();
 
       try {
-        await database.db.insert(schema.users).values({
-          id: memberUserId,
-          email: `permcat-member-${suffix}@axentra.local`,
-          name: "Member Team",
-          passwordHash: "dummy-hash",
-          role: "member_team",
-        });
+        await database.db.insert(schema.users).values([
+          {
+            id: headUserId,
+            email: `permcat-head-${suffix}@axentra.local`,
+            name: "Head of Team",
+            passwordHash: "dummy-hash",
+            role: "head_of_team",
+          },
+          {
+            id: memberUserId,
+            email: `permcat-member-${suffix}@axentra.local`,
+            name: "Member Team",
+            passwordHash: "dummy-hash",
+            role: "member_team",
+          },
+        ]);
 
         await database.db.insert(schema.categories).values({
           id: reportingCategoryId,
@@ -231,6 +241,14 @@ describe("Permission categories API PostgreSQL integration (BE-S4-03, BE-S4-04 /
           readinessChecks: [],
           tokenVerifier: {
             verifyToken(token: string) {
+              if (token === "valid-head-token") {
+                return {
+                  id: headUserId,
+                  email: `permcat-head-${suffix}@axentra.local`,
+                  role: "head_of_team",
+                  name: "Head of Team",
+                };
+              }
               if (token === "valid-member-token") {
                 return {
                   id: memberUserId,
@@ -239,7 +257,7 @@ describe("Permission categories API PostgreSQL integration (BE-S4-03, BE-S4-04 /
                   name: "Member Team",
                 };
               }
-              return tokenVerifier.verifyToken(token);
+              return null;
             },
           },
           documentService: createDocumentService({
@@ -291,6 +309,22 @@ describe("Permission categories API PostgreSQL integration (BE-S4-03, BE-S4-04 /
         expect(rowsAfterActivate).toHaveLength(1);
         expect(rowsAfterActivate[0]?.downloadEnabled).toBe(true);
 
+        const readPermissionAuditRows = async () =>
+          client.db
+            .select()
+            .from(schema.categoryPermissionAuditEvents)
+            .where(eq(schema.categoryPermissionAuditEvents.categoryId, reportingCategoryId))
+            .orderBy(schema.categoryPermissionAuditEvents.changedAt);
+
+        const auditAfterActivate = await readPermissionAuditRows();
+        expect(auditAfterActivate).toHaveLength(1);
+        expect(auditAfterActivate[0]?.categoryName).toBe(`00-PermCat-Reporting-${suffix}`);
+        expect(auditAfterActivate[0]?.previousDownloadEnabled).toBeNull();
+        expect(auditAfterActivate[0]?.newDownloadEnabled).toBe(true);
+        expect(auditAfterActivate[0]?.userId).toBe(headUserId);
+        expect(auditAfterActivate[0]?.userName).toBe("Head of Team");
+        expect(auditAfterActivate[0]?.userEmail).toBe(`permcat-head-${suffix}@axentra.local`);
+
         const allowedAfterActivate = await app.request(`/api/v1/documents/${documentId}/download`, {
           method: "GET",
           headers: {
@@ -326,6 +360,12 @@ describe("Permission categories API PostgreSQL integration (BE-S4-03, BE-S4-04 /
         expect(rowsAfterDeactivate[0]?.id).toBe(rowsAfterActivate[0]?.id);
         expect(rowsAfterDeactivate[0]?.downloadEnabled).toBe(false);
 
+        const auditAfterDeactivate = await readPermissionAuditRows();
+        expect(auditAfterDeactivate).toHaveLength(2);
+        expect(auditAfterDeactivate[1]?.previousDownloadEnabled).toBe(true);
+        expect(auditAfterDeactivate[1]?.newDownloadEnabled).toBe(false);
+        expect(auditAfterDeactivate[1]?.userId).toBe(headUserId);
+
         const deniedAfterDeactivate = await app.request(
           `/api/v1/documents/${documentId}/download`,
           {
@@ -357,9 +397,18 @@ describe("Permission categories API PostgreSQL integration (BE-S4-03, BE-S4-04 /
           .from(schema.categoryDownloadPermissions)
           .where(eq(schema.categoryDownloadPermissions.categoryId, missingCategoryId));
         expect(orphanRows).toHaveLength(0);
+
+        const orphanAuditRows = await database.db
+          .select({ id: schema.categoryPermissionAuditEvents.id })
+          .from(schema.categoryPermissionAuditEvents)
+          .where(eq(schema.categoryPermissionAuditEvents.categoryId, missingCategoryId));
+        expect(orphanAuditRows).toHaveLength(0);
       } finally {
         assertDisposableTestDatabase(databaseUrl);
         assertClientConnectedToDisposableDatabase(database, databaseUrl);
+        await database.db
+          .delete(schema.categoryPermissionAuditEvents)
+          .where(eq(schema.categoryPermissionAuditEvents.categoryId, reportingCategoryId));
         await database.db
           .delete(schema.downloadAuditEvents)
           .where(eq(schema.downloadAuditEvents.documentId, documentId));
@@ -367,7 +416,9 @@ describe("Permission categories API PostgreSQL integration (BE-S4-03, BE-S4-04 /
         await database.db
           .delete(schema.categories)
           .where(eq(schema.categories.id, reportingCategoryId));
-        await database.db.delete(schema.users).where(eq(schema.users.id, memberUserId));
+        await database.db
+          .delete(schema.users)
+          .where(inArray(schema.users.id, [headUserId, memberUserId]));
       }
     },
   );

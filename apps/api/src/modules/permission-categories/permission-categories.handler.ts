@@ -2,6 +2,7 @@ import type { Context } from "hono";
 import type { ApiEnvironment } from "../../environment";
 import { ValidationError } from "../../http/errors";
 import { jsonSuccess } from "../../http/responses";
+import { getAuthenticatedUser } from "../../middleware/auth";
 import {
   permissionCategoriesQuerySchema,
   permissionCategoryIdParamSchema,
@@ -53,7 +54,17 @@ export function createUpdatePermissionCategoryHandler(
       throw new ValidationError("Data tidak valid", details);
     }
 
-    const rawBody: unknown = await context.req.json().catch(() => null);
+    const user = getAuthenticatedUser(context);
+
+    let rawBody: unknown;
+    try {
+      rawBody = await context.req.json();
+    } catch {
+      throw new ValidationError("Data tidak valid", [
+        { field: "body", message: "Format payload body tidak valid" },
+      ]);
+    }
+
     const parsedBody = updatePermissionCategoryRequestSchema.safeParse(rawBody);
 
     if (!parsedBody.success) {
@@ -67,6 +78,11 @@ export function createUpdatePermissionCategoryHandler(
     const updated = await dependencies.permissionCategoriesService.updateCategoryDownloadPermission(
       parsedParam.data.categoryId,
       parsedBody.data.downloadEnabled,
+      {
+        userId: user.id,
+        userName: user.name,
+        userEmail: user.email,
+      },
     );
     return jsonSuccess(context, updated, 200);
   };

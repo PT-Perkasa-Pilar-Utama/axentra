@@ -169,7 +169,7 @@ Request body (`UpdatePermissionCategoryRequest` in `@axentra/shared`):
 
 Behavior:
 
-- Runs inside a database transaction: updates `categories.updated_at` and upserts `category_download_permissions` (`download_enabled`, `updated_at`) for `categoryId`.
+- Runs inside a database transaction: updates `categories.updated_at`, upserts `category_download_permissions` (`download_enabled`, `updated_at`) for `categoryId`, and writes an immutable audit event to `category_permission_audit_events` with category details, actor (`head_of_team` user ID, name, email), previous permission state, new permission state, and timestamp.
 - When `downloadEnabled` is `true`, `member_team` can download documents assigned to that category (`AC-13.01`).
 - When `downloadEnabled` is `false`, `member_team` downloads for documents in that category are rejected with `403 FORBIDDEN`.
 - New auto-created categories default to `downloadEnabled: false` until toggled active by `head_of_team`.

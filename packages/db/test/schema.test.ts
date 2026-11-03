@@ -5,6 +5,7 @@ import { getTableConfig } from "drizzle-orm/pg-core";
 import {
   categories,
   categoryDownloadPermissions,
+  categoryPermissionAuditEvents,
   documentContentHashes,
   documentFiles,
   documentMetadata,
@@ -173,5 +174,34 @@ describe("database schema definitions", () => {
       (idx) => idx.config.name === "download_audit_events_downloaded_at_idx",
     );
     expect(downloadedAtIdx).toBeDefined();
+  });
+
+  it("defines category_permission_audit_events table columns and indexes", () => {
+    const cols = getTableColumns(categoryPermissionAuditEvents);
+    expect(cols.id).toBeDefined();
+    expect(cols.categoryId).toBeDefined();
+    expect(cols.categoryName).toBeDefined();
+    expect(cols.userId).toBeDefined();
+    expect(cols.userName).toBeDefined();
+    expect(cols.userEmail).toBeDefined();
+    expect(cols.previousDownloadEnabled).toBeDefined();
+    expect(cols.newDownloadEnabled).toBeDefined();
+    expect(cols.changedAt).toBeDefined();
+
+    const config = getTableConfig(categoryPermissionAuditEvents);
+    const catIdIdx = config.indexes.find(
+      (idx) => idx.config.name === "category_permission_audit_events_category_id_idx",
+    );
+    expect(catIdIdx).toBeDefined();
+
+    const userIdIdx = config.indexes.find(
+      (idx) => idx.config.name === "category_permission_audit_events_user_id_idx",
+    );
+    expect(userIdIdx).toBeDefined();
+
+    const changedAtIdx = config.indexes.find(
+      (idx) => idx.config.name === "category_permission_audit_events_changed_at_idx",
+    );
+    expect(changedAtIdx).toBeDefined();
   });
 });
