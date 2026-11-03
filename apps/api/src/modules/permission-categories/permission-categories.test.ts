@@ -1,17 +1,21 @@
 import { describe, expect, it } from "bun:test";
-import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { createLogger } from "@axentra/observability";
 import {
+  PERMISSION_CATEGORIES_DEFAULT_LIMIT,
+  PERMISSION_CATEGORIES_MAX_LIMIT,
+  apiErrorSchema,
   permissionCategoriesResponseSchema,
   updatePermissionCategoryResponseSchema,
-  type ApiErrorEnvelope,
   type PermissionCategory,
 } from "@axentra/shared";
 import { createApp } from "../../app";
+import { NotFoundError } from "../../http/errors";
 import type { TokenVerifier } from "../../middleware/auth";
 import {
-  DrizzlePermissionCategoriesRepository,
   InMemoryPermissionCategoriesRepository,
+  resolvePermissionCategoriesLimit,
+  toPermissionCategory,
+  type IPermissionCategoriesRepository,
 } from "./permission-categories.repository";
 import { createPermissionCategoriesService } from "./permission-categories.service";
 
@@ -190,7 +194,7 @@ describe("GET /api/v1/permission-categories - Task BE-S4-03 (AC-13.01)", () => {
       });
 
       expect(res.status).toBe(400);
-      const body = (await res.json()) as ApiErrorEnvelope;
+      const body = apiErrorSchema.parse(await res.json());
       expect(body.success).toBe(false);
       expect(body.error.code).toBe("VALIDATION_ERROR");
     }
@@ -211,7 +215,7 @@ describe("GET /api/v1/permission-categories - Task BE-S4-03 (AC-13.01)", () => {
       method: "GET",
     });
     expect(missingHeaderRes.status).toBe(401);
-    const missingBody = (await missingHeaderRes.json()) as ApiErrorEnvelope;
+    const missingBody = apiErrorSchema.parse(await missingHeaderRes.json());
     expect(missingBody.success).toBe(false);
     expect(missingBody.error.code).toBe("UNAUTHORIZED");
 
@@ -222,7 +226,7 @@ describe("GET /api/v1/permission-categories - Task BE-S4-03 (AC-13.01)", () => {
       },
     });
     expect(invalidTokenRes.status).toBe(401);
-    const invalidBody = (await invalidTokenRes.json()) as ApiErrorEnvelope;
+    const invalidBody = apiErrorSchema.parse(await invalidTokenRes.json());
     expect(invalidBody.success).toBe(false);
     expect(invalidBody.error.code).toBe("UNAUTHORIZED");
   });
@@ -245,7 +249,7 @@ describe("GET /api/v1/permission-categories - Task BE-S4-03 (AC-13.01)", () => {
       },
     });
     expect(memberRes.status).toBe(403);
-    const memberBody = (await memberRes.json()) as ApiErrorEnvelope;
+    const memberBody = apiErrorSchema.parse(await memberRes.json());
     expect(memberBody.success).toBe(false);
     expect(memberBody.error.code).toBe("FORBIDDEN");
 
@@ -256,61 +260,35 @@ describe("GET /api/v1/permission-categories - Task BE-S4-03 (AC-13.01)", () => {
       },
     });
     expect(adminRes.status).toBe(403);
-    const adminBody = (await adminRes.json()) as ApiErrorEnvelope;
+    const adminBody = apiErrorSchema.parse(await adminRes.json());
     expect(adminBody.success).toBe(false);
     expect(adminBody.error.code).toBe("FORBIDDEN");
   });
 
-  it("defaults downloadEnabled to false in DrizzlePermissionCategoriesRepository when permission row is absent", async () => {
-    let appliedLimit = 0;
+  it("defaults downloadEnabled to false when the permission row is absent", () => {
     const createdAt = new Date("2026-10-30T08:00:00.000Z");
     const updatedAt = new Date("2026-10-30T09:00:00.000Z");
 
-    const fakeDb = {
-      select() {
-        return {
-          from() {
-            return {
-              leftJoin() {
-                return {
-                  orderBy() {
-                    return {
-                      async limit(limitArg: number) {
-                        appliedLimit = limitArg;
-                        return [
-                          {
-                            id: "11111111-1111-4111-8111-111111111111",
-                            name: "Contract",
-                            slug: "contract",
-                            downloadEnabled: true,
-                            createdAt,
-                            updatedAt,
-                          },
-                          {
-                            id: "22222222-2222-4222-8222-222222222222",
-                            name: "Reporting",
-                            slug: "reporting",
-                            downloadEnabled: null,
-                            createdAt,
-                            updatedAt,
-                          },
-                        ];
-                      },
-                    };
-                  },
-                };
-              },
-            };
-          },
-        };
-      },
-    } as unknown as PostgresJsDatabase;
-
-    const repository = new DrizzlePermissionCategoriesRepository(fakeDb);
-    const result = await repository.listPermissionCategories(250);
-
-    expect(appliedLimit).toBe(100);
-    expect(result).toEqual([
+    expect(
+      [
+        {
+          id: "11111111-1111-4111-8111-111111111111",
+          name: "Contract",
+          slug: "contract",
+          downloadEnabled: true,
+          createdAt,
+          updatedAt,
+        },
+        {
+          id: "22222222-2222-4222-8222-222222222222",
+          name: "Reporting",
+          slug: "reporting",
+          downloadEnabled: null,
+          createdAt,
+          updatedAt,
+        },
+      ].map(toPermissionCategory),
+    ).toEqual([
       {
         id: "11111111-1111-4111-8111-111111111111",
         name: "Contract",
@@ -329,7 +307,47 @@ describe("GET /api/v1/permission-categories - Task BE-S4-03 (AC-13.01)", () => {
       },
     ]);
   });
+
+  it("clamps the repository limit to 1..PERMISSION_CATEGORIES_MAX_LIMIT", () => {
+    expect(resolvePermissionCategoriesLimit()).toBe(PERMISSION_CATEGORIES_DEFAULT_LIMIT);
+    expect(resolvePermissionCategoriesLimit(0)).toBe(1);
+    expect(resolvePermissionCategoriesLimit(250)).toBe(PERMISSION_CATEGORIES_MAX_LIMIT);
+    expect(resolvePermissionCategoriesLimit(25)).toBe(25);
+  });
 });
+
+// Extends the in-memory repository so the compiler checks it against the port without a cast.
+class RecordingPermissionCategoriesRepository extends InMemoryPermissionCategoriesRepository {
+  public transactionCount = 0;
+  public rolledBack = 0;
+  public updatesInsideTransaction = 0;
+  public updatesOutsideTransaction = 0;
+  private inTransaction = false;
+
+  public override async updateCategoryDownloadPermission(
+    categoryId: string,
+    downloadEnabled: boolean,
+  ): Promise<PermissionCategory | null> {
+    if (this.inTransaction) this.updatesInsideTransaction += 1;
+    else this.updatesOutsideTransaction += 1;
+    return super.updateCategoryDownloadPermission(categoryId, downloadEnabled);
+  }
+
+  public override async transaction<T>(
+    callback: (txRepo: IPermissionCategoriesRepository) => Promise<T>,
+  ): Promise<T> {
+    this.transactionCount += 1;
+    this.inTransaction = true;
+    try {
+      return await super.transaction(callback);
+    } catch (error: unknown) {
+      this.rolledBack += 1;
+      throw error;
+    } finally {
+      this.inTransaction = false;
+    }
+  }
+}
 
 describe("PATCH /api/v1/permission-categories/:categoryId - Task BE-S4-04 (AC-13.01)", () => {
   const reportingCategoryId = "11111111-1111-4111-8111-111111111111";
@@ -424,7 +442,7 @@ describe("PATCH /api/v1/permission-categories/:categoryId - Task BE-S4-04 (AC-13
     );
 
     expect(res.status).toBe(404);
-    const body = (await res.json()) as ApiErrorEnvelope;
+    const body = apiErrorSchema.parse(await res.json());
     expect(body.success).toBe(false);
     expect(body.error.code).toBe("NOT_FOUND");
     expect(body.error.message).toBe("Kategori tidak ditemukan");
@@ -451,7 +469,7 @@ describe("PATCH /api/v1/permission-categories/:categoryId - Task BE-S4-04 (AC-13
     });
 
     expect(res.status).toBe(400);
-    const body = (await res.json()) as ApiErrorEnvelope;
+    const body = apiErrorSchema.parse(await res.json());
     expect(body.success).toBe(false);
     expect(body.error.code).toBe("VALIDATION_ERROR");
     expect(body.error.details?.[0]?.field).toBe("categoryId");
@@ -498,7 +516,7 @@ describe("PATCH /api/v1/permission-categories/:categoryId - Task BE-S4-04 (AC-13
       });
 
       expect(res.status).toBe(400);
-      const body = (await res.json()) as ApiErrorEnvelope;
+      const body = apiErrorSchema.parse(await res.json());
       expect(body.success).toBe(false);
       expect(body.error.code).toBe("VALIDATION_ERROR");
     }
@@ -526,7 +544,7 @@ describe("PATCH /api/v1/permission-categories/:categoryId - Task BE-S4-04 (AC-13
       },
     );
     expect(missingHeaderRes.status).toBe(401);
-    const missingBody = (await missingHeaderRes.json()) as ApiErrorEnvelope;
+    const missingBody = apiErrorSchema.parse(await missingHeaderRes.json());
     expect(missingBody.error.code).toBe("UNAUTHORIZED");
 
     const invalidTokenRes = await app.request(
@@ -541,7 +559,7 @@ describe("PATCH /api/v1/permission-categories/:categoryId - Task BE-S4-04 (AC-13
       },
     );
     expect(invalidTokenRes.status).toBe(401);
-    const invalidBody = (await invalidTokenRes.json()) as ApiErrorEnvelope;
+    const invalidBody = apiErrorSchema.parse(await invalidTokenRes.json());
     expect(invalidBody.error.code).toBe("UNAUTHORIZED");
   });
 
@@ -576,7 +594,7 @@ describe("PATCH /api/v1/permission-categories/:categoryId - Task BE-S4-04 (AC-13
       });
 
       expect(res.status).toBe(403);
-      const body = (await res.json()) as ApiErrorEnvelope;
+      const body = apiErrorSchema.parse(await res.json());
       expect(body.success).toBe(false);
       expect(body.error.code).toBe("FORBIDDEN");
     }
@@ -584,106 +602,36 @@ describe("PATCH /api/v1/permission-categories/:categoryId - Task BE-S4-04 (AC-13
     expect(repository.categories.get(reportingCategoryId)?.downloadEnabled).toBe(false);
   });
 
-  it("updates category and upserts download permission inside a single transaction in DrizzlePermissionCategoriesRepository", async () => {
-    let transactionCount = 0;
-    let upsertCalled = false;
-    const createdAt = new Date("2026-10-30T08:00:00.000Z");
-
-    const fakeDb = {
-      async transaction<T>(callback: (tx: unknown) => Promise<T>): Promise<T> {
-        transactionCount += 1;
-        const tx = {
-          update() {
-            return {
-              set(values: { updatedAt: Date }) {
-                return {
-                  where() {
-                    return {
-                      async returning() {
-                        return [
-                          {
-                            id: reportingCategoryId,
-                            name: "Reporting",
-                            slug: "reporting",
-                            createdAt,
-                            updatedAt: values.updatedAt,
-                          },
-                        ];
-                      },
-                    };
-                  },
-                };
-              },
-            };
-          },
-          insert() {
-            return {
-              values() {
-                return {
-                  async onConflictDoUpdate() {
-                    upsertCalled = true;
-                  },
-                };
-              },
-            };
-          },
-        };
-        return await callback(tx);
-      },
-    } as unknown as PostgresJsDatabase;
-
-    const repository = new DrizzlePermissionCategoriesRepository(fakeDb);
+  it("runs the update inside one repository transaction", async () => {
+    const repository = new RecordingPermissionCategoriesRepository();
+    repository.categories.set(reportingCategoryId, {
+      id: reportingCategoryId,
+      name: "Reporting",
+      slug: "reporting",
+      downloadEnabled: false,
+      createdAt: "2026-10-30T08:00:00.000Z",
+      updatedAt: "2026-10-30T08:00:00.000Z",
+    });
     const service = createPermissionCategoriesService(repository);
+
     const updated = await service.updateCategoryDownloadPermission(reportingCategoryId, true);
 
-    expect(transactionCount).toBe(1);
-    expect(upsertCalled).toBe(true);
-    expect(updated.id).toBe(reportingCategoryId);
+    expect(repository.transactionCount).toBe(1);
+    expect(repository.updatesInsideTransaction).toBe(1);
+    expect(repository.updatesOutsideTransaction).toBe(0);
     expect(updated.downloadEnabled).toBe(true);
-    expect(updated.createdAt).toBe(createdAt.toISOString());
+    expect(updated.createdAt).toBe("2026-10-30T08:00:00.000Z");
   });
 
-  it("returns null without inserting permission row when category is absent in DrizzlePermissionCategoriesRepository", async () => {
-    let upsertCalled = false;
+  it("throws NotFoundError inside the transaction and leaves state unchanged when the category is absent", async () => {
+    const repository = new RecordingPermissionCategoriesRepository();
+    const service = createPermissionCategoriesService(repository);
 
-    const fakeDb = {
-      async transaction<T>(callback: (tx: unknown) => Promise<T>): Promise<T> {
-        const tx = {
-          update() {
-            return {
-              set() {
-                return {
-                  where() {
-                    return {
-                      async returning() {
-                        return [];
-                      },
-                    };
-                  },
-                };
-              },
-            };
-          },
-          insert() {
-            return {
-              values() {
-                return {
-                  async onConflictDoUpdate() {
-                    upsertCalled = true;
-                  },
-                };
-              },
-            };
-          },
-        };
-        return await callback(tx);
-      },
-    } as unknown as PostgresJsDatabase;
-
-    const repository = new DrizzlePermissionCategoriesRepository(fakeDb);
-    const result = await repository.updateCategoryDownloadPermission(reportingCategoryId, true);
-
-    expect(result).toBeNull();
-    expect(upsertCalled).toBe(false);
+    await expect(
+      service.updateCategoryDownloadPermission(reportingCategoryId, true),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    expect(repository.transactionCount).toBe(1);
+    expect(repository.rolledBack).toBe(1);
+    expect(repository.categories.size).toBe(0);
   });
 });

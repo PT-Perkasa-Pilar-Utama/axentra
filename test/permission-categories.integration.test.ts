@@ -8,10 +8,10 @@ import type {
 } from "@axentra/db";
 import { createLogger } from "@axentra/observability";
 import {
+  apiErrorSchema,
   downloadDocumentSuccessResponseSchema,
   permissionCategoriesResponseSchema,
   updatePermissionCategoryResponseSchema,
-  type ApiErrorEnvelope,
 } from "@axentra/shared";
 import { createApp } from "../apps/api/src/app";
 import type { TokenVerifier } from "../apps/api/src/middleware/auth";
@@ -166,7 +166,7 @@ describe("Permission categories API PostgreSQL integration (BE-S4-03, BE-S4-04 /
           },
         });
         expect(memberRes.status).toBe(403);
-        const memberBody = (await memberRes.json()) as ApiErrorEnvelope;
+        const memberBody = apiErrorSchema.parse(await memberRes.json());
         expect(memberBody.error.code).toBe("FORBIDDEN");
       } finally {
         assertDisposableTestDatabase(databaseUrl);
@@ -274,6 +274,23 @@ describe("Permission categories API PostgreSQL integration (BE-S4-03, BE-S4-04 /
         expect(activated.data.id).toBe(reportingCategoryId);
         expect(activated.data.downloadEnabled).toBe(true);
 
+        const client = database;
+        const readPermissionRows = async (): Promise<
+          ReadonlyArray<{ id: string; downloadEnabled: boolean }>
+        > =>
+          client.db
+            .select({
+              id: schema.categoryDownloadPermissions.id,
+              downloadEnabled: schema.categoryDownloadPermissions.downloadEnabled,
+            })
+            .from(schema.categoryDownloadPermissions)
+            .where(eq(schema.categoryDownloadPermissions.categoryId, reportingCategoryId));
+
+        // The first toggle inserts the permission row because none existed.
+        const rowsAfterActivate = await readPermissionRows();
+        expect(rowsAfterActivate).toHaveLength(1);
+        expect(rowsAfterActivate[0]?.downloadEnabled).toBe(true);
+
         const allowedAfterActivate = await app.request(`/api/v1/documents/${documentId}/download`, {
           method: "GET",
           headers: {
@@ -303,6 +320,12 @@ describe("Permission categories API PostgreSQL integration (BE-S4-03, BE-S4-04 /
         );
         expect(deactivated.data.downloadEnabled).toBe(false);
 
+        // The second toggle updates the same row through the unique category_id conflict.
+        const rowsAfterDeactivate = await readPermissionRows();
+        expect(rowsAfterDeactivate).toHaveLength(1);
+        expect(rowsAfterDeactivate[0]?.id).toBe(rowsAfterActivate[0]?.id);
+        expect(rowsAfterDeactivate[0]?.downloadEnabled).toBe(false);
+
         const deniedAfterDeactivate = await app.request(
           `/api/v1/documents/${documentId}/download`,
           {
@@ -326,8 +349,14 @@ describe("Permission categories API PostgreSQL integration (BE-S4-03, BE-S4-04 /
           },
         );
         expect(notFoundRes.status).toBe(404);
-        const notFoundBody = (await notFoundRes.json()) as ApiErrorEnvelope;
+        const notFoundBody = apiErrorSchema.parse(await notFoundRes.json());
         expect(notFoundBody.error.code).toBe("NOT_FOUND");
+
+        const orphanRows = await database.db
+          .select({ id: schema.categoryDownloadPermissions.id })
+          .from(schema.categoryDownloadPermissions)
+          .where(eq(schema.categoryDownloadPermissions.categoryId, missingCategoryId));
+        expect(orphanRows).toHaveLength(0);
       } finally {
         assertDisposableTestDatabase(databaseUrl);
         assertClientConnectedToDisposableDatabase(database, databaseUrl);

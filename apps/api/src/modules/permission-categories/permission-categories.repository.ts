@@ -11,6 +11,33 @@ export type DrizzlePermissionCategoriesClient =
   | PostgresJsDatabase
   | Parameters<Parameters<PostgresJsDatabase["transaction"]>[0]>[0];
 
+export type PermissionCategoryRow = {
+  id: string;
+  name: string;
+  slug: string;
+  downloadEnabled: boolean | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export function resolvePermissionCategoriesLimit(
+  limit: number = PERMISSION_CATEGORIES_DEFAULT_LIMIT,
+): number {
+  return Math.min(Math.max(1, limit), PERMISSION_CATEGORIES_MAX_LIMIT);
+}
+
+// A category without a permission row has never been activated, so it stays download-disabled.
+export function toPermissionCategory(row: PermissionCategoryRow): PermissionCategory {
+  return {
+    id: row.id,
+    name: row.name,
+    slug: row.slug,
+    downloadEnabled: row.downloadEnabled ?? false,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
 export type IPermissionCategoriesRepository = {
   listPermissionCategories: (limit?: number) => Promise<ReadonlyArray<PermissionCategory>>;
   updateCategoryDownloadPermission: (
@@ -31,7 +58,6 @@ export class DrizzlePermissionCategoriesRepository implements IPermissionCategor
   public async listPermissionCategories(
     limit: number = PERMISSION_CATEGORIES_DEFAULT_LIMIT,
   ): Promise<ReadonlyArray<PermissionCategory>> {
-    const effectiveLimit = Math.min(Math.max(1, limit), PERMISSION_CATEGORIES_MAX_LIMIT);
     const rows = await this.sqlDb
       .select({
         id: categories.id,
@@ -47,16 +73,9 @@ export class DrizzlePermissionCategoriesRepository implements IPermissionCategor
         eq(categories.id, categoryDownloadPermissions.categoryId),
       )
       .orderBy(asc(categories.name), asc(categories.id))
-      .limit(effectiveLimit);
+      .limit(resolvePermissionCategoriesLimit(limit));
 
-    return rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      slug: row.slug,
-      downloadEnabled: row.downloadEnabled ?? false,
-      createdAt: row.createdAt.toISOString(),
-      updatedAt: row.updatedAt.toISOString(),
-    }));
+    return rows.map(toPermissionCategory);
   }
 
   public async updateCategoryDownloadPermission(
@@ -102,14 +121,7 @@ export class DrizzlePermissionCategoriesRepository implements IPermissionCategor
         },
       });
 
-    return {
-      id: categoryRow.id,
-      name: categoryRow.name,
-      slug: categoryRow.slug,
-      downloadEnabled,
-      createdAt: categoryRow.createdAt.toISOString(),
-      updatedAt: categoryRow.updatedAt.toISOString(),
-    };
+    return toPermissionCategory({ ...categoryRow, downloadEnabled });
   }
 
   public async transaction<T>(
@@ -128,14 +140,13 @@ export class InMemoryPermissionCategoriesRepository implements IPermissionCatego
   public async listPermissionCategories(
     limit: number = PERMISSION_CATEGORIES_DEFAULT_LIMIT,
   ): Promise<ReadonlyArray<PermissionCategory>> {
-    const effectiveLimit = Math.min(Math.max(1, limit), PERMISSION_CATEGORIES_MAX_LIMIT);
     return Array.from(this.categories.values())
       .sort((left, right) => {
         const nameOrder = left.name.localeCompare(right.name);
         if (nameOrder !== 0) return nameOrder;
         return left.id.localeCompare(right.id);
       })
-      .slice(0, effectiveLimit);
+      .slice(0, resolvePermissionCategoriesLimit(limit));
   }
 
   public async updateCategoryDownloadPermission(
