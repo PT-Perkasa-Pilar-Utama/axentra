@@ -9,45 +9,55 @@
 
 ---
 
-### Run 4 — Walkthrough AC-12.01 pada head 9fca9b7 (2026-11-03)
+### Run 4 — Walkthrough AC-12.01 pada head `9fca9b7` (2026-11-03)
 
-Dijalankan secara interaktif melalui browser Chromium lokal (Chrome DevTools MCP) terhadap stack lokal terintegrasi (Bun 1.4.3, PostgreSQL, Redis, MinIO di Docker Desktop 29.6.1, Hono API `http://localhost:3001`, React/Vite Web `http://localhost:5173`). Walkthrough memakai login UI resmi untuk akun seed `head_of_team`; fixture dokumen sintetis `sample-reporting.pdf`; 11 audit event tersimpan di database lokal.
+Walkthrough dijalankan melalui Chromium/Chrome DevTools MCP pada stack lokal terintegrasi (Bun 1.4.3, PostgreSQL, Redis, MinIO/Docker Desktop 29.6.1, API `http://localhost:3001`, Web `http://localhost:5173`). Login Head of Team memakai UI resmi.
+
+**SHA kode diuji:** `9fca9b7725a3740cada5ab8493338085f4e5ac37`. Commit dokumentasi/screenshot: `8c1b25ac8239c63b01fa859fc79d747b8cf9f6bf`.
+
+**Data API nyata:** Dua unduhan single-file sukses (`sample-reporting.pdf` dan `sample-download-acceptance.pdf`); percobaan Member Team mengunduh `sample-contract.pdf` ditolak HTTP 403 dan tidak membuat audit event; bulk download Head of Team atas tiga dokumen menghasilkan HTTP 200 ZIP dan tiga event audit. Total lima event baru dari API untuk tiga dokumen, ditambah tiga event lama. Secara terpisah, delapan row sintetis sempat dimasukkan langsung ke DB untuk uji pagination 11 event; row tersebut telah dihapus kembali. Uji pagination tersebut membuktikan perilaku UI, bukan jalur pencatatan unduhan API.
 
 ```text
 AC:          AC-12.01 (Tracking Log Unduhan)
 Card:        FE-S4-02
-Commit:      9fca9b7725a3740cada5ab8493338085f4e5ac37
+Commit kode: 9fca9b7725a3740cada5ab8493338085f4e5ac37
+Commit bukti:8c1b25ac8239c63b01fa859fc79d747b8cf9f6bf
 Environment: local, Web http://localhost:5173, API http://localhost:3001, Bun 1.4.3, Docker Desktop 29.6.1, Chromium
-Role:        head_of_team (head@axentra.local, login UI resmi); member_team route check attempted
-Input:       sample-reporting.pdf (fixture sintetis), 11 event unduhan
+Role:        head_of_team; member_team
+Input:       Dua unduhan single-file dan satu bulk download melalui API untuk tiga dokumen sintetis
 Status:      Recorded, release pending (sign-off akhir oleh Arya Isnaidi)
 ```
 
-| Langkah | Deskripsi Uji                                            | Hasil yang Diharapkan                                                                                                                                               | Hasil yang Diamati                                                                                                                                                                                                                        | Status                  |
-| ------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
-| **A**   | Lihat daftar utama                                       | Satu kartu per event unduhan; menampilkan nama dokumen, pengguna, dan waktu `dd/mm/yyyy HH:mm WIB`. Dua event untuk dokumen sama tampil sebagai dua kartu terpisah. | Halaman 1 menampilkan 10 kartu event individual (dari 11 event di DB); `sample-reporting.pdf` tampil dengan pengguna dan waktu WIB per event.                                                                                             | **Pass**                |
-| **B**   | Teks hitungan di bawah daftar                            | `Menampilkan x–y dari N aktivitas unduhan`; jumlah kartu sama dengan `y − x + 1`.                                                                                   | Halaman 1: `Menampilkan 1–10 dari 11 aktivitas unduhan` (10 kartu). Halaman 2: `Menampilkan 11–11 dari 11 aktivitas unduhan` (1 kartu).                                                                                                   | **Pass**                |
-| **C**   | Klik satu kartu                                          | Drawer `Detail Log` terbuka; fokus berpindah ke tombol tutup; scroll latar belakang terkunci.                                                                       | Drawer dialog terbuka dengan backdrop blur; fokus otomatis ke `Tutup detail log`; `document.body.style.overflow` menjadi `hidden`.                                                                                                        | **Pass**                |
-| **D**   | Tekan Tab/Shift+Tab di drawer                            | Fokus tetap di drawer, tidak keluar ke halaman di belakang.                                                                                                         | Snapshot browser setelah Tab dan Shift+Tab menunjukkan fokus tetap pada tombol `Tutup detail log` di dalam drawer.                                                                                                                        | **Pass**                |
-| **E**   | Tekan Escape                                             | Drawer tertutup; fokus kembali ke kartu pemicu; scroll kembali normal.                                                                                              | Dialog tertutup; fokus keyboard kembali tepat ke kartu pemicu; body scroll dipulihkan.                                                                                                                                                    | **Pass**                |
-| **F**   | Cari nama pengguna                                       | Hanya event cocok yang tampil.                                                                                                                                      | Belum diverifikasi interaktif: pemeriksaan alat browser tidak berhasil mengosongkan input type=search secara deterministik. Presenter/unit code membatasi filter ke halaman server yang aktif.                                            | **Not verified**        |
-| **G**   | Cari teks acak `zzz-tidak-ada`                           | Tertulis `Tidak ada hasil yang ditemukan`.                                                                                                                          | Pesan BA tampil persis; hitungan menunjukkan `0 hasil pada halaman 1 dari 1; total 3 aktivitas unduhan`.                                                                                                                                  | **Pass**                |
-| **H**   | Paginasi dengan 11 event                                 | Halaman 2 memuat event lebih lama; tombol sebelumnya aktif; tombol berikutnya nonaktif dengan tooltip `Sudah di halaman terakhir`.                                  | Halaman 1: 10 dari 11; setelah klik berikutnya halaman 2 dari 2 menampilkan event ke-11, tombol sebelumnya aktif, tombol berikutnya nonaktif dan berlabel `Sudah di halaman terakhir`.                                                    | **Pass**                |
-| **I**   | Sidebar                                                  | Menu `Auditrail` aktif; logo PERKASA tampil.                                                                                                                        | Logo PERKASA tampil; menu `Auditrail` memiliki state aktif/highlight.                                                                                                                                                                     | **Pass**                |
-| **J**   | Logout, login sebagai `member_team`, buka `/audit-trail` | Halaman riwayat tidak dapat diakses oleh role yang tidak diizinkan.                                                                                                 | **Not verified**: akun `member@axentra.local` menolak password uji dengan pesan `Email atau kata sandi salah`; tanpa login, akses membuka halaman login. Test integrasi role gate memverifikasi `member_team` diblokir tanpa request API. | **Not verified (live)** |
-| **K**   | Periksa seluruh teks halaman/drawer                      | Tidak ada label UI bahasa Inggris, selain title tab browser.                                                                                                        | Label dan pesan yang diuji dalam bahasa Indonesia.                                                                                                                                                                                        | **Pass**                |
+| Langkah | Deskripsi uji                                                                                                               | Hasil yang diharapkan                                                               | Hasil yang diamati                                                                                                                                                                                  | Status             |
+| ------- | --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
+| **A**   | Daftar utama: satu kartu per event; dokumen, user, waktu WIB. Unduhan berulang atas dokumen sama tetap jadi kartu terpisah. | Semua field Siapa/Apa/Kapan per event terlihat.                                     | API menghasilkan lima event baru untuk tiga dokumen; bersama tiga event lama, daftar menampilkan delapan kartu. Dokumen berulang tampil sebagai event terpisah.                                     | **Pass**           |
+| **B**   | Hitungan sesuai kartu dan rentang.                                                                                          | `Menampilkan x–y dari N aktivitas unduhan`.                                         | Ditampilkan `Menampilkan 1–8 dari 8 aktivitas unduhan`; delapan kartu terlihat.                                                                                                                     | **Pass**           |
+| **C**   | Klik kartu, cek drawer, fokus awal, scroll lock.                                                                            | Drawer terbuka; fokus ke tombol tutup; background terkunci.                         | Drawer `Detail Log` terbuka dengan backdrop blur; fokus ke `Tutup detail log`; body overflow `hidden`. Log drawer memuat event dokumen yang sedang tampil di halaman.                               | **Pass**           |
+| **D**   | Tekan Tab/Shift+Tab.                                                                                                        | Fokus tetap di dalam drawer.                                                        | Snapshot sebelum dan sesudah keypress tetap melaporkan tombol tutup sebagai fokus; perpindahan urutan fokus tidak dapat diamati dari snapshot, sehingga traversal penuh belum terverifikasi manual. | **Partial**        |
+| **E**   | Escape menutup drawer.                                                                                                      | Fokus kembali ke kartu pemicu dan scroll pulih.                                     | Drawer tertutup; fokus kembali ke kartu pemicu; body scroll dipulihkan.                                                                                                                             | **Pass**           |
+| **F**   | Cari nama user dan nama dokumen.                                                                                            | Hanya event yang cocok yang terlihat.                                               | `sample-contract` menampilkan satu event; `head@axentra.local` menampilkan tujuh hasil dari delapan event.                                                                                          | **Pass**           |
+| **G**   | Cari teks acak.                                                                                                             | Pesan `Tidak ada hasil yang ditemukan`.                                             | Copy BA tampil persis; jumlah hasil nol.                                                                                                                                                            | **Pass**           |
+| **H**   | Pagination >10 event.                                                                                                       | Halaman dua menampilkan sisa event; tombol berikutnya nonaktif di halaman terakhir. | UI diuji pada 11 event (8 row insert langsung ke DB + 3 lama): halaman pertama tampil 10 kartu, halaman dua satu kartu. Delapan row buatan sudah dihapus; tes ini hanya verifikasi pagination UI.   | **Pass (UI only)** |
+| **I**   | Sidebar dan logo.                                                                                                           | Logo PERKASA; menu Auditrail aktif.                                                 | Logo PERKASA dan menu Auditrail aktif terlihat.                                                                                                                                                     | **Pass**           |
+| **J**   | Login Member Team dan akses `/audit-trail`.                                                                                 | Role member ditolak.                                                                | Login `member@axentra.local` berhasil; route menampilkan `Akses Dibatasi`. Screenshot live disimpan.                                                                                                | **Pass**           |
+| **K**   | Bahasa halaman/drawer.                                                                                                      | Label UI dalam Bahasa Indonesia.                                                    | Halaman dan drawer menggunakan Bahasa Indonesia; label sidebar `Permissions` masih berbahasa Inggris.                                                                                               | **Partial**        |
 
-#### Screenshot Bukti Run 4:
+#### Screenshot Run 4
 
-- [Daftar utama — 10 event per halaman](audit-trail-2026-11-03-list.png)
+- [Daftar sesudah unduhan API nyata](audit-trail-2026-11-03-api-downloads.png)
+- [Daftar uji pagination 11 event](audit-trail-2026-11-03-list.png)
 - [Drawer Detail Log](audit-trail-2026-11-03-drawer.png)
 - [Pencarian kosong](audit-trail-2026-11-03-search-empty.png)
-- [Paginasi halaman 2](audit-trail-2026-11-03-pagination-page2.png)
+- [Pencarian email user](audit-trail-2026-11-03-search-user.png)
+- [Pagination halaman dua](audit-trail-2026-11-03-pagination-page2.png)
+- [Akses Member Team ditolak](audit-trail-2026-11-03-member-blocked.png)
 
-![Audit Trail List Run 4](audit-trail-2026-11-03-list.png)
-![Audit Trail Detail Drawer Run 4](audit-trail-2026-11-03-drawer.png)
-![Audit Trail Search Empty Run 4](audit-trail-2026-11-03-search-empty.png)
-![Audit Trail Pagination Page 2 Run 4](audit-trail-2026-11-03-pagination-page2.png)
+![Daftar setelah download API nyata](audit-trail-2026-11-03-api-downloads.png)
+![Drawer](audit-trail-2026-11-03-drawer.png)
+![Pencarian kosong](audit-trail-2026-11-03-search-empty.png)
+![Pencarian user](audit-trail-2026-11-03-search-user.png)
+![Pagination halaman dua](audit-trail-2026-11-03-pagination-page2.png)
+![Route guard Member Team](audit-trail-2026-11-03-member-blocked.png)
 
 ---
 
