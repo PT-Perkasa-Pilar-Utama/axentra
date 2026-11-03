@@ -10,16 +10,18 @@ if (typeof window !== "undefined" && window.document) {
 }
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { createMemoryRouter, RouterProvider } from "react-router";
 import type { AnalyticsSummary, CategorySummary } from "@axentra/shared";
-import { AuthSessionProvider } from "../src/features/auth/auth-session.context";
-import { clearSession, type AuthSession } from "../src/features/auth/session.storage";
+import type { AuthSession } from "../src/features/auth/session.storage";
 
-// router.tsx memanggil createBrowserRouter() saat modul dimuat, sehingga butuh DOM. Import statis
-// diangkat di atas prelude Happy DOM, jadi router dimuat dinamis setelah DOM terdaftar. Tanpa ini,
-// test gagal bila file ini berjalan pertama dalam proses (tidak ada file lain yang mendaftarkan DOM).
+// Modul berikut membaca `document`/`window` saat dimuat (mis. `screen` dari Testing Library, dan
+// createBrowserRouter() di router.tsx). Import statis diangkat di atas prelude Happy DOM, jadi
+// semuanya dimuat dinamis setelah DOM terdaftar. Tanpa ini, test gagal bila file ini berjalan
+// pertama dalam proses, karena tidak ada file lain yang sudah mendaftarkan DOM.
+const { act, cleanup, fireEvent, render, screen, within } = await import("@testing-library/react");
+const { createMemoryRouter, RouterProvider } = await import("react-router");
+const { AuthSessionProvider } = await import("../src/features/auth/auth-session.context");
+const { clearSession } = await import("../src/features/auth/session.storage");
 const { router: productionRouter } = await import("../src/app/router");
 
 const ANALYTICS_PATH = "/analytics";
