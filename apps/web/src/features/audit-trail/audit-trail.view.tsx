@@ -6,9 +6,10 @@ import {
 } from "./audit-trail.presenter";
 import { useAuditDrawer } from "./use-audit-drawer";
 import { AuditDetailDrawer } from "./audit-detail-drawer.view";
-import { AuditIcon, ChevronIcon, SearchIcon } from "./audit-trail.icons";
+import { AuditIcon, ChevronIcon } from "./audit-trail.icons";
 import "./audit-trail.css";
 
+export const AUDIT_TRAIL_PAGE_TITLE = "Audit Trail";
 const AUDIT_SKELETON_ROW_COUNT = 5;
 
 export type AuditDocumentCardProps = {
@@ -48,25 +49,10 @@ export function AuditTrailView({
 
   return (
     <section
-      aria-labelledby="audit-trail-heading"
+      aria-label="Riwayat unduhan dokumen"
       className="audit-trail-page"
       data-testid="audit-trail-page"
     >
-      <title>Audit Trail | Axentra</title>
-      <header className="audit-trail__header">
-        <h1 id="audit-trail-heading">Auditrail</h1>
-        <label className="audit-trail__search">
-          <SearchIcon />
-          <span className="sr-only">Cari dokumen atau pengguna</span>
-          <input
-            onChange={(event) => presenter.setKeyword(event.currentTarget.value)}
-            placeholder="Cari dokumen atau pengguna"
-            type="search"
-            value={presenter.keyword}
-          />
-        </label>
-      </header>
-
       <div className="audit-trail__toolbar">
         <span className="audit-trail__scope-note">Riwayat unduhan dokumen</span>
         <nav aria-label="Paginasi riwayat unduhan" className="audit-trail__pagination">

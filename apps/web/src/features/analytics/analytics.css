@@ -1,0 +1,92 @@
+.analytics-view {
+  min-width: 0;
+}
+
+.analytics-cards {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.analytics-card {
+  position: relative;
+  display: flex;
+  min-height: 7.125rem;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+  padding: 16px;
+  border-radius: 16px;
+  background: #25282e;
+  color: #f7f8fa;
+}
+
+.analytics-card-contour {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 10rem;
+  height: 100%;
+  fill: none;
+  stroke: #3a4a3c;
+  stroke-width: 1;
+  pointer-events: none;
+}
+
+.analytics-card h2,
+.analytics-card-value {
+  position: relative;
+  margin: 0;
+}
+
+.analytics-card h2 {
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.analytics-card-value {
+  font-size: 2rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.analytics-view [role="status"] {
+  margin: 0;
+  color: #5b626b;
+}
+
+.analytics-error {
+  padding: 20px;
+  border: 1px solid #e3e6ea;
+  border-radius: 16px;
+  background: #ffffff;
+}
+
+.analytics-error p {
+  margin: 0 0 12px;
+}
+
+.analytics-error button {
+  min-height: 40px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 8px;
+  background: #25282e;
+  color: #f7f8fa;
+  font: inherit;
+  cursor: pointer;
+}
+
+.analytics-error button:focus-visible {
+  outline: 3px solid #65a448;
+  outline-offset: 2px;
+}
+
+@media (min-width: 768px) {
+  .analytics-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

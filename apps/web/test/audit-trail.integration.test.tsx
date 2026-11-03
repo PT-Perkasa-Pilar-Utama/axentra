@@ -71,11 +71,28 @@ function sampleEventAt(index: number): DownloadAuditEvent {
 function makeQueryClient(): QueryClient {
   return new QueryClient({ defaultOptions: { queries: { retry: false, retryDelay: 0 } } });
 }
+
+function isCategoriesRequest(input: RequestInfo | URL): boolean {
+  return new URL(String(input), "http://localhost").pathname.endsWith("/categories");
+}
+
+// Sidebar Head of Team ikut memuat kategori. Dijawab di sini agar tidak mengganggu
+// hitungan request dan respons error yang dimaksudkan untuk endpoint yang diuji.
+function emptyCategoriesResponse(): Response {
+  return new Response(JSON.stringify({ success: true, data: [] }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+}
+
 function mockFetch(
   handler: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
 ): typeof fetch {
-  return Object.assign(handler, { preconnect: (): void => {} });
+  const withSidebar = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> =>
+    isCategoriesRequest(input) ? emptyCategoriesResponse() : handler(input, init);
+  return Object.assign(withSidebar, { preconnect: (): void => { } });
 }
+
 function auditPageResponse(
   items: DownloadAuditEvent[],
   meta: { page: number; limit: number; total: number },
@@ -132,7 +149,7 @@ describe("Audit Trail Feature (FE-S4-02 / AC-12.01)", () => {
       });
     });
     renderAuditTrail(headOfTeamSession);
-    expect(await screen.findByRole("heading", { name: "Auditrail" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Audit Trail" })).toBeTruthy();
     const list = screen.getByLabelText("Daftar aktivitas unduhan");
     const eventCards = within(list).getAllByRole("button");
     expect(eventCards).toHaveLength(sampleAuditEvents.length);
@@ -326,17 +343,17 @@ describe("Audit Trail Feature (FE-S4-02 / AC-12.01)", () => {
       calls += 1;
       return calls <= 2
         ? new Response(
-            JSON.stringify({ success: false, error: { code: "SERVER_ERROR", message: "private" } }),
-            {
-              status: 500,
-              headers: { "content-type": "application/json" },
-            },
-          )
+          JSON.stringify({ success: false, error: { code: "SERVER_ERROR", message: "private" } }),
+          {
+            status: 500,
+            headers: { "content-type": "application/json" },
+          },
+        )
         : auditPageResponse(sampleAuditEvents, {
-            page: 1,
-            limit: 10,
-            total: sampleAuditEvents.length,
-          });
+          page: 1,
+          limit: 10,
+          total: sampleAuditEvents.length,
+        });
     });
     renderAuditTrail(headOfTeamSession);
     expect(await screen.findByText("Riwayat unduhan gagal dimuat.")).toBeTruthy();
