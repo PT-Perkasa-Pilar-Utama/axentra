@@ -498,7 +498,7 @@ describe("Permission categories API PostgreSQL integration (BE-S4-03, BE-S4-04 /
         }
 
         // Fire both PATCH requests concurrently while T_gate holds the lock:
-        // Request A sets false, Request B sets true.
+        // Both requests attempt to set downloadEnabled: false concurrently.
         const patchAPromise = app.request(`/api/v1/permission-categories/${categoryId}`, {
           method: "PATCH",
           headers: {
@@ -514,13 +514,34 @@ describe("Permission categories API PostgreSQL integration (BE-S4-03, BE-S4-04 /
             Authorization: "Bearer valid-head-token",
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ downloadEnabled: true }),
+          body: JSON.stringify({ downloadEnabled: false }),
         });
 
-        // Give both PATCH requests time to reach PostgreSQL and block on the category lock
-        await new Promise((resolve) => setTimeout(resolve, 50));
+        // Poll pg_stat_activity until at least 2 backend transactions are blocked waiting on Lock
+        // to guarantee deterministic overlap before releasing the gate lock.
+        const startTime = Date.now();
+        const timeoutMs = 5000;
+        let waitingCount = 0;
+        while (Date.now() - startTime < timeoutMs) {
+          const [lockStats] = await database.db.execute<{ count: number }>(sql`
+            SELECT count(*)::int as count
+            FROM pg_stat_activity
+            WHERE datname = current_database()
+              AND wait_event_type = 'Lock'
+              AND pid <> pg_backend_pid()
+          `);
+          waitingCount = Number(lockStats?.count ?? 0);
+          if (waitingCount >= 2) {
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 5));
+        }
+        expect(waitingCount).toBeGreaterThanOrEqual(2);
 
-        // Release the gate lock so both PATCH requests unblock and serialize in the database
+        // Record the gate release time.
+        // Under normal clock conditions, clock_timestamp() evaluated after acquiring the category lock
+        // guarantees that both audit event timestamps are >= gateReleaseTime.
+        const gateReleaseTime = new Date();
         gateCanCommit = true;
         await gatePromise;
 
@@ -536,18 +557,32 @@ describe("Permission categories API PostgreSQL integration (BE-S4-03, BE-S4-04 /
 
         expect(auditEvents).toHaveLength(2);
 
+        const firstChangedAt = auditEvents[0]?.changedAt.getTime();
+        const secondChangedAt = auditEvents[1]?.changedAt.getTime();
+        expect(firstChangedAt).toBeDefined();
+        expect(secondChangedAt).toBeDefined();
+
+        // Under normal clock conditions, clock_timestamp() evaluated after acquiring row locks
+        // ensures both events are recorded after gate release and in chronological serialization order.
+        expect(firstChangedAt).toBeGreaterThanOrEqual(gateReleaseTime.getTime());
+        expect(secondChangedAt).toBeGreaterThan(firstChangedAt ?? 0);
+
         // The first event must start from the initial state: true.
         expect(auditEvents[0]?.previousDownloadEnabled).toBe(true);
+        expect(auditEvents[0]?.newDownloadEnabled).toBe(false);
 
-        // The second event's previous state must match the first event's new state,
+        // The second event must read previous state AFTER the first event commits (false -> false),
         // proving row lock serialization worked and previous state was read after acquiring the lock.
+        expect(auditEvents[1]?.previousDownloadEnabled).toBe(false);
         expect(auditEvents[1]?.previousDownloadEnabled).toBe(auditEvents[0]?.newDownloadEnabled);
+        expect(auditEvents[1]?.newDownloadEnabled).toBe(false);
 
         // The final state in category_download_permissions must match the second audit event's new state.
         const [finalPermission] = await database.db
           .select()
           .from(schema.categoryDownloadPermissions)
           .where(eq(schema.categoryDownloadPermissions.categoryId, categoryId));
+        expect(finalPermission?.downloadEnabled).toBe(false);
         expect(finalPermission?.downloadEnabled).toBe(auditEvents[1]?.newDownloadEnabled);
       } finally {
         assertDisposableTestDatabase(databaseUrl);

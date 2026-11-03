@@ -156,7 +156,7 @@ export class DrizzlePermissionCategoriesRepository implements IPermissionCategor
       });
 
     // 3. Record the audit event using clock_timestamp() AFTER acquiring the lock.
-    // clock_timestamp() guarantees that the timestamp strictly follows the serialization order.
+    // clock_timestamp() follows the transaction serialization order under normal clock conditions.
     await this.sqlDb.insert(categoryPermissionAuditEvents).values({
       categoryId,
       categoryName: categoryRow.name,
