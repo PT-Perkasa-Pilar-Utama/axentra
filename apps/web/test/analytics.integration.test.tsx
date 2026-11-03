@@ -16,7 +16,11 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import type { AnalyticsSummary, CategorySummary } from "@axentra/shared";
 import { AuthSessionProvider } from "../src/features/auth/auth-session.context";
 import { clearSession, type AuthSession } from "../src/features/auth/session.storage";
-import { router as productionRouter } from "../src/app/router";
+
+// router.tsx memanggil createBrowserRouter() saat modul dimuat, sehingga butuh DOM. Import statis
+// diangkat di atas prelude Happy DOM, jadi router dimuat dinamis setelah DOM terdaftar. Tanpa ini,
+// test gagal bila file ini berjalan pertama dalam proses (tidak ada file lain yang mendaftarkan DOM).
+const { router: productionRouter } = await import("../src/app/router");
 
 const ANALYTICS_PATH = "/analytics";
 const DASHBOARD_PATH = "/dashboard";
