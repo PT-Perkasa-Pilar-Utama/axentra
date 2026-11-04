@@ -89,7 +89,7 @@ function mockFetch(
 ): typeof fetch {
   const withSidebar = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> =>
     isCategoriesRequest(input) ? emptyCategoriesResponse() : handler(input, init);
-  return Object.assign(withSidebar, { preconnect: (): void => { } });
+  return Object.assign(withSidebar, { preconnect: (): void => {} });
 }
 
 function categoriesListResponse(items: CategorySummary[]): Response {
@@ -256,9 +256,9 @@ describe("Permission Categories Feature (FE-S4-03 / AC-13.01)", () => {
       callCount += 1;
       return callCount <= 3
         ? new Response(
-          JSON.stringify({ success: false, error: { code: "SERVER_ERROR", message: "boom" } }),
-          { status: 500, headers: { "content-type": "application/json" } },
-        )
+            JSON.stringify({ success: false, error: { code: "SERVER_ERROR", message: "boom" } }),
+            { status: 500, headers: { "content-type": "application/json" } },
+          )
         : categoriesListResponse(sampleCategories);
     });
 

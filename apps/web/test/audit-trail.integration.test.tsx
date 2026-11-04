@@ -90,7 +90,7 @@ function mockFetch(
 ): typeof fetch {
   const withSidebar = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> =>
     isCategoriesRequest(input) ? emptyCategoriesResponse() : handler(input, init);
-  return Object.assign(withSidebar, { preconnect: (): void => { } });
+  return Object.assign(withSidebar, { preconnect: (): void => {} });
 }
 
 function auditPageResponse(
@@ -343,17 +343,17 @@ describe("Audit Trail Feature (FE-S4-02 / AC-12.01)", () => {
       calls += 1;
       return calls <= 2
         ? new Response(
-          JSON.stringify({ success: false, error: { code: "SERVER_ERROR", message: "private" } }),
-          {
-            status: 500,
-            headers: { "content-type": "application/json" },
-          },
-        )
+            JSON.stringify({ success: false, error: { code: "SERVER_ERROR", message: "private" } }),
+            {
+              status: 500,
+              headers: { "content-type": "application/json" },
+            },
+          )
         : auditPageResponse(sampleAuditEvents, {
-          page: 1,
-          limit: 10,
-          total: sampleAuditEvents.length,
-        });
+            page: 1,
+            limit: 10,
+            total: sampleAuditEvents.length,
+          });
     });
     renderAuditTrail(headOfTeamSession);
     expect(await screen.findByText("Riwayat unduhan gagal dimuat.")).toBeTruthy();
