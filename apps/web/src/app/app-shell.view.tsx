@@ -109,7 +109,7 @@ export function AppShell({ children, roleExtras }: AppShellProps): React.JSX.Ele
                     }
                   >
                     <PermissionsIcon />
-                    <span>Permissions</span>
+                    <span>Permission category</span>
                   </NavLink>
                 </>
               )}

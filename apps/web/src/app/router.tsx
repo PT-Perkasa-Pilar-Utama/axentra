@@ -8,6 +8,7 @@ import { DocumentDetailView } from "../features/document-detail/document-detail.
 import { LoginPage } from "../features/auth/login.view";
 import { ProtectedRoute } from "../features/auth/protected-route.view";
 import { AuditTrailView } from "../features/audit-trail/audit-trail.view";
+import { PermissionCategoriesView } from "../features/permission-categories/permission-categories.view";
 
 export const router = createBrowserRouter([
   {
@@ -39,6 +40,14 @@ export const router = createBrowserRouter([
         element: (
           <AppShell>
             <AuditTrailView />
+          </AppShell>
+        ),
+      },
+      {
+        path: "/permission-categories",
+        element: (
+          <AppShell>
+            <PermissionCategoriesView />
           </AppShell>
         ),
       },
