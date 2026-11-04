@@ -1,13 +1,24 @@
-import { permissionCategorySchema, type PermissionCategory } from "@axentra/shared";
+import {
+  PERMISSION_CATEGORIES_DEFAULT_LIMIT,
+  PERMISSION_CATEGORIES_MAX_LIMIT,
+  permissionCategorySchema,
+  type PermissionCategory,
+} from "@axentra/shared";
 import { z } from "zod";
 import { apiRequest } from "../../lib/api-client";
 
 export type PermissionCategoryItem = PermissionCategory;
 
+export const PERMISSION_CATEGORIES_MIN_LIMIT = 1;
 export const permissionCategoryListSchema = z.array(permissionCategorySchema);
 
-export async function listPermissionCategories(limit = 50): Promise<PermissionCategoryItem[]> {
-  const boundedLimit = Math.min(100, Math.max(1, Math.floor(limit)));
+export async function listPermissionCategories(
+  limit: number = PERMISSION_CATEGORIES_DEFAULT_LIMIT,
+): Promise<PermissionCategoryItem[]> {
+  const boundedLimit = Math.min(
+    PERMISSION_CATEGORIES_MAX_LIMIT,
+    Math.max(PERMISSION_CATEGORIES_MIN_LIMIT, Math.floor(limit)),
+  );
   const params = new URLSearchParams({ limit: String(boundedLimit) });
   return apiRequest(`/permission-categories?${params.toString()}`, permissionCategoryListSchema);
 }

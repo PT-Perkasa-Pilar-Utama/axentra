@@ -5,6 +5,9 @@ import {
 } from "./permission-categories.presenter";
 import "./permission-categories.css";
 
+export const PERMISSION_CATEGORIES_SKELETON_ROW_COUNT = 6;
+export const PERMISSION_CATEGORIES_PAGE_TITLE = "Permission category";
+
 export type PermissionCategoriesViewProps = {
   presenter?: PermissionCategoriesPresenter;
 };
@@ -17,10 +20,10 @@ export function PermissionCategoriesView({
 
   return (
     <>
-      <title>Permission Category | Axentra</title>
+      <title>{`${PERMISSION_CATEGORIES_PAGE_TITLE} | Axentra`}</title>
       <div className="permission-categories-content" data-testid="permission-categories-page">
         <header className="permission-categories__header">
-          <h1>Permission Category</h1>
+          <h1>{PERMISSION_CATEGORIES_PAGE_TITLE}</h1>
         </header>
 
         {presenter.toggleError && (
@@ -38,7 +41,7 @@ export function PermissionCategoriesView({
 
         {presenter.isLoading && (
           <div aria-busy="true" className="permission-categories__skeleton-list" role="status">
-            {Array.from({ length: 6 }).map((_, index) => (
+            {Array.from({ length: PERMISSION_CATEGORIES_SKELETON_ROW_COUNT }).map((_, index) => (
               <div
                 className="permission-categories__skeleton motion-safe:animate-pulse"
                 key={`skeleton-${index}`}

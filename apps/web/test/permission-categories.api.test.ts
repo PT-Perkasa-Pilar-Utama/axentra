@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
+  PERMISSION_CATEGORIES_DEFAULT_LIMIT,
+  PERMISSION_CATEGORIES_MAX_LIMIT,
+} from "@axentra/shared";
+import {
+  PERMISSION_CATEGORIES_MIN_LIMIT,
   listPermissionCategories,
   updatePermissionCategory,
 } from "../src/features/permission-categories/permission-categories.api";
@@ -38,7 +43,7 @@ describe("permissionCategories API", () => {
 
     const url = new URL(requestUrl, "http://localhost");
     expect(url.pathname).toBe("/api/v1/permission-categories");
-    expect(url.searchParams.get("limit")).toBe("50");
+    expect(url.searchParams.get("limit")).toBe(String(PERMISSION_CATEGORIES_DEFAULT_LIMIT));
     expect(result).toEqual([validCategory]);
   });
 
@@ -57,10 +62,10 @@ describe("permissionCategories API", () => {
     );
 
     await listPermissionCategories(0);
-    expect(requestedLimit).toBe("1");
+    expect(requestedLimit).toBe(String(PERMISSION_CATEGORIES_MIN_LIMIT));
 
-    await listPermissionCategories(200);
-    expect(requestedLimit).toBe("100");
+    await listPermissionCategories(PERMISSION_CATEGORIES_MAX_LIMIT + 100);
+    expect(requestedLimit).toBe(String(PERMISSION_CATEGORIES_MAX_LIMIT));
   });
 
   test("sends PATCH request with downloadEnabled boolean payload", async () => {

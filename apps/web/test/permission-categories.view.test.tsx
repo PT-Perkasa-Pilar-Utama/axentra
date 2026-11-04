@@ -119,7 +119,7 @@ describe("Permission Categories Feature (FE-S4-03 / AC-13.01)", () => {
 
     renderPermissionCategories(headOfTeamSession);
 
-    expect(await screen.findByRole("heading", { name: "Permission Category" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Permission category" })).toBeTruthy();
     expect(screen.getByText("Reporting")).toBeTruthy();
     expect(screen.getByText("Analytics")).toBeTruthy();
     const categoryList = screen.getByRole("list", { name: "Daftar izin kategori dokumen" });
