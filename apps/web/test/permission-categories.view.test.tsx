@@ -71,10 +71,25 @@ function makeQueryClient(): QueryClient {
   });
 }
 
+function isCategoriesRequest(input: RequestInfo | URL): boolean {
+  return new URL(String(input), "http://localhost").pathname.endsWith("/categories");
+}
+
+// Sidebar Head of Team ikut memuat kategori. Dijawab di sini agar tidak mengganggu
+// hitungan request dan respons error yang dimaksudkan untuk endpoint yang diuji.
+function emptyCategoriesResponse(): Response {
+  return new Response(JSON.stringify({ success: true, data: [] }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+}
+
 function mockFetch(
   handler: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
 ): typeof fetch {
-  return Object.assign(handler, { preconnect: (): void => {} });
+  const withSidebar = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> =>
+    isCategoriesRequest(input) ? emptyCategoriesResponse() : handler(input, init);
+  return Object.assign(withSidebar, { preconnect: (): void => {} });
 }
 
 function categoriesListResponse(items: CategorySummary[]): Response {
