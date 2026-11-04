@@ -230,6 +230,35 @@ describe("Analytics Dashboard Integration (FE-S4-01 / AC-11.01, AC-11.02)", () =
     expect(within(card).getByText("1.284")).toBeTruthy();
   });
 
+  test("403 shows an error without retrying or leaking server details", async () => {
+    const api = mockApi(() =>
+      jsonResponse({ success: false, error: { code: "FORBIDDEN", message: "private" } }, 403),
+    );
+
+    await act(async () => {
+      renderAnalytics(headSession);
+    });
+
+    const alert = await within(analyticsRegion()).findByRole("alert");
+    expect(alert.textContent).toContain("Data analitik gagal dimuat.");
+    expect(screen.queryByText("private")).toBeNull();
+    expect(api.analyticsRequests).toBe(1);
+  });
+
+  test("retries a transient 500 once before showing the error", async () => {
+    const api = mockApi(() =>
+      jsonResponse({ success: false, error: { code: "SERVER_ERROR", message: "private" } }, 500),
+    );
+
+    await act(async () => {
+      renderAnalytics(headSession);
+    });
+
+    const alert = await within(analyticsRegion()).findByRole("alert");
+    expect(alert.textContent).toContain("Data analitik gagal dimuat.");
+    expect(api.analyticsRequests).toBe(2);
+  });
+
   test("renders inside the shared shell with the Head of Team menu and Analitik active", async () => {
     mockApi(() => jsonResponse({ success: true, data: summary }));
 

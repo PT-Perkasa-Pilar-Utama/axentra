@@ -11,7 +11,6 @@ const DOCUMENT_TITLE_SUFFIX = "Axentra";
 export type AppShellProps = {
   role: ShellRole;
   title: string;
-  subtitle?: string | undefined;
   /** Konten kanan header, misalnya pencarian. */
   actions?: React.ReactNode;
   /** Slot sidebar khusus role, misalnya CategoryNavigationView. */
@@ -28,7 +27,6 @@ const SHELL_BASE_CLASS = "app-shell min-h-[100dvh] bg-[#f0f2f4] text-[#252930]";
 export function AppShell({
   role,
   title,
-  subtitle,
   actions,
   sidebarExtras,
   className,
@@ -44,8 +42,11 @@ export function AppShell({
     >
       <title>{`${title} | ${DOCUMENT_TITLE_SUFFIX}`}</title>
       <div className="grid min-h-[100dvh] grid-cols-1 md:grid-cols-[18.75rem_minmax(0,1fr)]">
-        <aside className="dashboard-sidebar flex h-full flex-col justify-between">
-          <div className="flex flex-col gap-4">
+        {/* Dari md ke atas sidebar setinggi layar: menu dan kategori scroll di dalamnya,
+            badge sesi tetap terlihat di dasar. */}
+        <aside className="dashboard-sidebar flex flex-col justify-between">
+          {" "}
+          <div className="flex min-h-0 flex-col gap-4 md:flex-1 md:overflow-y-auto">
             <div className="dashboard-sidebar-brand">
               <img src={perkasaLogo} alt="PERKASA" className="dashboard-sidebar-logo" />
             </div>
@@ -69,17 +70,14 @@ export function AppShell({
             </nav>
             {sidebarExtras}
           </div>
-          <div className="border-t border-[var(--sidebar-divider,#454a52)] pt-4">
+          <div className="shrink-0 border-t border-[var(--sidebar-divider,#454a52)] pt-4">
             <UserSessionBadge />
           </div>
         </aside>
 
         <div className="min-w-0 px-4 sm:px-6 md:px-4" data-testid={testId}>
           <header className="flex min-h-[4.5rem] items-center justify-between gap-4 py-4">
-            <div className="min-w-0">
-              <h1 className="text-lg font-semibold leading-none">{title}</h1>
-              {subtitle && <p className="mt-1.5 text-sm text-[#5b626b]">{subtitle}</p>}
-            </div>
+            <h1 className="text-lg font-semibold leading-none">{title}</h1>
             {actions}
           </header>
 

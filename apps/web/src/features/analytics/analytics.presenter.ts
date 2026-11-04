@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { createTransientRetry } from "../../lib/query-retry";
 import { getAnalyticsSummary } from "./analytics.api";
 import type { AnalyticsSummary } from "./analytics.api";
 
@@ -7,6 +8,8 @@ export const ANALYTICS_QUERY_KEY = ["analytics", "summary"] as const;
 
 const ANALYTICS_STALE_TIME_MS = 30 * 1000;
 const ANALYTICS_RETRY_COUNT = 1;
+
+const retryAnalytics = createTransientRetry(ANALYTICS_RETRY_COUNT);
 
 export type AnalyticsPresenter = {
   summary?: AnalyticsSummary | undefined;
@@ -22,7 +25,7 @@ export function useAnalyticsPresenter(): AnalyticsPresenter {
     queryKey: ANALYTICS_QUERY_KEY,
     queryFn: getAnalyticsSummary,
     staleTime: ANALYTICS_STALE_TIME_MS,
-    retry: ANALYTICS_RETRY_COUNT,
+    retry: retryAnalytics,
   });
 
   const retry = useCallback(async (): Promise<void> => {
