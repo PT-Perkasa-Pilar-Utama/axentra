@@ -52,17 +52,19 @@ documents (1) <--- (1)    document_files
 
 The central business record for an uploaded document.
 
-| Column                         | Type                | Constraints                              | Description                                                                                                                                                    |
-| ------------------------------ | ------------------- | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `id`                           | `uuid`              | Primary Key, default random              | Document identifier                                                                                                                                            |
-| `title`                        | `text`              | NOT NULL                                 | Document title (defaults to filename on upload)                                                                                                                |
-| `category_id`                  | `uuid`              | FK -> `categories.id` ON DELETE SET NULL | Assigned category (null if uncategorized)                                                                                                                      |
-| `processing_status`            | `processing_status` | NOT NULL, DEFAULT `'queued'`             | Current processing status                                                                                                                                      |
-| `error_message`                | `text`              | Nullable                                 | Error message if processing fails                                                                                                                              |
-| `processing_recovery_attempts` | `integer`           | NOT NULL, DEFAULT `0`                    | Recovery attempts counted for this document. After `MAX_PROCESSING_RECOVERY_ATTEMPTS` (3), the document is marked `failed` (see `api-specs/04-processing.md`). |
-| `created_at`                   | `timestamptz`       | NOT NULL, default now()                  | Creation timestamp                                                                                                                                             |
-| `updated_at`                   | `timestamptz`       | NOT NULL, default now()                  | Last modification timestamp                                                                                                                                    |
-| `deleted_at`                   | `timestamptz`       | Nullable                                 | Soft-delete timestamp (null when active)                                                                                                                       |
+| Column                         | Type                | Constraints                                   | Description                                                                                                                                                                                                               |
+| ------------------------------ | ------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                           | `uuid`              | Primary Key, default random                   | Document identifier                                                                                                                                                                                                       |
+| `title`                        | `text`              | NOT NULL                                      | Document title (defaults to filename on upload)                                                                                                                                                                           |
+| `category_id`                  | `uuid`              | FK -> `categories.id` ON DELETE SET NULL      | Assigned category (null if uncategorized)                                                                                                                                                                                 |
+| `processing_status`            | `processing_status` | NOT NULL, DEFAULT `'queued'`                  | Current processing status                                                                                                                                                                                                 |
+| `error_message`                | `text`              | Nullable                                      | Error message if processing fails                                                                                                                                                                                         |
+| `processing_recovery_attempts` | `integer`           | NOT NULL, DEFAULT `0`                         | Recovery attempts counted for this document. After `MAX_PROCESSING_RECOVERY_ATTEMPTS` (3), the document is marked `failed` (see `api-specs/04-processing.md`).                                                            |
+| `created_at`                   | `timestamptz`       | NOT NULL, default now()                       | Creation timestamp                                                                                                                                                                                                        |
+| `updated_at`                   | `timestamptz`       | NOT NULL, default now()                       | Last modification timestamp                                                                                                                                                                                               |
+| `deleted_at`                   | `timestamptz`       | Nullable                                      | Soft-delete timestamp (null when active)                                                                                                                                                                                  |
+| `uploaded_by`                  | `uuid`              | Nullable, FK -> `users.id` ON DELETE SET NULL | Planned (DB-S4-01). Uploader. Legacy rows have no recorded uploader and stay `null` (usulan, see O8 in [09-admin.md](../api-specs/09-admin.md))                                                                           |
+| `archived_at`                  | `timestamptz`       | Nullable                                      | Planned (DB-S4-01). Archive timestamp (null when not archived). Archived documents are hidden from Member Team and Head of Team (see [03-documents.md](../api-specs/03-documents.md#archived-documents-planned-be-s4-07)) |
 
 **Indexes:**
 
@@ -206,15 +208,16 @@ Many-to-many association between documents and Smart Tags.
 
 The identity persistence table storing user credentials and role assignments.
 
-| Column          | Type          | Constraints                 | Description                                        |
-| --------------- | ------------- | --------------------------- | -------------------------------------------------- |
-| `id`            | `uuid`        | Primary Key, default random | Unique user identifier                             |
-| `email`         | `text`        | NOT NULL                    | Unique user email address                          |
-| `name`          | `text`        | Nullable                    | Display name (defaults to email if unprovided)     |
-| `password_hash` | `text`        | NOT NULL                    | Argon2id password hash                             |
-| `role`          | `user_role`   | NOT NULL                    | User role (`member_team`, `head_of_team`, `admin`) |
-| `created_at`    | `timestamptz` | NOT NULL, default now()     | Record creation timestamp                          |
-| `updated_at`    | `timestamptz` | NOT NULL, default now()     | Last update timestamp                              |
+| Column          | Type          | Constraints                                                | Description                                                                                                            |
+| --------------- | ------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `id`            | `uuid`        | Primary Key, default random                                | Unique user identifier                                                                                                 |
+| `email`         | `text`        | NOT NULL                                                   | Unique user email address                                                                                              |
+| `name`          | `text`        | Nullable                                                   | Display name (defaults to email if unprovided)                                                                         |
+| `password_hash` | `text`        | NOT NULL                                                   | Argon2id password hash                                                                                                 |
+| `role`          | `user_role`   | NOT NULL                                                   | User role (`member_team`, `head_of_team`, `admin`)                                                                     |
+| `created_at`    | `timestamptz` | NOT NULL, default now()                                    | Record creation timestamp                                                                                              |
+| `updated_at`    | `timestamptz` | NOT NULL, default now()                                    | Last update timestamp                                                                                                  |
+| `status`        | `text`        | NOT NULL, DEFAULT `'active'`, CHECK `active` or `inactive` | Planned (DB-S4-01). Account status. Inactive accounts cannot log in (see [09-authentication.md](09-authentication.md)) |
 
 **Indexes:**
 
@@ -361,6 +364,7 @@ Persisted PostgreSQL enum and shared contract:
 ## Deletion and Cascade Policy
 
 - **Soft Delete on Documents:** `documents.deleted_at` tracks soft deletion. Queries filter by `deleted_at IS NULL`.
+- **Archive on Documents (Planned, DB-S4-01):** `documents.archived_at` marks an archived document. It is not a delete. Member Team and Head of Team queries also filter by `archived_at IS NULL`. Admin lists include archived documents.
 - **Hard Cascade:** If a `documents` row is deleted, foreign keys with `ON DELETE CASCADE` automatically clean up:
   - `document_files`
   - `document_content_hashes`

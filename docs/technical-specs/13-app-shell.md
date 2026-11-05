@@ -8,12 +8,12 @@ sidebar, a role-specific layout, or a copy of the existing sidebar markup.
 
 ## Source of truth
 
-| What               | Where                                                                                                                                                                                                    |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Current shell code | `apps/web/src/app/member-team-dashboard.page.tsx` (`<aside className="dashboard-sidebar">`) and `apps/web/src/features/categories/categories.css`                                                        |
-| Visual design      | Figma "Axentra – Admin (Sprint 4)": <https://www.figma.com/design/ex7fHDD12UjBHNkI2u10U0>                                                                                                                |
-| Shell tokens       | `--sidebar-surface: #25282e`, `--sidebar-text: #f7f8fa`, `--sidebar-muted: #b8bfc8`, `--sidebar-divider: #454a52`, `--sidebar-accent: #65a448`; page background `#f0f2f4`; font Exo 2 (`typography.css`) |
-| Role names         | [09-authentication.md](09-authentication.md): `member_team`, `head_of_team`, `admin`                                                                                                                     |
+| What               | Where                                                                                                                                                                                                                |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Current shell code | `apps/web/src/app/app-shell.view.tsx` (shell), `apps/web/src/app/app-shell.menu.ts` (`ROLE_MENU`, `resolveShellRole`), `apps/web/src/app/app-shell-icons.tsx`, and `apps/web/src/features/categories/categories.css` |
+| Visual design      | Figma "Axentra – Admin (Sprint 4)": <https://www.figma.com/design/ex7fHDD12UjBHNkI2u10U0>                                                                                                                            |
+| Shell tokens       | `--sidebar-surface: #25282e`, `--sidebar-text: #f7f8fa`, `--sidebar-muted: #b8bfc8`, `--sidebar-divider: #454a52`, `--sidebar-accent: #65a448`; page background `#f0f2f4`; font Exo 2 (`typography.css`)             |
+| Role names         | [09-authentication.md](09-authentication.md): `member_team`, `head_of_team`, `admin`                                                                                                                                 |
 
 If the Figma file and the running Member Team dashboard disagree on the shell, the running
 dashboard wins. The Figma file wins only for the Admin page content.
@@ -61,6 +61,8 @@ The Admin home label is **Dashboard**, not "Dasbor Admin".
 
 ## Ownership
 
-FE-S4-07 (Azis) extracts `AppShell` from the Member Team dashboard and adds the role menu config.
-The other Sprint 4 FE cards (FE-S4-01 to FE-S4-06) render inside it. Until FE-S4-07 is merged, those
-cards build their page content as a view component, so it can drop into the shell without rework.
+`AppShell` and the role menu config (`ROLE_MENU` in `app-shell.menu.ts`) are on `dev`. They were
+delivered with FE-S4-01 to FE-S4-03. FE-S4-07 (Azis) adds the `admin` role to the config, the Admin
+routes, and the Admin redirect after login (see
+[textual-design-admin.md](../business/textual-design-admin.md)). FE-S4-04 to FE-S4-06 render their
+pages inside the shell with `role="admin"`.

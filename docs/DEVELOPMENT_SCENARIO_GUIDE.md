@@ -117,7 +117,7 @@ Developers do not pull random backlog items.
 | Frontend                | Azis, Aiman     | Web UI, presenter, and API integration cards assigned in the task breakdown       |
 | Acceptance verification | Card PIC + Arya | Evidence against linked ACs; no dedicated QA role                                 |
 
-Foundation v1.0.0 ships:
+Foundation v1.1.0 ships:
 
 - Bun workspace and package boundaries.
 - React/Vite Web shell.

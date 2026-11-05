@@ -87,15 +87,33 @@ OK      GET   /permission-categories
 OK      PATCH /permission-categories/:categoryId
 ```
 
+### Admin (Sprint 4, Planned)
+
+Source: `docs/proposals/admin-role-proposal.md` (PROP-ADM-01, 02, 03, and 05). Not implemented yet. Details and open decisions are in [09-admin.md](09-admin.md).
+
+```text
+PLANNED GET    /admin/summary
+PLANNED GET    /admin/users
+PLANNED PATCH  /admin/users/:id/status
+PLANNED GET    /admin/documents
+PLANNED GET    /admin/documents/:id
+PLANNED POST   /admin/documents/:id/archive
+PLANNED POST   /admin/documents/:id/unarchive
+PLANNED DELETE /admin/documents/:id
+```
+
+`GET /audit/downloads` will also accept role `admin` (`BE-S4-08`), and the preview and download routes will stop accepting it. The second change is decided (proposal questions 7 and 9, 2026-11-04) and is not blocked.
+
 ## Documents
 
-| File                                                         | Purpose                                                        |
-| ------------------------------------------------------------ | -------------------------------------------------------------- |
-| [01-conventions.md](01-conventions.md)                       | API envelope, error, pagination, and naming conventions        |
-| [02-authentication.md](02-authentication.md)                 | Technical authentication prerequisite                          |
-| [03-documents.md](03-documents.md)                           | BA document upload, duplicate, preview, download, related docs |
-| [04-processing.md](04-processing.md)                         | OCR/AI metadata, Smart Tags, and auto-category processing      |
-| [05-search-tags-categories.md](05-search-tags-categories.md) | Search, Top Tags, tag filtering, categories                    |
-| [06-analytics.md](06-analytics.md)                           | Head of Team analytics                                         |
-| [07-audit-permissions.md](07-audit-permissions.md)           | Download audit trail and category download permission          |
-| [08-system.md](08-system.md)                                 | Implemented health and readiness endpoints                     |
+| File                                                         | Purpose                                                              |
+| ------------------------------------------------------------ | -------------------------------------------------------------------- |
+| [01-conventions.md](01-conventions.md)                       | API envelope, error, pagination, and naming conventions              |
+| [02-authentication.md](02-authentication.md)                 | Technical authentication prerequisite                                |
+| [03-documents.md](03-documents.md)                           | BA document upload, duplicate, preview, download, related docs       |
+| [04-processing.md](04-processing.md)                         | OCR/AI metadata, Smart Tags, and auto-category processing            |
+| [05-search-tags-categories.md](05-search-tags-categories.md) | Search, Top Tags, tag filtering, categories                          |
+| [06-analytics.md](06-analytics.md)                           | Head of Team analytics                                               |
+| [07-audit-permissions.md](07-audit-permissions.md)           | Download audit trail and category download permission                |
+| [08-system.md](08-system.md)                                 | Implemented health and readiness endpoints                           |
+| [09-admin.md](09-admin.md)                                   | Admin summary, account management, and document management (Planned) |
