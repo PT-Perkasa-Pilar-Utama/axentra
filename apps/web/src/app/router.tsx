@@ -10,6 +10,7 @@ import { LoginPage } from "../features/auth/login.view";
 import { ProtectedRoute } from "../features/auth/protected-route.view";
 import { AuditTrailPage } from "./audit-trail.page";
 import { PermissionCategoriesPage } from "./permission-categories.page";
+import { AdminUsersPage } from "./admin-users.page";
 export const router = createBrowserRouter([
   {
     path: "/",
@@ -42,6 +43,15 @@ export const router = createBrowserRouter([
       {
         path: "/permission-categories",
         element: <PermissionCategoriesPage />,
+      },
+    ],
+  },
+  {
+    element: <ProtectedRoute allowedRoles={["admin"]} />,
+    children: [
+      {
+        path: "/admin/users",
+        element: <AdminUsersPage />,
       },
     ],
   },
