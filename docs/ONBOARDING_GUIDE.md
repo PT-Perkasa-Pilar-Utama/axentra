@@ -9,7 +9,7 @@
 
 For new developers joining Axentra. Read this before writing code.
 
-Axentra is currently at **Foundation v1.0.0**. The repository contains the approved engineering
+Axentra is currently at **Foundation v1.1.0**. The repository contains the approved engineering
 base for Web, API, Worker, database boundary, queue, storage, observability, CI, and documentation.
 Sprint 1-3 business routes and tables (AC-01.01 to AC-10.01) exist on `dev`. Sprint 4 (AC-11.01 to
 AC-13.01) is still planned.

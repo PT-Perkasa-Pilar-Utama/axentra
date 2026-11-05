@@ -29,7 +29,7 @@ conflict and cite both dates. Do not pick one silently.
 ## Project Overview
 
 **Axentra** is an internal Document Management System (DMS). The repository currently delivers
-**Foundation v1.0.0**: engineering infrastructure and a platform-status surface. The BA flows
+**Foundation v1.1.0**: engineering infrastructure and a platform-status surface. The BA flows
 US-01 through US-13 are documented and planned; they are not implemented unless an assigned sprint
 card explicitly brings them into scope.
 
@@ -158,7 +158,7 @@ axentra/
   endpoints, requirements, or third-party provider behavior.
 - OCR/AI and hosted infrastructure integrations remain behind an internal interface until an
   approved provider and card exist.
-- Foundation v1.0.0 contains no business tables or partial mock business workflows.
+- Foundation v1.1.0 contains no business tables or partial mock business workflows.
 
 ### Code Quality
 
@@ -339,7 +339,7 @@ observed result). See [docs/E2E_TESTING.md](docs/E2E_TESTING.md).
 If context is compacted, re-confirm:
 
 - [ ] This is **Axentra**, not another project; use Hono API + React/Vite Web + BullMQ Worker.
-- [ ] Foundation v1.0.0 is infrastructure-first. Do not quietly implement unassigned BA features.
+- [ ] Foundation v1.1.0 is infrastructure-first. Do not quietly implement unassigned BA features.
 - [ ] The authoritative contract is in `docs/`, not an assumed UI, endpoint, role, or schema.
 - [ ] Team allocation is Arya/Sami for Backend and Azis/Aiman for Frontend; no separate PM or QA.
 - [ ] Each card has a PIC; acceptance verification is evidence by the PIC and sign-off by Arya.

@@ -2,7 +2,7 @@
 
 Source: BA user stories US-01, US-02, US-03, US-07, US-08, US-09, US-10.
 
-Status: every route below is implemented on `dev` (Sprint 1-3). Foundation v1.0.0 contains only the health endpoints (`/api/v1/health` and `/api/v1/health/ready`); see [README.md](../../README.md).
+Status: every route below is implemented on `dev` (Sprint 1-3). Foundation v1.1.0 contains only the health endpoints (`/api/v1/health` and `/api/v1/health/ready`); see [README.md](../../README.md).
 
 ## Endpoints
 

@@ -39,7 +39,7 @@
 
 ## Implemented Sprint 1-3 BA Modules (on `dev`)
 
-These modules are implemented on `dev`. They are not part of Foundation v1.0.0.
+These modules are implemented on `dev`. They are not part of Foundation v1.1.0.
 
 | Module               | Status                             | Location                                            | Notes                                                                                                                                                                   |
 | -------------------- | ---------------------------------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
