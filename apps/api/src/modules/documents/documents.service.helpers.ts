@@ -51,6 +51,8 @@ function toDetailRecord(item: CreateDocumentBatchItem): DocumentDetailRecord {
       createdAt: now,
       updatedAt: now,
       deletedAt: null,
+      uploadedBy: null,
+      archivedAt: null,
     },
     file: {
       id: randomUUID(),

@@ -14,6 +14,7 @@ import { relations, sql } from "drizzle-orm";
 import { categories } from "./categories";
 import { processingStatusEnum } from "./enums";
 import { documentSmartTags } from "./tags";
+import { users } from "./users";
 
 export const documents = pgTable(
   "documents",
@@ -27,11 +28,14 @@ export const documents = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true, mode: "date" }),
+    uploadedBy: uuid("uploaded_by").references(() => users.id, { onDelete: "set null" }),
+    archivedAt: timestamp("archived_at", { withTimezone: true, mode: "date" }),
   },
   (table) => [
     index("documents_processing_status_idx").on(table.processingStatus),
     index("documents_category_id_idx").on(table.categoryId),
     index("documents_created_at_idx").on(table.createdAt),
+    index("documents_uploaded_by_idx").on(table.uploadedBy),
     index("documents_title_trgm_idx").using("gin", sql`${table.title} gin_trgm_ops`),
   ],
 );

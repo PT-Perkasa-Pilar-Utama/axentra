@@ -43,6 +43,8 @@ const sourceDocument: SourceDocument = {
   createdAt: new Date("2026-09-20T00:00:00.000Z"),
   updatedAt: new Date("2026-09-20T00:00:00.000Z"),
   deletedAt: null,
+  uploadedBy: null,
+  archivedAt: null,
 };
 
 const relatedDocument: RelatedDocument = {

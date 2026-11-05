@@ -66,6 +66,8 @@ function recordFixture(): DocumentDetailRecord {
       createdAt: CREATED_AT,
       updatedAt: CREATED_AT,
       deletedAt: null,
+      uploadedBy: null,
+      archivedAt: null,
     },
     file: {
       id: "44444444-4444-4444-8444-444444444444",
