@@ -17,6 +17,6 @@
 
 ## Pengujian
 
-- Tes unit API (5 tes) dan tes integrasi tampilan/rute (6 tes) lulus memvalidasi tabel akun, konfirmasi nonaktif/aktif, penanganan error 422, proteksi rute peran `admin`, serta pencegahan akses peran lain.
+- Tes unit API (5 tes) dan tes integrasi tampilan/rute (8 tes) lulus memvalidasi tabel akun, konfirmasi nonaktif/aktif, penanganan error mutasi (422 dan error umum), retry setelah daftar gagal dimuat, proteksi rute peran `admin`, serta pencegahan akses peran lain.
 - Walkthrough live daftar akun, penonaktifan/pengaktifan, login akun nonaktif, dan pencabutan sesi: **Blocked**, menunggu backend dan akun uji.
 - Pratinjau visual komponen aktual dengan data sintetis (bukan data API, belum diukur pixel-perfect): [daftar akun](account-list-synthetic.png) dan [dialog konfirmasi](account-deactivate-confirm-synthetic.png). Catatan: screenshot sintetis awal diambil saat wrapper menggunakan shell Head of Team sebelum peran admin dengan menu tunggal Manajemen Akun didaftarkan ke konfigurasi menu bersama.

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiClientError } from "../../lib/api-client";
+import { createTransientRetry } from "../../lib/query-retry";
 import {
   ADMIN_USERS_DEFAULT_LIMIT,
   ADMIN_USERS_DEFAULT_PAGE,
@@ -44,8 +45,7 @@ export function useAdminUsersPresenter(): AdminUsersPresenter {
   const query = useQuery({
     queryKey: [...ADMIN_USERS_QUERY_KEY, page],
     queryFn: () => listAdminUsers(page, ADMIN_USERS_DEFAULT_LIMIT),
-    retry: (count, error) =>
-      !(error instanceof ApiClientError && error.status >= 400 && error.status < 500) && count < 1,
+    retry: createTransientRetry(1),
   });
 
   const mutation = useMutation({

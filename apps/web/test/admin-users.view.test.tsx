@@ -238,6 +238,61 @@ describe("Admin Users Feature (FE-S4-05 / PROP-ADM-AC-02)", () => {
     ).toBeTruthy();
   });
 
+  test("shows an error when a status update fails", async () => {
+    globalThis.fetch = Object.assign(
+      async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        if (init?.method === "PATCH") {
+          return Response.json(
+            { success: false, error: { code: "INTERNAL_ERROR", message: "server failure" } },
+            { status: 500 },
+          );
+        }
+        return Response.json({
+          success: true,
+          data: [sampleMember],
+          meta: { page: 1, limit: 20, total: 1 },
+        });
+      },
+      { preconnect: (): void => {} },
+    );
+
+    renderAdminUsersPage(adminSession);
+    fireEvent.click(await screen.findByRole("button", { name: "Nonaktifkan akun Budi Santoso" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Nonaktifkan" }));
+
+    expect(await within(dialog).findByRole("alert")).toBeTruthy();
+    expect(within(dialog).getByText("Status akun gagal diubah. Silakan coba lagi.")).toBeTruthy();
+    expect(screen.getByText("Aktif")).toBeTruthy();
+  });
+
+  test("allows retry after a transient list error", async () => {
+    let requests = 0;
+    globalThis.fetch = Object.assign(
+      async (): Promise<Response> => {
+        requests += 1;
+        if (requests <= 2) {
+          return Response.json(
+            { success: false, error: { code: "INTERNAL_ERROR", message: "server failure" } },
+            { status: 500 },
+          );
+        }
+        return Response.json({
+          success: true,
+          data: [sampleMember],
+          meta: { page: 1, limit: 20, total: 1 },
+        });
+      },
+      { preconnect: (): void => {} },
+    );
+
+    renderAdminUsersPage(adminSession);
+    expect(await screen.findByText("Daftar akun gagal dimuat.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Coba lagi" }));
+    expect(await screen.findByText("Budi Santoso")).toBeTruthy();
+    expect(requests).toBe(3);
+  });
+
   test("blocks member_team from accessing /admin/users", async () => {
     renderAdminUsersPage(memberSession);
 
