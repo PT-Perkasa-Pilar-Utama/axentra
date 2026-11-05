@@ -141,14 +141,17 @@ describe("GET /api/v1/documents — BE-S1-06", () => {
     const service = createDocumentService({ queue });
     const bytes = new TextEncoder().encode("%PDF-1.4\n% laporan\n");
 
-    await service.uploadDocuments([
-      {
-        filename: "laporan.pdf",
-        mimeType: "application/pdf",
-        size: bytes.byteLength,
-        bytes,
-      },
-    ]);
+    await service.uploadDocuments(
+      [
+        {
+          filename: "laporan.pdf",
+          mimeType: "application/pdf",
+          size: bytes.byteLength,
+          bytes,
+        },
+      ],
+      "11111111-1111-4111-8111-111111111111",
+    );
     const listed = await service.listRecentDocuments(1, 20);
 
     expect(listed.items[0]?.filename).toBe("laporan.pdf");
@@ -167,22 +170,28 @@ describe("GET /api/v1/documents — BE-S1-06", () => {
     const olderBytes = new TextEncoder().encode("%PDF-1.4\n% pertama\n");
     const newerBytes = new TextEncoder().encode("%PDF-1.4\n% kedua\n");
 
-    await service.uploadDocuments([
-      {
-        filename: "pertama.pdf",
-        mimeType: "application/pdf",
-        size: olderBytes.byteLength,
-        bytes: olderBytes,
-      },
-    ]);
-    await service.uploadDocuments([
-      {
-        filename: "kedua.pdf",
-        mimeType: "application/pdf",
-        size: newerBytes.byteLength,
-        bytes: newerBytes,
-      },
-    ]);
+    await service.uploadDocuments(
+      [
+        {
+          filename: "pertama.pdf",
+          mimeType: "application/pdf",
+          size: olderBytes.byteLength,
+          bytes: olderBytes,
+        },
+      ],
+      "11111111-1111-4111-8111-111111111111",
+    );
+    await service.uploadDocuments(
+      [
+        {
+          filename: "kedua.pdf",
+          mimeType: "application/pdf",
+          size: newerBytes.byteLength,
+          bytes: newerBytes,
+        },
+      ],
+      "11111111-1111-4111-8111-111111111111",
+    );
     const listed = await service.listRecentDocuments(1, 20);
     const [newest, oldest] = listed.items;
 

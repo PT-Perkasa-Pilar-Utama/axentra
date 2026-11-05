@@ -100,13 +100,16 @@ describe("Account status and document ownership PostgreSQL constraints (DB-S4-01
 
   integrationTest("rejects an account status outside active and inactive", async () => {
     const { client, schema } = readyDatabase();
+    const userId = crypto.randomUUID();
     const email = `status-check-${crypto.randomUUID()}@axentra.invalid`;
+    // Tracked before the insert so cleanup still runs if the CHECK regresses and the row persists.
+    createdUserIds.push(userId);
 
     // Raw SQL bypasses the TypeScript literal union, so the database CHECK is what rejects the value.
     const error = await captureError(
       client.db.execute(
         sql`insert into users (id, email, password_hash, role, status)
-            values (${crypto.randomUUID()}, ${email}, 'not-a-real-hash', 'member_team', 'suspended')`,
+            values (${userId}, ${email}, 'not-a-real-hash', 'member_team', 'suspended')`,
       ),
     );
 
@@ -121,9 +124,12 @@ describe("Account status and document ownership PostgreSQL constraints (DB-S4-01
 
   integrationTest("rejects a document uploader that does not reference a user", async () => {
     const { client, schema } = readyDatabase();
+    const orphanDocumentId = crypto.randomUUID();
+    createdDocumentIds.push(orphanDocumentId);
 
     const error = await captureError(
       client.db.insert(schema.documents).values({
+        id: orphanDocumentId,
         title: `orphan-uploader-${crypto.randomUUID()}`,
         uploadedBy: crypto.randomUUID(),
       }),
@@ -149,6 +155,7 @@ describe("Account status and document ownership PostgreSQL constraints (DB-S4-01
           .returning({ id: schema.users.id }),
         "insert uploader",
       );
+      createdUserIds.push(uploader.id);
       const document = firstOrThrow(
         await client.db
           .insert(schema.documents)
@@ -202,5 +209,63 @@ describe("Account status and document ownership PostgreSQL constraints (DB-S4-01
       "select archived document",
     );
     expect(archived.archivedAt).toEqual(archivedAt);
+  });
+
+  integrationTest(
+    "stores the uploader on the document row written by the upload repository",
+    async () => {
+      const { client, schema } = readyDatabase();
+      const { DocumentRepository } =
+        await import("../apps/api/src/modules/documents/documents.repository");
+
+      const uploader = firstOrThrow(
+        await client.db
+          .insert(schema.users)
+          .values({
+            email: `batch-uploader-${crypto.randomUUID()}@axentra.invalid`,
+            passwordHash: "not-a-real-hash",
+            role: "member_team",
+          })
+          .returning({ id: schema.users.id }),
+        "insert uploader",
+      );
+      createdUserIds.push(uploader.id);
+
+      const documentId = crypto.randomUUID();
+      createdDocumentIds.push(documentId);
+      await new DocumentRepository(client.db).saveDocumentBatch([
+        {
+          id: documentId,
+          title: "uploader-check.pdf",
+          uploadedBy: uploader.id,
+          storageKey: `documents/${documentId}/uploader-check.pdf`,
+          originalName: "uploader-check.pdf",
+          mimeType: "application/pdf",
+          fileSize: 24,
+          fileExtension: "pdf",
+          contentHash: crypto.randomBytes(32).toString("hex"),
+          hashAlgorithm: "sha256",
+        },
+      ]);
+
+      const stored = firstOrThrow(
+        await client.db
+          .select({ uploadedBy: schema.documents.uploadedBy })
+          .from(schema.documents)
+          .where(eq(schema.documents.id, documentId)),
+        "select uploaded document",
+      );
+      expect(stored.uploadedBy).toBe(uploader.id);
+    },
+  );
+
+  integrationTest("creates the documents_uploaded_by_idx index in PostgreSQL", async () => {
+    const { client } = readyDatabase();
+
+    const rows = await client.db.execute(
+      sql`select indexname from pg_indexes where tablename = 'documents' and indexname = 'documents_uploaded_by_idx'`,
+    );
+
+    expect(JSON.stringify(rows)).toContain("documents_uploaded_by_idx");
   });
 });

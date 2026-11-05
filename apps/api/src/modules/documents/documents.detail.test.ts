@@ -215,9 +215,10 @@ describe("GET /api/v1/documents/:id", () => {
       }),
       upload: async () => {
         const bytes = new TextEncoder().encode(`%PDF-1.4\n% ${filename}\n`);
-        await service.uploadDocuments([
-          { filename, mimeType: "application/pdf", size: bytes.byteLength, bytes },
-        ]);
+        await service.uploadDocuments(
+          [{ filename, mimeType: "application/pdf", size: bytes.byteLength, bytes }],
+          "11111111-1111-4111-8111-111111111111",
+        );
         const listed = await service.listRecentDocuments(1, 20);
         return listed.items.find((item) => item.filename === filename)?.id ?? "";
       },

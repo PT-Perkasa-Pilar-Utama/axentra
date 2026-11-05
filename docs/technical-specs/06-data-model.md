@@ -63,7 +63,7 @@ The central business record for an uploaded document.
 | `created_at`                   | `timestamptz`       | NOT NULL, default now()                       | Creation timestamp                                                                                                                                                                                                               |
 | `updated_at`                   | `timestamptz`       | NOT NULL, default now()                       | Last modification timestamp                                                                                                                                                                                                      |
 | `deleted_at`                   | `timestamptz`       | Nullable                                      | Soft-delete timestamp (null when active)                                                                                                                                                                                         |
-| `uploaded_by`                  | `uuid`              | Nullable, FK -> `users.id` ON DELETE SET NULL | Uploader (DB-S4-01). Legacy rows stay `null`; see the backfill rule below.                                                                                                                                                       |
+| `uploaded_by`                  | `uuid`              | Nullable, FK -> `users.id` ON DELETE SET NULL | Uploader (DB-S4-01). The upload handler sets it from the authenticated user on every new document. Legacy rows stay `null`; see the backfill rule below.                                                                         |
 | `archived_at`                  | `timestamptz`       | Nullable                                      | Archive timestamp (DB-S4-01; set by BE-S4-07). Null when not archived. Archived documents are hidden from Member Team and Head of Team (see [03-documents.md](../api-specs/03-documents.md#archived-documents-planned-be-s4-07)) |
 
 **Indexes:**
@@ -71,7 +71,7 @@ The central business record for an uploaded document.
 - `documents_processing_status_idx` on `(processing_status)`
 - `documents_category_id_idx` on `(category_id)`
 - `documents_created_at_idx` on `(created_at)`
-- `documents_uploaded_by_idx` on `(uploaded_by)` for the foreign key and owner lookups in the Admin document list (DB-S4-01)
+- `documents_uploaded_by_idx` on `(uploaded_by)`. PostgreSQL does not index referencing columns, so this index keeps the `ON DELETE SET NULL` action on `users` from scanning `documents`. It is not used for an owner filter: the Admin list contract has no such filter (see [09-admin.md](../api-specs/09-admin.md)).
 - `documents_title_trgm_idx` GIN on `(title gin_trgm_ops)` for substring search acceleration (BE-S2-05)
 
 No index covers `archived_at`. The archive filter is applied to the `created_at`-ordered list, the same way `deleted_at` is filtered today. Add an index only if BE-S4-07 measurements show it is needed.
@@ -217,16 +217,16 @@ Many-to-many association between documents and Smart Tags.
 
 The identity persistence table storing user credentials and role assignments.
 
-| Column          | Type          | Constraints                                                | Description                                                                                                   |
-| --------------- | ------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `id`            | `uuid`        | Primary Key, default random                                | Unique user identifier                                                                                        |
-| `email`         | `text`        | NOT NULL                                                   | Unique user email address                                                                                     |
-| `name`          | `text`        | Nullable                                                   | Display name (defaults to email if unprovided)                                                                |
-| `password_hash` | `text`        | NOT NULL                                                   | Argon2id password hash                                                                                        |
-| `role`          | `user_role`   | NOT NULL                                                   | User role (`member_team`, `head_of_team`, `admin`)                                                            |
-| `created_at`    | `timestamptz` | NOT NULL, default now()                                    | Record creation timestamp                                                                                     |
-| `updated_at`    | `timestamptz` | NOT NULL, default now()                                    | Last update timestamp                                                                                         |
-| `status`        | `text`        | NOT NULL, DEFAULT `'active'`, CHECK `active` or `inactive` | Account status (DB-S4-01). Inactive accounts cannot log in (see [09-authentication.md](09-authentication.md)) |
+| Column          | Type          | Constraints                                                | Description                                                                                                                               |
+| --------------- | ------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`            | `uuid`        | Primary Key, default random                                | Unique user identifier                                                                                                                    |
+| `email`         | `text`        | NOT NULL                                                   | Unique user email address                                                                                                                 |
+| `name`          | `text`        | Nullable                                                   | Display name (defaults to email if unprovided)                                                                                            |
+| `password_hash` | `text`        | NOT NULL                                                   | Argon2id password hash                                                                                                                    |
+| `role`          | `user_role`   | NOT NULL                                                   | User role (`member_team`, `head_of_team`, `admin`)                                                                                        |
+| `created_at`    | `timestamptz` | NOT NULL, default now()                                    | Record creation timestamp                                                                                                                 |
+| `updated_at`    | `timestamptz` | NOT NULL, default now()                                    | Last update timestamp                                                                                                                     |
+| `status`        | `text`        | NOT NULL, DEFAULT `'active'`, CHECK `active` or `inactive` | Account status (DB-S4-01). Planned (BE-S4-06): inactive accounts are rejected at login (see [09-authentication.md](09-authentication.md)) |
 
 **Indexes:**
 
@@ -362,6 +362,15 @@ Persisted PostgreSQL enum and shared contract:
 | `completed`  | Terminal success; metadata, files, tags, and category are persisted.                                   |
 | `failed`     | Processing or enqueue failed (`error_message` set). Enqueue failure remains recoverable by the worker. |
 
+### Account Status (`users.status`)
+
+Stored as `text` with the CHECK constraint `users_status_check`, not as a PostgreSQL enum. The TypeScript literal union in `packages/db/src/schema/users.ts` and the CHECK values must match; `account-ownership.constraints.test.ts` asserts this.
+
+| Status     | Meaning                                                                    |
+| ---------- | -------------------------------------------------------------------------- |
+| `active`   | Default for every account. The account can sign in.                        |
+| `inactive` | Set by Admin (BE-S4-06, planned). The account must not be able to sign in. |
+
 ### User Role Enum (`user_role`)
 
 Persisted PostgreSQL enum and shared contract:
@@ -377,7 +386,7 @@ Persisted PostgreSQL enum and shared contract:
 ## Deletion and Cascade Policy
 
 - **Soft Delete on Documents:** `documents.deleted_at` tracks soft deletion. Queries filter by `deleted_at IS NULL`.
-- **Archive on Documents (column from DB-S4-01, behavior from BE-S4-07):** `documents.archived_at` marks an archived document. It is not a delete. Member Team and Head of Team queries also filter by `archived_at IS NULL`. Admin lists include archived documents.
+- **Archive on Documents (column from DB-S4-01, behavior planned in BE-S4-07):** `documents.archived_at` marks an archived document. It is not a delete. Planned: Member Team and Head of Team queries will also filter by `archived_at IS NULL`. Planned: Admin lists include archived documents.
 - **Hard Cascade:** If a `documents` row is deleted, foreign keys with `ON DELETE CASCADE` automatically clean up:
   - `document_files`
   - `document_content_hashes`

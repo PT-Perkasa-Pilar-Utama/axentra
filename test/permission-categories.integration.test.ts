@@ -77,6 +77,8 @@ describe("Permission categories API PostgreSQL integration (BE-S4-03, BE-S4-04 /
     database = createDatabaseClient(config.DATABASE_URL);
     assertClientConnectedToDisposableDatabase(database, databaseUrl);
     await db.checkDatabase(database);
+    const { ensureUploaderUser } = await import("./helpers/uploader-fixture");
+    await ensureUploaderUser(database, "22222222-2222-4222-8222-222222222222", "member_team");
   });
 
   afterAll(async () => {

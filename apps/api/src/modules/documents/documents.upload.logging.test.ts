@@ -43,14 +43,17 @@ describe("upload rollback logging (BE-S3-04 B5)", () => {
     const service = createDocumentService({ repository, storage, logger });
 
     await expect(
-      service.uploadDocuments([
-        {
-          filename: "laporan.pdf",
-          mimeType: "application/pdf",
-          size: pdfBytes.byteLength,
-          bytes: pdfBytes,
-        },
-      ]),
+      service.uploadDocuments(
+        [
+          {
+            filename: "laporan.pdf",
+            mimeType: "application/pdf",
+            size: pdfBytes.byteLength,
+            bytes: pdfBytes,
+          },
+        ],
+        "11111111-1111-4111-8111-111111111111",
+      ),
     ).rejects.toThrow("database unavailable");
 
     const output = lines.join("\n");

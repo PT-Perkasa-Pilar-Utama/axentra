@@ -30,6 +30,7 @@ export type UploadOperationDependencies = {
 export async function persistUploadedDocuments(
   dependencies: UploadOperationDependencies,
   files: ReadonlyArray<RawUploadFile>,
+  uploadedBy: string,
 ): Promise<DocumentUploadAcceptedData> {
   const validatedFiles = validateUploadBatchConstraints(files);
   const hashes = contentHashes(files);
@@ -58,6 +59,7 @@ export async function persistUploadedDocuments(
         files[index],
         validatedFiles[index],
         hashes[index],
+        uploadedBy,
       );
       if (stored === undefined) continue;
       uploadedStorageKeys.push(stored.storageKey);
@@ -103,6 +105,7 @@ async function storeUploadItem(
   file: RawUploadFile | undefined,
   validated: ReturnType<typeof validateUploadBatchConstraints>[number] | undefined,
   hash: string | undefined,
+  uploadedBy: string,
 ): Promise<{ storageKey: string; item: CreateDocumentBatchItem } | undefined> {
   if (!file || !validated || !hash) return undefined;
   const documentId = crypto.randomUUID();
@@ -120,6 +123,7 @@ async function storeUploadItem(
     item: {
       id: documentId,
       title: validated.filename,
+      uploadedBy,
       storageKey,
       originalName: validated.filename,
       mimeType: validated.mimeType,

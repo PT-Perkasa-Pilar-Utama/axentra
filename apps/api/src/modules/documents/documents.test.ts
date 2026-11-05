@@ -275,6 +275,7 @@ function createMockRepository(): IDocumentRepository & {
       return items.map((i) => ({
         documentId: i.id,
         title: i.title,
+        uploadedBy: i.uploadedBy,
         originalName: i.originalName,
         storageKey: i.storageKey,
         mimeType: i.mimeType,

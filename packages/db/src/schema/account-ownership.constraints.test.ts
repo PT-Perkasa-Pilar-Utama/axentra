@@ -22,6 +22,16 @@ describe("account status and document ownership schema (DB-S4-01)", () => {
     expect(rendered).toMatch(/in \('active', 'inactive'\)$/);
   });
 
+  it("keeps the CHECK values identical to the users.status enum options", () => {
+    const check = getTableConfig(users).checks.find(
+      (candidate) => candidate.name === "users_status_check",
+    );
+    const rendered = check ? new PgDialect().sqlToQuery(check.value).sql : "";
+    const checkValues = Array.from(rendered.matchAll(/'([^']+)'/g), (match) => match[1]);
+
+    expect(checkValues).toEqual([...getTableColumns(users).status.enumValues]);
+  });
+
   it("links documents.uploaded_by to users with SET NULL and keeps it nullable", () => {
     const uploaderForeignKey = getTableConfig(documents).foreignKeys.find(
       (fk) => getTableName(fk.reference().foreignTable) === getTableName(users),

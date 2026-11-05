@@ -786,6 +786,7 @@ describe("Task BE-S1-04: Duplicate Detection", () => {
           {
             id: crypto.randomUUID(),
             title: "doc.pdf",
+            uploadedBy: "11111111-1111-4111-8111-111111111111",
             storageKey: "documents/key/doc.pdf",
             originalName: "doc.pdf",
             mimeType: "application/pdf",
@@ -856,14 +857,17 @@ describe("Task BE-S1-04: Duplicate Detection", () => {
 
       const pdfBytes = createPdf("test compensation");
       await expect(
-        service.uploadDocuments([
-          {
-            bytes: pdfBytes,
-            filename: "compensate.pdf",
-            mimeType: "application/pdf",
-            size: pdfBytes.length,
-          },
-        ]),
+        service.uploadDocuments(
+          [
+            {
+              bytes: pdfBytes,
+              filename: "compensate.pdf",
+              mimeType: "application/pdf",
+              size: pdfBytes.length,
+            },
+          ],
+          "11111111-1111-4111-8111-111111111111",
+        ),
       ).rejects.toThrow("File ini sudah ada");
 
       // Verify that putObject actually populated storage before the repository failure
