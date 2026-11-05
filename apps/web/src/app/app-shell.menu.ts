@@ -1,6 +1,6 @@
-export type ShellRole = "member_team" | "head_of_team";
+export type ShellRole = "member_team" | "head_of_team" | "admin";
 
-export type ShellIconName = "home" | "analytics" | "audit" | "permissions";
+export type ShellIconName = "home" | "analytics" | "audit" | "permissions" | "document";
 
 export type ShellMenuEntry = {
   id?: string | undefined;
@@ -13,6 +13,7 @@ export const DASHBOARD_PATH = "/dashboard";
 export const ANALYTICS_PATH = "/analytics";
 export const AUDIT_TRAIL_PATH = "/audit-trail";
 export const PERMISSION_CATEGORIES_PATH = "/permission-categories";
+export const ADMIN_DOCUMENTS_PATH = "/admin/documents";
 
 const DASHBOARD_ENTRY: ShellMenuEntry = {
   id: "dashboard-home-link",
@@ -42,6 +43,13 @@ const PERMISSION_CATEGORIES_ENTRY: ShellMenuEntry = {
   icon: "permissions",
 };
 
+const ADMIN_DOCUMENTS_ENTRY: ShellMenuEntry = {
+  id: "admin-documents-link",
+  label: "Manajemen Dokumen",
+  to: ADMIN_DOCUMENTS_PATH,
+  icon: "document",
+};
+
 /**
  * Satu-satunya tempat menu per role diatur (13-app-shell.md, aturan 2).
  * Menu Admin ditambahkan oleh kartu Admin.
@@ -49,9 +57,11 @@ const PERMISSION_CATEGORIES_ENTRY: ShellMenuEntry = {
 export const ROLE_MENU: Record<ShellRole, readonly ShellMenuEntry[]> = {
   member_team: [DASHBOARD_ENTRY],
   head_of_team: [DASHBOARD_ENTRY, ANALYTICS_ENTRY, AUDIT_TRAIL_ENTRY, PERMISSION_CATEGORIES_ENTRY],
+  admin: [ADMIN_DOCUMENTS_ENTRY],
 };
 
-/** Admin memakai dasbor sendiri, jadi role selain Head of Team memakai menu Member Team. */
+/** Mengembalikan peran untuk shell; jika role tidak dikenal, fallback ke Member Team. */
 export function resolveShellRole(role: string | undefined): ShellRole {
+  if (role === "admin") return "admin";
   return role === "head_of_team" ? "head_of_team" : "member_team";
 }
