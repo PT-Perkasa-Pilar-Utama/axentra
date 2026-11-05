@@ -50,9 +50,13 @@ memantau ringkasan sistem.
 
 **Pertanyaan 8 (nama menu dan template)** diputuskan 2026-10-30 oleh Tech Lead: menu Admin adalah `Dashboard`, `Manajemen Akun`, `Manajemen Dokumen`, dan `Audit Trail`. Label `Dashboard Admin` tidak dipakai. Template memakai satu `AppShell` bersama untuk semua peran; hanya menu dan isi halaman yang berbeda.
 
+**Pertanyaan 10 (status akun pada ringkasan pengguna, O10)** diputuskan 2026-11-05 oleh Tech Lead (Arya Isnaidi): `usersByRole` menghitung seluruh akun terdaftar per peran, termasuk akun berstatus nonaktif.
+
+**Pertanyaan 14 (dokumen arsip pada dasbor, O7)** diputuskan 2026-11-05 oleh Tech Lead (Arya Isnaidi): `totalDocuments` dan `uploadedLast7Days` menyertakan dokumen yang diarsipkan karena dokumen tersebut tetap tersimpan di sistem.
+
 ## Pertanyaan terbuka untuk Tech Lead dan BA
 
-Dokumen ini memuat 15 pertanyaan. Pertanyaan 1, 5, 7, 8, dan 9 sudah diputuskan (lihat bagian Keputusan); sisanya masih terbuka. Pertanyaan 1 sampai 9 berasal dari versi 29 Oktober 2026. Pertanyaan 10 sampai 15 ditambahkan pada 4 November 2026 dari pemeriksaan kesiapan kartu. Rincian dan nilai usulan tiap pertanyaan juga ada di [09-admin.md](../api-specs/09-admin.md#open-decisions).
+Dokumen ini memuat 15 pertanyaan. Pertanyaan 1, 5, 7, 8, 9, 10, dan 14 sudah diputuskan (lihat bagian Keputusan); sisanya masih terbuka. Pertanyaan 1 sampai 9 berasal dari versi 29 Oktober 2026. Pertanyaan 10 sampai 15 ditambahkan pada 4 November 2026 dari pemeriksaan kesiapan kartu. Rincian dan nilai usulan tiap pertanyaan juga ada di [09-admin.md](../api-specs/09-admin.md#open-decisions).
 
 1. **Arti "tugas".** Usulan: tugas Admin berarti dokumen dan hak unduh yang menjadi milik akun
    Member Team dan Head of Team. Diputuskan 2026-10-29: disetujui sesuai usulan.

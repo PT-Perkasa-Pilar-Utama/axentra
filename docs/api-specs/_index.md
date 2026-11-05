@@ -87,12 +87,12 @@ OK      GET   /permission-categories
 OK      PATCH /permission-categories/:categoryId
 ```
 
-### Admin (Sprint 4, Planned)
+### Admin (Sprint 4)
 
-Source: `docs/proposals/admin-role-proposal.md` (PROP-ADM-01, 02, 03, and 05). Not implemented yet. Details and open decisions are in [09-admin.md](09-admin.md).
+Source: `docs/proposals/admin-role-proposal.md` (PROP-ADM-01, 02, 03, and 05). Details and open decisions are in [09-admin.md](09-admin.md).
 
 ```text
-PLANNED GET    /admin/summary
+OK      GET    /admin/summary
 PLANNED GET    /admin/users
 PLANNED PATCH  /admin/users/:id/status
 PLANNED GET    /admin/documents

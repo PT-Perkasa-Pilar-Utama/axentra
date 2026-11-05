@@ -60,10 +60,12 @@ The Audit and Permission category rows note the parts that already exist.
 | Analytics           | Implemented (BE-S4-01): Head of Team summary metrics for total documents and uploads in the last 7 days via `GET /api/v1/analytics/summary` (`apps/api/src/modules/analytics`).                                                                                                                            |
 | Audit               | Download log showing who downloaded which document and when. `download_audit_events` writes and `GET /api/v1/audit/downloads` (`BE-S4-02`) are implemented; the Web screen and `admin` access (`BE-S4-08`) remain planned.                                                                                 |
 | Permission category | Head of Team controls Member Team download permission per category. Download gating, `GET /api/v1/permission-categories` (`BE-S4-03`), and `PATCH /api/v1/permission-categories/:categoryId` (`BE-S4-04`) are implemented in `apps/api/src/modules/permission-categories`; the Web screen remains planned. |
+| Admin               | Implemented in part (BE-S4-05): Admin dashboard summary metrics via `GET /api/v1/admin/summary` (`apps/api/src/modules/admin`). Account management (`BE-S4-06`), document management (`BE-S4-07`), and audit trail access (`BE-S4-08`) remain planned.                                                     |
 
 ## Personas
 
-| Persona      | Planned Responsibility                                           |
-| ------------ | ---------------------------------------------------------------- |
-| Member Team  | Upload, search, preview, and download allowed documents          |
-| Head of Team | View analytics, audit downloads, and manage category permissions |
+| Persona      | Planned Responsibility                                                                            |
+| ------------ | ------------------------------------------------------------------------------------------------- |
+| Member Team  | Upload, search, preview, and download allowed documents                                           |
+| Head of Team | View analytics, audit downloads, and manage category permissions                                  |
+| Admin        | Manage user accounts, manage documents (archive/delete), and view system dashboard and audit logs |

@@ -1,15 +1,16 @@
 import { describe, expect, it } from "bun:test";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { createLogger } from "@axentra/observability";
-import {
-  adminSummaryResponseSchema,
-  type AdminSummary,
-  type ApiErrorEnvelope,
-} from "@axentra/shared";
+import { adminSummaryResponseSchema, apiErrorSchema, type AdminSummary } from "@axentra/shared";
 import { createApp } from "../../app";
 import type { TokenVerifier } from "../../middleware/auth";
 import { DrizzleAdminRepository, InMemoryAdminRepository } from "./admin.repository";
 import { createAdminService } from "./admin.service";
+
+function createFakePostgresDatabase(db: unknown): PostgresJsDatabase {
+  // Cast is isolated to this test double helper to satisfy constructor typing.
+  return db as PostgresJsDatabase;
+}
 
 const testLogger = createLogger({
   service: "axentra-api",
@@ -162,7 +163,7 @@ describe("GET /api/v1/admin/summary - Task BE-S4-05 (PROP-ADM-AC-01.01 to 01.03)
       processingStatus: "completed",
     });
 
-    // 3. Uploaded 1 day ago, archived (still stored, counts in total and 7 days per O7)
+    // 3. Uploaded 1 day ago, archived (still stored, counts in total and 7 days per decision O7)
     repository.documents.set("doc-recent-archived", {
       id: "doc-recent-archived",
       createdAt: new Date("2026-11-04T08:00:00.000Z"),
@@ -251,7 +252,7 @@ describe("GET /api/v1/admin/summary - Task BE-S4-05 (PROP-ADM-AC-01.01 to 01.03)
     expect(parsed.data.latestDownloadAt).toBe("2026-11-03T07:46:00.000Z");
   });
 
-  it("returns 401 UNAUTHORIZED when Authorization header is missing or token is invalid", async () => {
+  it("returns 401 UNAUTHORIZED when Authorization header is missing", async () => {
     const repository = new InMemoryAdminRepository();
     const adminService = createAdminService(repository, { now: () => fixedNow });
     const app = createApp({
@@ -262,27 +263,39 @@ describe("GET /api/v1/admin/summary - Task BE-S4-05 (PROP-ADM-AC-01.01 to 01.03)
       adminService,
     });
 
-    const missingHeaderRes = await app.request("/api/v1/admin/summary", {
+    const res = await app.request("/api/v1/admin/summary", {
       method: "GET",
     });
-    expect(missingHeaderRes.status).toBe(401);
-    const missingBody = (await missingHeaderRes.json()) as ApiErrorEnvelope;
-    expect(missingBody.success).toBe(false);
-    expect(missingBody.error.code).toBe("UNAUTHORIZED");
+    expect(res.status).toBe(401);
+    const body = apiErrorSchema.parse(await res.json());
+    expect(body.success).toBe(false);
+    expect(body.error.code).toBe("UNAUTHORIZED");
+  });
 
-    const invalidTokenRes = await app.request("/api/v1/admin/summary", {
+  it("returns 401 UNAUTHORIZED when Authorization token is invalid", async () => {
+    const repository = new InMemoryAdminRepository();
+    const adminService = createAdminService(repository, { now: () => fixedNow });
+    const app = createApp({
+      logger: testLogger,
+      version: "0.1.0",
+      readinessChecks: [],
+      tokenVerifier,
+      adminService,
+    });
+
+    const res = await app.request("/api/v1/admin/summary", {
       method: "GET",
       headers: {
         Authorization: "Bearer unknown-token",
       },
     });
-    expect(invalidTokenRes.status).toBe(401);
-    const invalidBody = (await invalidTokenRes.json()) as ApiErrorEnvelope;
-    expect(invalidBody.success).toBe(false);
-    expect(invalidBody.error.code).toBe("UNAUTHORIZED");
+    expect(res.status).toBe(401);
+    const body = apiErrorSchema.parse(await res.json());
+    expect(body.success).toBe(false);
+    expect(body.error.code).toBe("UNAUTHORIZED");
   });
 
-  it("returns 403 FORBIDDEN when caller role is member_team or head_of_team", async () => {
+  it("returns 403 FORBIDDEN when caller role is member_team", async () => {
     const repository = new InMemoryAdminRepository();
     const adminService = createAdminService(repository, { now: () => fixedNow });
     const app = createApp({
@@ -293,31 +306,44 @@ describe("GET /api/v1/admin/summary - Task BE-S4-05 (PROP-ADM-AC-01.01 to 01.03)
       adminService,
     });
 
-    const memberRes = await app.request("/api/v1/admin/summary", {
+    const res = await app.request("/api/v1/admin/summary", {
       method: "GET",
       headers: {
         Authorization: "Bearer valid-member-token",
       },
     });
-    expect(memberRes.status).toBe(403);
-    const memberBody = (await memberRes.json()) as ApiErrorEnvelope;
-    expect(memberBody.success).toBe(false);
-    expect(memberBody.error.code).toBe("FORBIDDEN");
+    expect(res.status).toBe(403);
+    const body = apiErrorSchema.parse(await res.json());
+    expect(body.success).toBe(false);
+    expect(body.error.code).toBe("FORBIDDEN");
+  });
 
-    const headRes = await app.request("/api/v1/admin/summary", {
+  it("returns 403 FORBIDDEN when caller role is head_of_team", async () => {
+    const repository = new InMemoryAdminRepository();
+    const adminService = createAdminService(repository, { now: () => fixedNow });
+    const app = createApp({
+      logger: testLogger,
+      version: "0.1.0",
+      readinessChecks: [],
+      tokenVerifier,
+      adminService,
+    });
+
+    const res = await app.request("/api/v1/admin/summary", {
       method: "GET",
       headers: {
         Authorization: "Bearer valid-head-token",
       },
     });
-    expect(headRes.status).toBe(403);
-    const headBody = (await headRes.json()) as ApiErrorEnvelope;
-    expect(headBody.success).toBe(false);
-    expect(headBody.error.code).toBe("FORBIDDEN");
+    expect(res.status).toBe(403);
+    const body = apiErrorSchema.parse(await res.json());
+    expect(body.success).toBe(false);
+    expect(body.error.code).toBe("FORBIDDEN");
   });
 
   it("normalizes numeric and string aggregate results in DrizzleAdminRepository", async () => {
     let selectCount = 0;
+    // The fake answers select() calls by call order matching Promise.all in DrizzleAdminRepository: documents, users, downloads.
     const fakeDb = {
       select() {
         selectCount += 1;
@@ -325,7 +351,6 @@ describe("GET /api/v1/admin/summary - Task BE-S4-05 (PROP-ADM-AC-01.01 to 01.03)
         return {
           from() {
             if (currentCount === 1) {
-              // Documents query
               return {
                 innerJoin() {
                   return {
@@ -339,7 +364,6 @@ describe("GET /api/v1/admin/summary - Task BE-S4-05 (PROP-ADM-AC-01.01 to 01.03)
               };
             }
             if (currentCount === 2) {
-              // Users query
               return Promise.resolve([
                 {
                   memberTeamCount: "10",
@@ -348,7 +372,6 @@ describe("GET /api/v1/admin/summary - Task BE-S4-05 (PROP-ADM-AC-01.01 to 01.03)
                 },
               ]);
             }
-            // Downloads query
             return Promise.resolve([
               {
                 downloadCount: "25",
@@ -358,9 +381,9 @@ describe("GET /api/v1/admin/summary - Task BE-S4-05 (PROP-ADM-AC-01.01 to 01.03)
           },
         };
       },
-    } as unknown as PostgresJsDatabase;
+    };
 
-    const repository = new DrizzleAdminRepository(fakeDb);
+    const repository = new DrizzleAdminRepository(createFakePostgresDatabase(fakeDb));
     const result: AdminSummary = await repository.getSummary(new Date("2026-10-29T12:00:00.000Z"));
 
     expect(result).toEqual({
@@ -374,5 +397,53 @@ describe("GET /api/v1/admin/summary - Task BE-S4-05 (PROP-ADM-AC-01.01 to 01.03)
       downloadCount: 25,
       latestDownloadAt: "2026-11-03T07:46:00.000Z",
     });
+  });
+
+  it("handles zero downloads returning null latestDownloadAt in DrizzleAdminRepository", async () => {
+    let selectCount = 0;
+    const fakeDb = {
+      select() {
+        selectCount += 1;
+        const currentCount = selectCount;
+        return {
+          from() {
+            if (currentCount === 1) {
+              return {
+                innerJoin() {
+                  return {
+                    async where(): Promise<
+                      Array<{ totalDocuments: unknown; uploadedLast7Days: unknown }>
+                    > {
+                      return [{ totalDocuments: "0", uploadedLast7Days: "0" }];
+                    },
+                  };
+                },
+              };
+            }
+            if (currentCount === 2) {
+              return Promise.resolve([
+                {
+                  memberTeamCount: "0",
+                  headOfTeamCount: "0",
+                  adminCount: "0",
+                },
+              ]);
+            }
+            return Promise.resolve([
+              {
+                downloadCount: "0",
+                latestDownloadAt: null,
+              },
+            ]);
+          },
+        };
+      },
+    };
+
+    const repository = new DrizzleAdminRepository(createFakePostgresDatabase(fakeDb));
+    const result: AdminSummary = await repository.getSummary(new Date("2026-10-29T12:00:00.000Z"));
+
+    expect(result.downloadCount).toBe(0);
+    expect(result.latestDownloadAt).toBeNull();
   });
 });

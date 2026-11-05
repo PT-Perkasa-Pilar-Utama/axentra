@@ -245,7 +245,15 @@ describe("Admin Summary PostgreSQL integration (BE-S4-05 / PROP-ADM-AC-01.01 to 
         expect(current.uploadedLast7Days - baseline.uploadedLast7Days).toBe(3);
 
         expect(current.downloadCount - baseline.downloadCount).toBe(2);
-        expect(current.latestDownloadAt).toBe("2026-11-04T15:00:00.000Z");
+
+        const insertedLatestTime = new Date("2026-11-04T15:00:00.000Z").getTime();
+        const baselineLatestTime =
+          baseline.latestDownloadAt !== null ? new Date(baseline.latestDownloadAt).getTime() : 0;
+        const expectedLatest =
+          baselineLatestTime > insertedLatestTime
+            ? baseline.latestDownloadAt
+            : "2026-11-04T15:00:00.000Z";
+        expect(current.latestDownloadAt).toBe(expectedLatest);
       } finally {
         await database.db
           .delete(downloadAuditEvents)

@@ -11,12 +11,15 @@ function formatLatestDownloadAt(raw: unknown): string | null {
   if (raw instanceof Date) {
     return raw.toISOString();
   }
+  // Defensive handling for string timestamp returns if provided by underlying driver.
   if (typeof raw === "string") {
     return new Date(raw).toISOString();
   }
   return null;
 }
 
+// Justification for class: implements IAdminRepository port to support dependency
+// injection and in-memory test doubles, following DrizzleAnalyticsRepository precedent.
 export class DrizzleAdminRepository implements IAdminRepository {
   public constructor(private readonly sqlDb: PostgresJsDatabase) {}
 
@@ -70,6 +73,7 @@ export class DrizzleAdminRepository implements IAdminRepository {
 export type InMemoryAdminUserRecord = {
   id: string;
   role: UserRole;
+  // Retained for test fixture parity; getSummary counts all users regardless of status per decision O10.
   status?: "active" | "inactive" | undefined;
 };
 
@@ -87,6 +91,7 @@ export type InMemoryAdminDownloadRecord = {
   downloadedAt: Date;
 };
 
+// In-memory repository implementation for unit and route tests.
 export class InMemoryAdminRepository implements IAdminRepository {
   public readonly users = new Map<string, InMemoryAdminUserRecord>();
   public readonly documents = new Map<string, InMemoryAdminDocumentRecord>();
@@ -113,6 +118,7 @@ export class InMemoryAdminRepository implements IAdminRepository {
       if (doc.deletedAt !== undefined && doc.deletedAt !== null) {
         continue;
       }
+      // In-memory test fixtures assume an attached document_files record unless explicitly false.
       if (doc.hasFile === false) {
         continue;
       }
