@@ -107,12 +107,14 @@ export class DocumentService implements IDocumentService {
 
   public async validateUpload(
     files: ReadonlyArray<RawUploadFile>,
+    uploadedBy: string,
   ): Promise<DocumentUploadAcceptedData> {
-    return await this.uploadDocuments(files);
+    return await this.uploadDocuments(files, uploadedBy);
   }
 
   public async uploadDocuments(
     files: ReadonlyArray<RawUploadFile>,
+    uploadedBy: string,
   ): Promise<DocumentUploadAcceptedData> {
     return persistUploadedDocuments(
       {
@@ -124,6 +126,7 @@ export class DocumentService implements IDocumentService {
         contentHashRepository: this.contentHashRepository,
       },
       files,
+      uploadedBy,
     );
   }
 

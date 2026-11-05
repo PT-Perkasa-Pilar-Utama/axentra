@@ -43,6 +43,13 @@
       "when": 1793688662893,
       "tag": "0005_add_category_permission_audit_events",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793847472736,
+      "tag": "0006_add_account_status_and_document_ownership",
+      "breakpoints": true
     }
   ]
 }

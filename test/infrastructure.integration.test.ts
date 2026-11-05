@@ -114,6 +114,8 @@ describe("infrastructure integration", () => {
       },
     };
     await Promise.all([checkDatabase(database), redis.checkHealth(), storage.initialize()]);
+    const { ensureUploaderUser } = await import("./helpers/uploader-fixture");
+    await ensureUploaderUser(database, "11111111-1111-4111-8111-111111111111", "member_team");
 
     const queueName = `axentra-integration-${crypto.randomUUID()}`;
     producer = createQueueProducer(queueName, config.REDIS_URL);

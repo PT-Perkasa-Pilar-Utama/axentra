@@ -162,9 +162,12 @@ export class DocumentRepository implements IDocumentRepository {
         const saved: Array<SavedDocumentRecord> = [];
 
         for (const item of items) {
-          await tx
-            .insert(documents)
-            .values({ id: item.id, title: item.title, processingStatus: "queued" });
+          await tx.insert(documents).values({
+            id: item.id,
+            title: item.title,
+            processingStatus: "queued",
+            uploadedBy: item.uploadedBy,
+          });
           await tx.insert(documentFiles).values({
             id: crypto.randomUUID(),
             documentId: item.id,
@@ -184,6 +187,7 @@ export class DocumentRepository implements IDocumentRepository {
           saved.push({
             documentId: item.id,
             title: item.title,
+            uploadedBy: item.uploadedBy,
             originalName: item.originalName,
             storageKey: item.storageKey,
             mimeType: item.mimeType,

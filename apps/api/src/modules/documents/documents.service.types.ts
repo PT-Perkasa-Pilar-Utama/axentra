@@ -64,8 +64,14 @@ export type RecentDocumentList = {
 };
 
 export type IDocumentService = {
-  uploadDocuments(files: ReadonlyArray<RawUploadFile>): Promise<DocumentUploadAcceptedData>;
-  validateUpload(files: ReadonlyArray<RawUploadFile>): Promise<DocumentUploadAcceptedData>;
+  uploadDocuments(
+    files: ReadonlyArray<RawUploadFile>,
+    uploadedBy: string,
+  ): Promise<DocumentUploadAcceptedData>;
+  validateUpload(
+    files: ReadonlyArray<RawUploadFile>,
+    uploadedBy: string,
+  ): Promise<DocumentUploadAcceptedData>;
   checkDuplicate(input: CheckDuplicateInput): Promise<CheckDuplicateResponse>;
   listRecentDocuments(
     page: number,

@@ -51,6 +51,8 @@ function toDetailRecord(item: CreateDocumentBatchItem): DocumentDetailRecord {
       createdAt: now,
       updatedAt: now,
       deletedAt: null,
+      uploadedBy: item.uploadedBy,
+      archivedAt: null,
     },
     file: {
       id: randomUUID(),
@@ -155,6 +157,7 @@ export function createInMemoryDocumentStore(): InMemoryDocumentStore {
       return items.map((i) => ({
         documentId: i.id,
         title: i.title,
+        uploadedBy: i.uploadedBy,
         originalName: i.originalName,
         storageKey: i.storageKey,
         mimeType: i.mimeType,
