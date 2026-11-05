@@ -13,7 +13,7 @@ Status: **Implemented** (`BE-S4-02`, `AC-12.01`).
 Authorization:
 
 - Requires authentication (`Bearer` access token).
-- Allowed role: `head_of_team` (`member_team` and `admin` receive `403 FORBIDDEN`; extending access to `admin` is tracked separately under `BE-S4-08`).
+- Allowed roles: `head_of_team`, and `admin` once `BE-S4-08` ships (Planned; see [09-admin.md](09-admin.md)). `member_team` receives `403 FORBIDDEN`. Until `BE-S4-08` ships, `admin` also receives `403 FORBIDDEN`.
 
 Query parameters:
 

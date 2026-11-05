@@ -16,7 +16,7 @@ GET /api/v1/categories
 
 ### `GET /api/v1/search/documents`
 
-Status: Implemented for title, filename, and extracted content search with snippets (BE-S2-05 / AC-06.01 to AC-06.04), single-tag and multi-tag filtering (BE-S2-03), and category filtering.
+Status: Implemented for title, filename, and extracted content search with snippets (BE-S2-05 / AC-06.01 to AC-06.04), single-tag and multi-tag filtering (BE-S2-03), and category filtering. Archived documents are omitted for `member_team` and `head_of_team` once BE-S4-07 ships (Planned; see [03-documents.md](03-documents.md#archived-documents-planned-be-s4-07)).
 
 **Authorization:**
 
@@ -82,7 +82,7 @@ If no document matches, returns `"data": []` with `"meta": { "total": 0 }`. The 
 
 ### `GET /api/v1/tags/top`
 
-Returns Smart Tags already associated with successfully processed, non-deleted documents. The endpoint
+Returns Smart Tags already associated with successfully processed, non-deleted documents (archived ones are excluded once BE-S4-07 ships). The endpoint
 reads persisted tags on every request. Tags saved with a document by BE-S2-01 become eligible on
 the next request without a cache invalidation step.
 
@@ -94,7 +94,7 @@ the next request without a cache invalidation step.
 | `limit`       | No       | Integer `3`–`20`; default `10`         | Maximum list length; minimum fits up to three document tags. |
 | `documentIds` | No       | Repeated UUID parameter; maximum `100` | Current search page IDs; only for `context=search`.          |
 
-For `context=dashboard`, tags are ranked across all completed, non-deleted documents; `documentIds`
+For `context=dashboard`, tags are ranked across all completed, non-deleted documents (archived ones are excluded once BE-S4-07 ships) for `member_team` and `head_of_team`; `documentIds`
 must be omitted. For `context=search`, rank tags attached to the supplied current-page result IDs.
 Omit `documentIds` when the current search page has no results; the endpoint returns an empty list.
 Clients must refresh this request after search results change.

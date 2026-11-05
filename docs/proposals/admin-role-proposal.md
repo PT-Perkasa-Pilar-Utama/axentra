@@ -7,7 +7,7 @@ Sumber BA yang disetujui berhenti di US-13 dan AC-13.01. Karena itu dokumen ini 
 `docs/proposals/`, bukan di `docs/business/`.
 
 **ID bersifat sementara.** PROP-ADM-01 sampai PROP-ADM-05 dan PROP-ADM-AC-01.01 sampai
-PROP-ADM-AC-05.01 hanya penanda di dokumen ini. Penanda ini bukan ID BA. Penomoran lama US-14 sampai
+PROP-ADM-AC-05.02 hanya penanda di dokumen ini. Penanda ini bukan ID BA. Penomoran lama US-14 sampai
 US-18 dan AC-14.01 sampai AC-18.01 tidak dipakai lagi. BA dapat menghapus, menggabungkan, atau
 menomori ulang penanda tersebut saat meninjau. Kartu Sprint 4 memakai penanda ini atas keputusan
 Tech Lead (29 Oktober 2026). Sejak BA menyetujui cakupan PROP-ADM-01, 02, 03, dan 05 (29 Oktober 2026), kode, tes, dan bukti boleh memakai penanda ini untuk cakupan tersebut. PROP-ADM-04 tetap tidak boleh dicatat sebagai AC yang disetujui. Semua US, AC, dan matriks
@@ -36,51 +36,46 @@ memantau ringkasan sistem.
   "tugas" perlu dikonfirmasi (pertanyaan 1).
 - Peran `admin` tidak menggantikan `member_team` atau `head_of_team` pada rute dokumen, kecuali rute
   itu menyebut `admin` dalam daftar peran yang diizinkan (lihat 09-authentication.md). Rute
-  pratinjau dan unduh saat ini menyebut `admin`. Lihat pertanyaan 9.
+  pratinjau dan unduh di `dev` saat ini menyebut `admin`. Keputusan pertanyaan 9 (2026-11-04) menghapusnya.
 
 ## Keputusan yang sudah diambil
 
-**Pertanyaan 7 (Admin melihat isi dokumen?)** diputuskan 2026-10-29 oleh Tech Lead di chat: **Admin hanya melihat metadata**, tidak melihat pratinjau atau isi dokumen. Konfirmasi BA untuk keputusan ini belum tercatat.
+**Pertanyaan 7 (Admin melihat isi dokumen?)** diputuskan Tech Lead pada 2026-10-29 di chat: **Admin hanya melihat metadata**, tidak melihat pratinjau atau isi dokumen. BA (Azizah) menyetujui keputusan ini pada 2026-11-04, disampaikan Tech Lead di chat. Catatan tertulis dari BA belum dilampirkan di dokumen ini.
 
-**Pertanyaan 9 (hak unduh Admin)** mengikuti keputusan 7: Admin tidak mengunduh isi dokumen, sehingga akses pratinjau dan unduh untuk role `admin` dicabut. Keputusan ini perlu dicatat juga oleh Tech Lead dan dikonfirmasi BA.
+**Pertanyaan 9 (hak unduh Admin)** diputuskan 2026-11-04 (opsi c dari tiga pilihan: (a) semua kategori seperti kode lama; (b) ikut izin kategori seperti Member Team; (c) tidak mengunduh): Admin tidak melihat pratinjau dan tidak mengunduh dokumen dari kategori mana pun. Disetujui BA (Azizah) dan Tech Lead, disampaikan Tech Lead di chat. `admin` dihapus dari rute pratinjau, pratinjau konten, unduh, dan unduh massal lewat BE-S4-08.
 
 **Pertanyaan 5 (dokumen arsip masih bisa dicari?)** diputuskan 2026-10-29: dokumen yang diarsipkan **tidak tampil** di pencarian dan daftar Member Team maupun Head of Team. Admin tetap bisa mencarinya di Manajemen Dokumen dan dapat membatalkan arsip (unarchive). BA (Azizah) menyetujui cakupan ini, disampaikan Tech Lead di chat.
 
-**Pertanyaan 1 (arti "tugas")** disetujui 2026-10-29 sesuai usulan: tugas Admin berarti dokumen dan hak unduh yang menjadi milik akun Member Team dan Head of Team. Hak unduh di sini berarti hak yang dikelola Admin, bukan hak Admin untuk mengunduh isi dokumen (lihat pertanyaan 9). Pertanyaan 2, 3, 4, dan 8 mengikuti usulan default.
+**Pertanyaan 1 (arti "tugas")** disetujui 2026-10-29 sesuai usulan: tugas Admin berarti dokumen dan hak unduh yang menjadi milik akun Member Team dan Head of Team. Hak unduh di sini berarti hak yang dikelola Admin, bukan hak Admin untuk mengunduh isi dokumen (lihat pertanyaan 9). Pertanyaan 2, 3, dan 4 mengikuti usulan default.
 
 **Pertanyaan 8 (nama menu dan template)** diputuskan 2026-10-30 oleh Tech Lead: menu Admin adalah `Dashboard`, `Manajemen Akun`, `Manajemen Dokumen`, dan `Audit Trail`. Label `Dashboard Admin` tidak dipakai. Template memakai satu `AppShell` bersama untuk semua peran; hanya menu dan isi halaman yang berbeda.
 
 ## Pertanyaan terbuka untuk Tech Lead dan BA
 
-Dokumen ini memuat 9 pertanyaan terbuka.
+Dokumen ini memuat 15 pertanyaan. Pertanyaan 1, 5, 7, 8, dan 9 sudah diputuskan (lihat bagian Keputusan); sisanya masih terbuka. Pertanyaan 1 sampai 9 berasal dari versi 29 Oktober 2026. Pertanyaan 10 sampai 15 ditambahkan pada 4 November 2026 dari pemeriksaan kesiapan kartu. Rincian dan nilai usulan tiap pertanyaan juga ada di [09-admin.md](../api-specs/09-admin.md#open-decisions).
 
 1. **Arti "tugas".** Usulan: tugas Admin berarti dokumen dan hak unduh yang menjadi milik akun
-   Member Team dan Head of Team. Konfirmasi: setujui atau ganti definisinya.
+   Member Team dan Head of Team. Diputuskan 2026-10-29: disetujui sesuai usulan.
 2. **Admin mengunggah dokumen?** Usulan: tidak. Admin hanya mengelola dokumen yang sudah ada.
 3. **Admin mengubah peran akun?** Usulan: tidak. Perubahan peran hanya dilakukan jika Tech Lead
    menyetujui setiap kasus (PROP-ADM-02). Belum ada AC untuk fitur ini.
 4. **Admin menonaktifkan akun?** Usulan: ya. Admin juga dapat mengaktifkan kembali akun yang
    dinonaktifkan.
 5. **Admin mengarsipkan atau menghapus dokumen milik pengguna lain?** Usulan: ya, berupa arsip dan
-   hapus lunak (soft delete). Hapus permanen tidak termasuk. Konfirmasi juga apakah dokumen yang
-   diarsipkan tetap bisa dicari Member Team.
+   hapus lunak (soft delete). Hapus permanen tidak termasuk. Diputuskan 2026-10-29 (lihat bagian Keputusan): dokumen arsip tidak tampil untuk Member Team dan Head of Team.
 6. **Siapa yang mengatur izin unduh kategori?** BA US-13 dan AC-13.01 hanya menyebut Head of Team.
    AC-05.01 juga menulis bahwa izin kategori baru "harus disetting dari Head of Team". Usulan:
    Admin dan Head of Team sama-sama dapat mengatur izin (asumsi). Konfirmasi: tetap Head of Team
    saja, atau keduanya. Usulan ini bertentangan dengan AC-05.01, sehingga BA perlu memutuskan.
-7. **Admin melihat isi dokumen pengguna?** Usulan: Admin melihat detail dokumen dan metadata.
-   Preview isi dokumen belum diusulkan. API saat ini sudah mengizinkan Admin membuka pratinjau
-   dokumen aktif (lihat pertanyaan 9). Konfirmasi.
-8. **Nama menu dan template.** Nama menu (`Dashboard`, `Manajemen Akun`, `Manajemen Dokumen`)
-   dan label tombol masih usulan. Konfirmasi template desain yang dipakai ulang.
-9. **Unduh oleh Admin.** Apakah Admin boleh mengunduh dokumen, dan apakah izin unduh kategori
-   berlaku untuknya? Kode saat ini mengizinkan Admin mengunduh dokumen dari semua kategori tanpa
-   pemeriksaan izin kategori (lihat [03-documents.md](../api-specs/03-documents.md)). BA dan Tech
-   Lead belum memutuskan perilaku itu, dan dokumen ini tidak memutuskannya. Pilihan yang sudah
-   dikenali: (a) Admin mengunduh semua kategori tanpa izin kategori, seperti kode saat ini; (b)
-   Admin mengikuti izin unduh kategori seperti Member Team; (c) Admin tidak mengunduh. BA dan Tech
-   Lead dapat memilih pilihan lain. Jawaban harus tercatat tertulis. Sampai ada jawaban, perilaku
-   API tidak berubah.
+7. **Admin melihat isi dokumen pengguna?** Diputuskan 2026-11-04: Admin melihat detail dokumen dan metadata saja, tanpa pratinjau dan tanpa isi dokumen. Kode di `dev` masih mengizinkan pratinjau sampai BE-S4-08 selesai.
+8. **Nama menu dan template.** Nama menu (`Dashboard`, `Manajemen Akun`, `Manajemen Dokumen`) diputuskan 2026-10-30 (lihat Keputusan). Label tombol masih usulan.
+9. **Unduh oleh Admin.** Diputuskan 2026-11-04: opsi (c), Admin tidak mengunduh dokumen dari kategori mana pun dan tidak melihat pratinjau (lihat bagian Keputusan). Kode di `dev` masih mengizinkan Admin mengunduh semua kategori sampai BE-S4-08 selesai (lihat [03-documents.md](../api-specs/03-documents.md)).
+10. **Login akun nonaktif.** Usulan: login akun nonaktif gagal dengan `401 UNAUTHORIZED` dan pesan `Email atau kata sandi salah`, sama seperti email salah. Dengan begitu status akun tidak terbuka. Berlaku di jalur development dan production. Konfirmasi.
+11. **Status di jalur development.** Direktori identitas (`AUTH_LOCAL_IDENTITY_DIRECTORY`) tidak punya kolom status. Usulan: setelah kata sandi terverifikasi, status dibaca dari tabel `users` berdasarkan `id`. Konfirmasi.
+12. **Head of Team terakhir.** Apakah Admin boleh menonaktifkan Head of Team aktif yang terakhir? Usulan: tidak, dengan `422 LAST_HEAD_OF_TEAM`. Konfirmasi.
+13. **Audit aksi Admin.** Apakah menonaktifkan, mengaktifkan, mengarsipkan, membatalkan arsip, dan menghapus dokumen dicatat ke audit trail? Usulan: ya. Konfirmasi.
+14. **Dokumen arsip.** Apakah Member Team dan Head of Team mendapat `404` jika membuka dokumen arsip lewat URL langsung? Usulan: ya. Apakah jumlah di dasbor (`totalDocuments`, `uploadedLast7Days`) menyertakan dokumen arsip? Usulan: ya.
+15. **Data lama dan daftar Admin.** Dokumen lama tanpa pengunggah ditampilkan sebagai "Tidak diketahui". Usulan: daftar Admin tidak memuat dokumen tanpa file tersimpan. Akun Admin untuk uji dibuat lewat seed atau skrip; sumbernya belum ditentukan. Konfirmasi.
 
 ## Konflik yang sudah diketahui
 
@@ -91,15 +86,14 @@ Dokumen ini memuat 9 pertanyaan terbuka.
   dokumen. Tabel `documents` tidak punya kolom pemilik, dan tabel lain di `packages/db/src/schema`
   tidak menyimpan siapa yang mengunggah. Fitur ini membutuhkan perubahan skema lewat migrasi yang
   direview. Kartu DB-S4-01 (Sprint 4) mencakup perubahan itu.
-- **Unduh oleh Admin.** Kode sudah mengizinkan Admin mengunduh dokumen semua kategori, tetapi belum
-  ada keputusan BA atau Tech Lead. Lihat pertanyaan 9.
+- **Unduh oleh Admin.** Diputuskan 2026-11-04 (pertanyaan 9, opsi c). Kode di `dev` masih mengizinkan Admin mengunduh semua kategori sampai BE-S4-08 selesai.
 
 ## User story Admin (penanda PROP-ADM)
 
 Format sama dengan [user-story.md](../business/user-story.md). Semua penanda di bawah berstatus
 usulan.
 
-### PROP-ADM-01 - Melihat Dashboard Admin
+### PROP-ADM-01 - Melihat Dashboard
 
 - **Persona:** Admin
 - **Action:** bisa melihat dasbor ringkasan berisi jumlah pengguna per peran, jumlah dokumen,
@@ -140,8 +134,7 @@ usulan.
 
 ## Acceptance criteria Admin
 
-Format Given/When/Then mengikuti sheet `Acceptance Criteria` pada BA workbook. Nama menu, label
-tombol, dan teks dalam tanda kutip masih usulan dan belum final. PROP-ADM-04 dan
+Format Given/When/Then mengikuti sheet `Acceptance Criteria` pada BA workbook. Nama menu sudah diputuskan (pertanyaan 8). Label tombol dan teks dalam tanda kutip masih usulan dan belum final. PROP-ADM-04 dan
 PROP-ADM-AC-04.01 sampai PROP-ADM-AC-04.02 adalah pertanyaan terbuka (lihat pertanyaan 6) dan tidak
 boleh dijadikan aturan sebelum diputuskan.
 
@@ -149,8 +142,8 @@ boleh dijadikan aturan sebelum diputuskan.
 
 ```gherkin
 Given saya seorang Admin
-And saya berada di halaman Dashboard Admin
-When saya membuka Dashboard Admin
+And saya berada di halaman Dashboard
+When saya membuka Dashboard
 Then saya melihat kartu data jumlah pengguna untuk setiap peran: Member Team, Head of Team, dan Admin
 ```
 
@@ -158,8 +151,8 @@ Then saya melihat kartu data jumlah pengguna untuk setiap peran: Member Team, He
 
 ```gherkin
 Given saya seorang Admin
-And saya berada di halaman Dashboard Admin
-When saya membuka Dashboard Admin
+And saya berada di halaman Dashboard
+When saya membuka Dashboard
 Then saya melihat kartu data yang menampilkan jumlah total dokumen di sistem
 And saya melihat kartu data yang menampilkan jumlah dokumen yang diunggah dalam 7 hari terakhir
 ```
@@ -168,8 +161,8 @@ And saya melihat kartu data yang menampilkan jumlah dokumen yang diunggah dalam 
 
 ```gherkin
 Given saya seorang Admin
-And saya berada di halaman Dashboard Admin
-When saya membuka Dashboard Admin
+And saya berada di halaman Dashboard
+When saya membuka Dashboard
 Then saya melihat ringkasan aktivitas unduhan, termasuk jumlah unduhan dan waktu unduhan terbaru
 ```
 
@@ -229,7 +222,7 @@ Given saya seorang Admin
 And dokumen "laporan.pdf" berstatus aktif
 When saya menekan tombol "Arsipkan" pada dokumen tersebut
 Then status dokumen berubah menjadi "Diarsipkan"
-And dokumen tersebut tidak tampil di hasil pencarian Member Team (lihat pertanyaan 5)
+And dokumen tersebut tidak tampil di hasil pencarian Member Team dan Head of Team (lihat pertanyaan 5)
 ```
 
 ## PROP-ADM-AC-03.04 - Menghapus lunak dokumen
@@ -240,6 +233,18 @@ And dokumen "laporan.pdf" berstatus aktif
 When saya menekan tombol "Hapus" dan mengonfirmasi penghapusan
 Then dokumen tidak lagi tampil di daftar dokumen aktif
 And data dokumen tidak dihapus permanen (hapus lunak)
+```
+
+## PROP-ADM-AC-03.05 - Membatalkan arsip dokumen (usulan)
+
+Status: usulan. Mengikuti pertanyaan 5 yang sudah disetujui BA. Belum diuji sampai kartu BE-S4-07 dan FE-S4-06 memasukkannya.
+
+```gherkin
+Given saya seorang Admin
+And dokumen "laporan.pdf" berstatus diarsipkan
+When saya menekan tombol "Batalkan arsip" pada dokumen tersebut
+Then status dokumen berubah menjadi aktif
+And dokumen tampil kembali di daftar dan pencarian Member Team dan Head of Team
 ```
 
 ## PROP-ADM-AC-04.01 - Mengaktifkan izin unduh kategori oleh Admin (pertanyaan terbuka, bukan aturan)
@@ -273,13 +278,24 @@ When saya membuka halaman audit trail
 Then tampil informasi detail untuk unduhan dari semua pengguna: Siapa (User), Apa (Nama Dokumen), dan Kapan (Waktu) proses download dilakukan
 ```
 
+## PROP-ADM-AC-05.02 - Admin tidak dapat membuka pratinjau atau mengunduh dokumen (disetujui 2026-11-04, pertanyaan 9)
+
+Status: disetujui 2026-11-04 (BA dan Tech Lead, disampaikan di chat). Diimplementasikan di BE-S4-08.
+
+```gherkin
+Given saya seorang Admin
+And saya membuka dokumen "laporan.pdf" melalui tautan atau daftar dokumen
+When saya meminta pratinjau atau mengunduh dokumen tersebut
+Then sistem menolak permintaan dengan status 403
+```
+
 ## Hak akses
 
-| Peran        | Upload                    | Lihat dokumen sendiri dan semua | Unduh (sesuai izin kategori) | Kelola akun               | Kelola izin kategori      | Lihat audit               |
-| ------------ | ------------------------- | ------------------------------- | ---------------------------- | ------------------------- | ------------------------- | ------------------------- |
-| Member Team  | Ya                        | Ya                              | Ya                           | Tidak                     | Tidak                     | Tidak                     |
-| Head of Team | Tidak                     | Ya                              | Usulan (perlu konfirmasi)    | Tidak                     | Ya                        | Ya                        |
-| Admin        | Usulan (perlu konfirmasi) | Usulan (perlu konfirmasi)       | Usulan (perlu konfirmasi)    | Usulan (perlu konfirmasi) | Usulan (perlu konfirmasi) | Usulan (perlu konfirmasi) |
+| Peran        | Upload                    | Lihat dokumen sendiri dan semua      | Unduh (sesuai izin kategori) | Kelola akun                  | Kelola izin kategori                 | Lihat audit                  |
+| ------------ | ------------------------- | ------------------------------------ | ---------------------------- | ---------------------------- | ------------------------------------ | ---------------------------- |
+| Member Team  | Ya                        | Ya                                   | Ya                           | Tidak                        | Tidak                                | Tidak                        |
+| Head of Team | Tidak                     | Ya                                   | Usulan (perlu konfirmasi)    | Tidak                        | Ya                                   | Ya                           |
+| Admin        | Usulan (perlu konfirmasi) | Metadata saja (keputusan 2026-11-04) | Tidak (keputusan 2026-11-04) | Ya, cakupan BA (PROP-ADM-02) | Usulan (PROP-ADM-04 belum disetujui) | Ya, cakupan BA (PROP-ADM-05) |
 
 Catatan matriks:
 
@@ -288,10 +304,7 @@ Catatan matriks:
   menyebut Head of Team mengunggah atau mengunduh dokumen, sehingga kedua sel itu perlu konfirmasi.
   Kolom "Lihat dokumen" mengikuti daftar dokumen yang dirancang untuk `member_team` dan
   `head_of_team`.
-- Admin: seluruh sel berstatus usulan. Usulan default: Admin tidak mengunggah dokumen dan tidak
-  mendapat hak Member Team secara otomatis. Untuk sel "Lihat dokumen" dan "Unduh", kode saat ini
-  sudah mengizinkan Admin membuka pratinjau dan mengunduh dokumen semua kategori. Keputusannya
-  masih terbuka (pertanyaan 7 dan 9).
+- Admin: sel "Lihat dokumen" dan "Unduh" sudah diputuskan 2026-11-04 (metadata saja; tidak ada pratinjau atau unduh). Sel "Kelola akun" dan "Lihat audit" mengikuti cakupan BA (PROP-ADM-02 dan 05). Sel "Upload" dan "Kelola izin kategori" tetap usulan. Kode di `dev` masih mengizinkan pratinjau dan unduh untuk Admin sampai BE-S4-08 selesai.
 
 ## Catatan
 
