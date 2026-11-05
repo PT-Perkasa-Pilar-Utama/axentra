@@ -1,0 +1,159 @@
+.admin-users {
+  color: #252930;
+  font-family: "Exo 2", sans-serif;
+}
+
+.admin-users__subtitle {
+  margin: -0.6rem 0 1.5rem;
+  color: #727988;
+  font-size: 0.875rem;
+}
+
+.admin-users__table-container {
+  overflow: hidden;
+  border: 1px solid #e0e2e5;
+  border-radius: 1rem;
+  background: #fff;
+}
+
+.admin-users__table-scroll {
+  overflow-x: auto;
+}
+.admin-users table {
+  width: 100%;
+  min-width: 40rem;
+  border-collapse: collapse;
+  text-align: left;
+}
+.admin-users th {
+  background: #f7f8fa;
+  color: #727988;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.admin-users th,
+.admin-users td {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #eee;
+}
+.admin-users td {
+  color: #5b626b;
+  font-size: 0.875rem;
+}
+.admin-users td strong,
+.admin-users td span:not(.admin-users__status) {
+  display: block;
+}
+.admin-users td strong {
+  color: #252930;
+}
+.admin-users td span:not(.admin-users__status) {
+  color: #727988;
+  font-size: 0.75rem;
+}
+.admin-users td:last-child {
+  text-align: right;
+}
+.admin-users__status {
+  border: 1px solid;
+  border-radius: 999px;
+  padding: 0.15rem 0.65rem;
+  font-size: 0.75rem;
+}
+.admin-users__status--active {
+  border-color: #a3e9ce;
+  background: #ebfbf4;
+  color: #116b52;
+}
+.admin-users__status--inactive {
+  border-color: #e0e2e5;
+  background: #f3f4f6;
+  color: #4b5563;
+}
+.admin-users button {
+  cursor: pointer;
+  border: 1px solid #d9dde0;
+  border-radius: 0.5rem;
+  background: #fff;
+  padding: 0.55rem 0.8rem;
+  color: #424951;
+}
+.admin-users button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.admin-users button:focus-visible {
+  outline: 3px solid #356b27;
+  outline-offset: 2px;
+}
+.admin-users .admin-users__deactivate {
+  border-color: #f4cbd3;
+  background: #fff1f3;
+  color: #b31c3f;
+}
+.admin-users__pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  color: #727988;
+  font-size: 0.75rem;
+}
+.admin-users__pagination div {
+  display: flex;
+  gap: 0.5rem;
+}
+.admin-users__empty {
+  padding: 1.5rem;
+}
+.admin-users__dialog {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  width: min(28rem, calc(100% - 2rem));
+  border: 0;
+  border-radius: 1rem;
+  padding: 1.5rem;
+  color: #252930;
+  background: #fff;
+}
+.admin-users__dialog::backdrop {
+  background: rgb(0 0 0 / 45%);
+}
+.admin-users__dialog h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+.admin-users__dialog p {
+  margin: 0;
+  color: #5b626b;
+  line-height: 1.5;
+}
+.admin-users__dialog p[role="alert"] {
+  margin-top: 0.75rem;
+  color: #b31c3f;
+}
+.admin-users__dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+}
+.admin-users .admin-users__confirm-danger {
+  border-color: #df1643;
+  background: #df1643;
+  color: #fff;
+}
+.admin-users .admin-users__confirm-active {
+  border-color: #356b27;
+  background: #356b27;
+  color: #fff;
+}
+@media (max-width: 640px) {
+  .admin-users__pagination {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
