@@ -98,6 +98,26 @@ describe("Account status and document ownership PostgreSQL constraints (DB-S4-01
     expect(inserted.status).toBe("active");
   });
 
+  integrationTest("accepts inactive as an account status", async () => {
+    const { client, schema } = readyDatabase();
+
+    const inserted = firstOrThrow(
+      await client.db
+        .insert(schema.users)
+        .values({
+          email: `status-inactive-${crypto.randomUUID()}@axentra.invalid`,
+          passwordHash: "not-a-real-hash",
+          role: "member_team",
+          status: "inactive",
+        })
+        .returning({ id: schema.users.id, status: schema.users.status }),
+      "insert inactive user",
+    );
+    createdUserIds.push(inserted.id);
+
+    expect(inserted.status).toBe("inactive");
+  });
+
   integrationTest("rejects an account status outside active and inactive", async () => {
     const { client, schema } = readyDatabase();
     const userId = crypto.randomUUID();

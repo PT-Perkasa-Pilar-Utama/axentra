@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { describe, expect, test } from "bun:test";
 import { createLogger } from "@axentra/observability";
 import type { QueueProducer } from "@axentra/queue";
@@ -16,8 +17,9 @@ const testLogger = createLogger({
   level: "fatal",
 });
 
+// A per-run id, so a handler that hardcodes a fixture identity cannot pass this test.
 const UPLOADER: AuthUser = {
-  id: "11111111-1111-4111-8111-111111111111",
+  id: crypto.randomUUID(),
   email: "member@axentra.local",
   role: "member_team",
   name: "Member Test",
@@ -99,6 +101,35 @@ describe("document uploader ownership (DB-S4-01)", () => {
       enableUploadRoute: true,
     });
     const formData = new FormData();
+    formData.append("file", new Blob([pdfBytes], { type: "application/pdf" }), "laporan.pdf");
+
+    const response = await app.request("/api/v1/documents/upload", {
+      method: "POST",
+      headers: { authorization: "Bearer uploader-token" },
+      body: formData,
+    });
+
+    expect(response.status).toBe(200);
+    expect(saved.map((item) => item.uploadedBy)).toEqual([UPLOADER.id]);
+  });
+
+  test("ignores an uploader field sent in the form and keeps the authenticated member", async () => {
+    const { repository, saved } = recordingRepository();
+    const app = createApp({
+      logger: testLogger,
+      version: "0.1.0",
+      readinessChecks: [],
+      documentService: createDocumentService({
+        repository,
+        storage: createInMemoryStorage(),
+        logger: testLogger,
+        queue,
+      }),
+      tokenVerifier,
+      enableUploadRoute: true,
+    });
+    const formData = new FormData();
+    formData.append("uploadedBy", "22222222-2222-4222-8222-222222222222");
     formData.append("file", new Blob([pdfBytes], { type: "application/pdf" }), "laporan.pdf");
 
     const response = await app.request("/api/v1/documents/upload", {

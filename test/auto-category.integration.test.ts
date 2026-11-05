@@ -704,21 +704,20 @@ describe("Auto-Category Assignment Real Queue & Storage Integration (Task BE-S2-
       const testCatId = crypto.randomUUID();
       const foreignDocId = crypto.randomUUID();
 
-      await database.db.insert(categories).values({
-        id: testCatId,
-        name: "Temporary Shared Test Cat",
-        slug: `temp-shared-${Date.now()}`,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-      await database.db.insert(categoryDownloadPermissions).values({
-        categoryId: testCatId,
-        downloadEnabled: false,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-
       try {
+        await database.db.insert(categories).values({
+          id: testCatId,
+          name: "Temporary Shared Test Cat",
+          slug: `temp-shared-${Date.now()}`,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+        await database.db.insert(categoryDownloadPermissions).values({
+          categoryId: testCatId,
+          downloadEnabled: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
         await database.db.insert(documents).values({
           id: foreignDocId,
           title: "Foreign Document",
