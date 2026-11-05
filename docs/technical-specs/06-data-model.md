@@ -76,10 +76,10 @@ The central business record for an uploaded document.
 
 No index covers `archived_at`. The archive filter is applied to the `created_at`-ordered list, the same way `deleted_at` is filtered today. Add an index only if BE-S4-07 measurements show it is needed.
 
-**Proposed backfill rule (O8, pending Tech Lead confirmation), applied by migration `0006_add_account_status_and_document_ownership`:**
+**Backfill rule (O8, decided by Tech Lead on 2026-11-05), applied by migration `0006_add_account_status_and_document_ownership`:**
 
 - `users.status`: the column is added as `NOT NULL DEFAULT 'active'`. PostgreSQL gives every existing user `active`, so no separate backfill runs.
-- `documents.uploaded_by`: documents that already exist stay `NULL`. No uploader was recorded for them, and `download_audit_events` records downloads, not uploads, so it cannot identify an owner. Do not guess an owner. The Admin UI shows these rows as "Tidak diketahui" (proposed as O8 in [09-admin.md](../api-specs/09-admin.md), pending Tech Lead confirmation).
+- `documents.uploaded_by`: documents that already exist stay `NULL`. No uploader was recorded for them, and `download_audit_events` records downloads, not uploads, so it cannot identify an owner. Do not guess an owner. The Admin UI shows these rows as "Tidak diketahui" (O8 in [09-admin.md](../api-specs/09-admin.md), decided by Tech Lead on 2026-11-05).
 - `documents.archived_at`: every row starts `NULL`. Archiving does not exist before BE-S4-07.
 
 **Operational impact of migration 0006:** the foreign key on `documents.uploaded_by` and the CHECK on `users` validate existing rows, and the foreign key takes `SHARE ROW EXCLUSIVE` on `documents` and `users` while it runs. The index on `documents.uploaded_by` is built without `CONCURRENTLY` and blocks writes to `documents` for the duration of the build. Drizzle runs all statements of a pending migration in one transaction, so these locks last until the whole migration commits. The migration is sized for the current table volumes; measure the build time on a production-sized copy before a large deployment.
