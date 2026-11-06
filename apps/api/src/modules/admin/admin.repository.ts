@@ -73,7 +73,7 @@ export class DrizzleAdminRepository implements IAdminRepository {
 export type InMemoryAdminUserRecord = {
   id: string;
   role: UserRole;
-  // Retained for test fixture parity; getSummary counts all users regardless of status per decision O10.
+  // Retained for test fixture parity; getSummary counts all users regardless of status per proposed default O10.
   status?: "active" | "inactive" | undefined;
 };
 
@@ -81,8 +81,10 @@ export type InMemoryAdminDocumentRecord = {
   id: string;
   createdAt: Date;
   deletedAt?: Date | null | undefined;
+  // Retained for test fixture parity; getSummary includes archived documents per proposed default O7.
   archivedAt?: Date | null | undefined;
-  hasFile?: boolean | undefined;
+  hasFile: boolean;
+  // Retained for test fixture parity with the document schema across processing states.
   processingStatus?: ProcessingStatus | undefined;
 };
 
@@ -118,8 +120,8 @@ export class InMemoryAdminRepository implements IAdminRepository {
       if (doc.deletedAt !== undefined && doc.deletedAt !== null) {
         continue;
       }
-      // In-memory test fixtures assume an attached document_files record unless explicitly false.
-      if (doc.hasFile === false) {
+      // Require an attached file record, matching the SQL inner join with document_files.
+      if (!doc.hasFile) {
         continue;
       }
       totalDocuments += 1;

@@ -7,9 +7,26 @@ import type { TokenVerifier } from "../../middleware/auth";
 import { DrizzleAdminRepository, InMemoryAdminRepository } from "./admin.repository";
 import { createAdminService } from "./admin.service";
 
+type FakePostgresDatabase = {
+  select: (...args: unknown[]) => {
+    from: (...args: unknown[]) => unknown;
+  };
+};
+
+function isValidFakePostgresDatabase(db: unknown): db is FakePostgresDatabase {
+  return (
+    typeof db === "object" &&
+    db !== null &&
+    "select" in db &&
+    typeof (db as { select?: unknown }).select === "function"
+  );
+}
+
 function createFakePostgresDatabase(db: unknown): PostgresJsDatabase {
-  // Cast is isolated to this test double helper to satisfy constructor typing.
-  return db as PostgresJsDatabase;
+  if (!isValidFakePostgresDatabase(db)) {
+    throw new Error("Invalid test double: expected an object with a select method");
+  }
+  return db as unknown as PostgresJsDatabase;
 }
 
 const testLogger = createLogger({
@@ -153,6 +170,7 @@ describe("GET /api/v1/admin/summary - Task BE-S4-05 (PROP-ADM-AC-01.01 to 01.03)
     repository.documents.set("doc-recent-1", {
       id: "doc-recent-1",
       createdAt: new Date("2026-11-03T10:00:00.000Z"),
+      hasFile: true,
       processingStatus: "completed",
     });
 
@@ -160,14 +178,16 @@ describe("GET /api/v1/admin/summary - Task BE-S4-05 (PROP-ADM-AC-01.01 to 01.03)
     repository.documents.set("doc-boundary-7-days", {
       id: "doc-boundary-7-days",
       createdAt: new Date("2026-10-29T12:00:00.000Z"),
+      hasFile: true,
       processingStatus: "completed",
     });
 
-    // 3. Uploaded 1 day ago, archived (still stored, counts in total and 7 days per decision O7)
+    // 3. Uploaded 1 day ago, archived (still stored, counts in total and 7 days per proposed default O7)
     repository.documents.set("doc-recent-archived", {
       id: "doc-recent-archived",
       createdAt: new Date("2026-11-04T08:00:00.000Z"),
       archivedAt: new Date("2026-11-04T12:00:00.000Z"),
+      hasFile: true,
       processingStatus: "completed",
     });
 
@@ -175,6 +195,7 @@ describe("GET /api/v1/admin/summary - Task BE-S4-05 (PROP-ADM-AC-01.01 to 01.03)
     repository.documents.set("doc-older", {
       id: "doc-older",
       createdAt: new Date("2026-10-22T00:00:00.000Z"),
+      hasFile: true,
       processingStatus: "completed",
     });
 
@@ -183,6 +204,7 @@ describe("GET /api/v1/admin/summary - Task BE-S4-05 (PROP-ADM-AC-01.01 to 01.03)
       id: "doc-older-archived",
       createdAt: new Date("2026-10-15T00:00:00.000Z"),
       archivedAt: new Date("2026-10-20T00:00:00.000Z"),
+      hasFile: true,
       processingStatus: "completed",
     });
 
@@ -191,6 +213,7 @@ describe("GET /api/v1/admin/summary - Task BE-S4-05 (PROP-ADM-AC-01.01 to 01.03)
       id: "doc-soft-deleted",
       createdAt: new Date("2026-11-04T01:00:00.000Z"),
       deletedAt: new Date("2026-11-04T02:00:00.000Z"),
+      hasFile: true,
       processingStatus: "completed",
     });
 
@@ -270,6 +293,7 @@ describe("GET /api/v1/admin/summary - Task BE-S4-05 (PROP-ADM-AC-01.01 to 01.03)
     const body = apiErrorSchema.parse(await res.json());
     expect(body.success).toBe(false);
     expect(body.error.code).toBe("UNAUTHORIZED");
+    expect(body.error.message).toBe("Autentikasi diperlukan");
   });
 
   it("returns 401 UNAUTHORIZED when Authorization token is invalid", async () => {
@@ -293,6 +317,7 @@ describe("GET /api/v1/admin/summary - Task BE-S4-05 (PROP-ADM-AC-01.01 to 01.03)
     const body = apiErrorSchema.parse(await res.json());
     expect(body.success).toBe(false);
     expect(body.error.code).toBe("UNAUTHORIZED");
+    expect(body.error.message).toBe("Token tidak valid atau telah kedaluwarsa");
   });
 
   it("returns 403 FORBIDDEN when caller role is member_team", async () => {
@@ -316,6 +341,7 @@ describe("GET /api/v1/admin/summary - Task BE-S4-05 (PROP-ADM-AC-01.01 to 01.03)
     const body = apiErrorSchema.parse(await res.json());
     expect(body.success).toBe(false);
     expect(body.error.code).toBe("FORBIDDEN");
+    expect(body.error.message).toBe("Anda tidak memiliki akses untuk tindakan ini");
   });
 
   it("returns 403 FORBIDDEN when caller role is head_of_team", async () => {
@@ -339,6 +365,7 @@ describe("GET /api/v1/admin/summary - Task BE-S4-05 (PROP-ADM-AC-01.01 to 01.03)
     const body = apiErrorSchema.parse(await res.json());
     expect(body.success).toBe(false);
     expect(body.error.code).toBe("FORBIDDEN");
+    expect(body.error.message).toBe("Anda tidak memiliki akses untuk tindakan ini");
   });
 
   it("normalizes numeric and string aggregate results in DrizzleAdminRepository", async () => {

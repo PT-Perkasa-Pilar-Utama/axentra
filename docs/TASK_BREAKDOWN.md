@@ -275,7 +275,7 @@ Scope (defaults from [proposals/admin-role-proposal.md](proposals/admin-role-pro
 
 **Estimated duration:** termasuk dalam estimasi Sprint 4 di atas. Beban Admin: Sami 1.5d (BE-S4-05, BE-S4-07), Arya 1.8d (DB-S4-01, BE-S4-06, BE-S4-08), Aiman 1.7d (FE-S4-05, FE-S4-06), Azis 1.0d (FE-S4-04, FE-S4-07), Arya juga 1.0d untuk QA (QA-S4-02, QA-S4-03).
 
-**Kontrak API:** [api-specs/09-admin.md](api-specs/09-admin.md) (status Planned) adalah kontrak untuk BE-S4-05 sampai BE-S4-08 dan FE-S4-04 sampai FE-S4-06. Kontrak ini perlu disetujui sebelum kartu FE mulai.
+**Kontrak API:** [api-specs/09-admin.md](api-specs/09-admin.md) (status In Progress) adalah kontrak untuk BE-S4-05 sampai BE-S4-08 dan FE-S4-04 sampai FE-S4-06. Kontrak ini perlu disetujui sebelum kartu FE mulai.
 
 **Dependensi (blocked by):**
 
