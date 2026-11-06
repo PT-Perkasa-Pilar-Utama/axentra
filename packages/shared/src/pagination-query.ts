@@ -1,7 +1,5 @@
 import { z } from "zod";
 
-const DEFAULT_PAGE = 1;
-
 const parsePaginationQueryValue = (value: unknown, fallback: number): unknown => {
   if (value === undefined || value === "") return fallback;
   if (typeof value === "boolean") return Number.NaN;
@@ -15,13 +13,14 @@ export type PageLimitQueryFields = {
 
 // Shared `page` and `limit` query fields. A missing value falls back to page 1 and the given default limit.
 export function pageLimitQueryFields(limits: {
+  defaultPage: number;
   defaultLimit: number;
   maxLimit: number;
   maxPage: number;
 }): PageLimitQueryFields {
   return {
     page: z.preprocess(
-      (value) => parsePaginationQueryValue(value, DEFAULT_PAGE),
+      (value) => parsePaginationQueryValue(value, limits.defaultPage),
       z.coerce
         .number({ message: "Halaman harus berupa angka" })
         .int({ message: "Halaman harus berupa bilangan bulat" })

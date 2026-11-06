@@ -33,6 +33,7 @@ export type AdminUserListResponse = z.infer<typeof adminUserListResponseSchema>;
 
 export const adminUserListQuerySchema = z.object(
   pageLimitQueryFields({
+    defaultPage: ADMIN_ACCOUNT_DEFAULT_PAGE,
     defaultLimit: ADMIN_ACCOUNT_DEFAULT_LIMIT,
     maxLimit: ADMIN_ACCOUNT_MAX_LIMIT,
     maxPage: ADMIN_ACCOUNT_MAX_PAGE,

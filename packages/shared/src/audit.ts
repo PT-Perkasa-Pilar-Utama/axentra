@@ -13,6 +13,7 @@ export const DOWNLOAD_AUDIT_MAX_LIMIT = 100;
 
 export const downloadAuditListQuerySchema = z.object(
   pageLimitQueryFields({
+    defaultPage: DOWNLOAD_AUDIT_DEFAULT_PAGE,
     defaultLimit: DOWNLOAD_AUDIT_DEFAULT_LIMIT,
     maxLimit: DOWNLOAD_AUDIT_MAX_LIMIT,
     maxPage: DOWNLOAD_AUDIT_MAX_PAGE,
