@@ -39,6 +39,12 @@ function repositoryFor(records: ReadonlyArray<[string, AuthCredentials]>): Repos
       lookups.push(email);
       return byEmail.get(email) ?? null;
     },
+    async findStatusById(userId: string): Promise<"active" | "inactive" | null> {
+      for (const credentials of byEmail.values()) {
+        if (credentials.user.id === userId) return credentials.status;
+      }
+      return null;
+    },
   };
 }
 
@@ -92,6 +98,7 @@ describe("production authenticator (A1)", () => {
         {
           user: PRODUCTION_USER,
           passwordHash: await productionHashFor("correct-password"),
+          status: "active",
         },
       ],
     ]);
@@ -113,7 +120,11 @@ describe("production authenticator (A1)", () => {
     const repository = repositoryFor([
       [
         PRODUCTION_USER.email,
-        { user: PRODUCTION_USER, passwordHash: await productionHashFor("correct-password") },
+        {
+          user: PRODUCTION_USER,
+          passwordHash: await productionHashFor("correct-password"),
+          status: "active",
+        },
       ],
     ]);
     const authenticator = createDatabaseAuthenticator(repository, quietPasswords());
@@ -125,7 +136,10 @@ describe("production authenticator (A1)", () => {
 
   it("rejects a user seeded with the dummy placeholder hash without throwing", async () => {
     const repository = repositoryFor([
-      [PRODUCTION_USER.email, { user: PRODUCTION_USER, passwordHash: "dummy-hash" }],
+      [
+        PRODUCTION_USER.email,
+        { user: PRODUCTION_USER, passwordHash: "dummy-hash", status: "active" },
+      ],
     ]);
     const authenticator = createDatabaseAuthenticator(repository, quietPasswords());
 
@@ -136,7 +150,7 @@ describe("production authenticator (A1)", () => {
 
   it("rejects a user with an empty password hash", async () => {
     const repository = repositoryFor([
-      [PRODUCTION_USER.email, { user: PRODUCTION_USER, passwordHash: "" }],
+      [PRODUCTION_USER.email, { user: PRODUCTION_USER, passwordHash: "", status: "active" }],
     ]);
     const authenticator = createDatabaseAuthenticator(repository, quietPasswords());
 
@@ -170,9 +184,14 @@ describe("production authenticator (A1)", () => {
     ).toThrow("Production authentication requires a user repository");
   });
 
-  it("ignores the users table in development and verifies against the identity directory", async () => {
+  it("verifies against the identity directory and reads only users.status by id in development", async () => {
     const directory = memberDirectory(await productionHashFor("local-member-password"));
-    const repository = repositoryFor([]);
+    const repository = repositoryFor([
+      [
+        TEST_MEMBER.email,
+        { user: TEST_MEMBER, passwordHash: "unused-in-development", status: "active" },
+      ],
+    ]);
     const authenticator = createRuntimeAuthenticator(runtimeConfig("development", directory), {
       logger,
       userRepository: repository,
@@ -184,9 +203,39 @@ describe("production authenticator (A1)", () => {
     expect(repository.lookups).toEqual([]);
   });
 
+  it("rejects a development directory user whose users row is inactive or missing (BE-S4-06, O3)", async () => {
+    const directory = memberDirectory(await productionHashFor("local-member-password"));
+    const inactive = repositoryFor([
+      [
+        TEST_MEMBER.email,
+        { user: TEST_MEMBER, passwordHash: "unused-in-development", status: "inactive" },
+      ],
+    ]);
+    const missing = repositoryFor([]);
+
+    const inactiveAuthenticator = createRuntimeAuthenticator(
+      runtimeConfig("development", directory),
+      { logger, userRepository: inactive },
+    );
+    const missingAuthenticator = createRuntimeAuthenticator(
+      runtimeConfig("development", directory),
+      { logger, userRepository: missing },
+    );
+
+    expect(
+      await inactiveAuthenticator({ email: TEST_MEMBER.email, password: "local-member-password" }),
+    ).toBeNull();
+    expect(
+      await missingAuthenticator({ email: TEST_MEMBER.email, password: "local-member-password" }),
+    ).toBeNull();
+  });
+
   it("issues no session for a dummy-hash user through the auth service", async () => {
     const repository = repositoryFor([
-      [PRODUCTION_USER.email, { user: PRODUCTION_USER, passwordHash: "dummy-hash" }],
+      [
+        PRODUCTION_USER.email,
+        { user: PRODUCTION_USER, passwordHash: "dummy-hash", status: "active" },
+      ],
     ]);
     const service = serviceFor(createDatabaseAuthenticator(repository, quietPasswords()));
 
@@ -199,7 +248,7 @@ describe("production authenticator (A1)", () => {
     const passwordHash = await productionHashFor("correct-password");
     const recorder = recordingHashVerifier();
     const repository = repositoryFor([
-      [PRODUCTION_USER.email, { user: PRODUCTION_USER, passwordHash }],
+      [PRODUCTION_USER.email, { user: PRODUCTION_USER, passwordHash, status: "active" }],
     ]);
     const service = serviceFor(
       createDatabaseAuthenticator(
@@ -223,7 +272,10 @@ describe("production authenticator (A1)", () => {
   it("refuses a user whose stored hash makes the verifier throw, and logs a warning with the user id (F4)", async () => {
     const captured = captureLogger();
     const repository = repositoryFor([
-      [PRODUCTION_USER.email, { user: PRODUCTION_USER, passwordHash: MALFORMED_ARGON2ID_HASH }],
+      [
+        PRODUCTION_USER.email,
+        { user: PRODUCTION_USER, passwordHash: MALFORMED_ARGON2ID_HASH, status: "active" },
+      ],
     ]);
     const service = serviceFor(
       createDatabaseAuthenticator(repository, createPasswordVerifier({ logger: captured.logger })),

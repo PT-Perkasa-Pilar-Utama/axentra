@@ -93,8 +93,8 @@ Source: `docs/proposals/admin-role-proposal.md` (PROP-ADM-01, 02, 03, and 05). D
 
 ```text
 OK      GET    /admin/summary
-PLANNED GET    /admin/users
-PLANNED PATCH  /admin/users/:id/status
+OK      GET    /admin/users
+OK      PATCH  /admin/users/:id/status
 PLANNED GET    /admin/documents
 PLANNED GET    /admin/documents/:id
 PLANNED POST   /admin/documents/:id/archive

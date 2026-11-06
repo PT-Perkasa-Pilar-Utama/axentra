@@ -1,5 +1,6 @@
 import type { ApiConfig } from "@axentra/config";
 import type { Logger } from "@axentra/observability";
+import type { AccountStatus } from "@axentra/shared";
 import { createPasswordVerifier, type PasswordVerifier } from "./auth.password";
 import type { UserAuthenticator } from "./auth.service";
 import { normalizeEmail } from "./auth.tokens";
@@ -13,19 +14,29 @@ export type RuntimeAuthenticatorDependencies = {
 };
 
 // Development and test verify against AUTH_LOCAL_IDENTITY_DIRECTORY. Production verifies against the users
-// table, so the role always comes from the stored row. Both use the same password verifier.
+// table, so the role always comes from the stored row. Both use the same password verifier. Both reject an
+// account whose users.status is inactive, after the password check, so the response does not reveal status.
 export function createRuntimeAuthenticator(
   config: ApiConfig,
   dependencies: RuntimeAuthenticatorDependencies,
 ): UserAuthenticator {
   const passwords = createPasswordVerifier({ logger: dependencies.logger });
+  const userRepository = dependencies.userRepository;
   if (config.APP_ENV === "production") {
-    if (dependencies.userRepository === undefined) {
+    if (userRepository === undefined) {
       throw new Error("Production authentication requires a user repository");
     }
-    return createDatabaseAuthenticator(dependencies.userRepository, passwords);
+    return createDatabaseAuthenticator(userRepository, passwords);
   }
-  return createLocalIdentityAuthenticator(config.AUTH_LOCAL_IDENTITY_DIRECTORY, passwords);
+  const statusLookup =
+    userRepository === undefined
+      ? undefined
+      : (userId: string): Promise<AccountStatus | null> => userRepository.findStatusById(userId);
+  return createLocalIdentityAuthenticator(
+    config.AUTH_LOCAL_IDENTITY_DIRECTORY,
+    passwords,
+    statusLookup,
+  );
 }
 
 export function createDatabaseAuthenticator(
@@ -43,6 +54,6 @@ export function createDatabaseAuthenticator(
       userId: record.user.id,
       passwordHash: record.passwordHash,
     });
-    return matches ? record.user : null;
+    return matches && record.status === "active" ? record.user : null;
   };
 }

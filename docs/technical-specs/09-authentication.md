@@ -17,7 +17,7 @@ Axentra's API and Web surfaces.
 | Runtime identity directory     | Implemented | `BE-S1-01`: development/test directory; sessions reference seeded `users` rows                                                             |
 | Refresh cookie and CORS        | Implemented | `FND-10`: HttpOnly `axentra_refresh` cookie; CORS for `WEB_ORIGIN` only                                                                    |
 | Login rate limit               | Implemented | `FND-10`: 5 failures per normalized email in 15 minutes lock it for 15 minutes (`auth_login_attempts`)                                     |
-| Account deactivation           | Planned     | `BE-S4-06`: `users.status = inactive` blocks login on both paths and revokes active sessions (see [09-admin.md](../api-specs/09-admin.md)) |
+| Account deactivation           | Implemented | `BE-S4-06`: `users.status = inactive` blocks login on both paths and revokes active sessions (see [09-admin.md](../api-specs/09-admin.md)) |
 | Client route gating            | In Progress | Frontend integration with `/api/v1/auth/me`                                                                                                |
 
 ## Approved Architecture & Token Strategy

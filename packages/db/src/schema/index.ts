@@ -22,6 +22,7 @@ export {
   smartTagsRelations,
 } from "./tags";
 export {
+  accountStatusAuditEvents,
   downloadAuditEvents,
   downloadAuditEventsRelations,
   categoryPermissionAuditEvents,

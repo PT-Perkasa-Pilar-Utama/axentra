@@ -219,16 +219,16 @@ Many-to-many association between documents and Smart Tags.
 
 The identity persistence table storing user credentials and role assignments.
 
-| Column          | Type          | Constraints                                                | Description                                                                                                                               |
-| --------------- | ------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `id`            | `uuid`        | Primary Key, default random                                | Unique user identifier                                                                                                                    |
-| `email`         | `text`        | NOT NULL                                                   | Unique user email address                                                                                                                 |
-| `name`          | `text`        | Nullable                                                   | Display name (defaults to email if unprovided)                                                                                            |
-| `password_hash` | `text`        | NOT NULL                                                   | Argon2id password hash                                                                                                                    |
-| `role`          | `user_role`   | NOT NULL                                                   | User role (`member_team`, `head_of_team`, `admin`)                                                                                        |
-| `created_at`    | `timestamptz` | NOT NULL, default now()                                    | Record creation timestamp                                                                                                                 |
-| `updated_at`    | `timestamptz` | NOT NULL, default now()                                    | Last update timestamp                                                                                                                     |
-| `status`        | `text`        | NOT NULL, DEFAULT `'active'`, CHECK `active` or `inactive` | Account status (DB-S4-01). Planned (BE-S4-06): inactive accounts are rejected at login (see [09-authentication.md](09-authentication.md)) |
+| Column          | Type          | Constraints                                                | Description                                                                                                                      |
+| --------------- | ------------- | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `id`            | `uuid`        | Primary Key, default random                                | Unique user identifier                                                                                                           |
+| `email`         | `text`        | NOT NULL                                                   | Unique user email address                                                                                                        |
+| `name`          | `text`        | Nullable                                                   | Display name (defaults to email if unprovided)                                                                                   |
+| `password_hash` | `text`        | NOT NULL                                                   | Argon2id password hash                                                                                                           |
+| `role`          | `user_role`   | NOT NULL                                                   | User role (`member_team`, `head_of_team`, `admin`)                                                                               |
+| `created_at`    | `timestamptz` | NOT NULL, default now()                                    | Record creation timestamp                                                                                                        |
+| `updated_at`    | `timestamptz` | NOT NULL, default now()                                    | Last update timestamp                                                                                                            |
+| `status`        | `text`        | NOT NULL, DEFAULT `'active'`, CHECK `active` or `inactive` | Account status (DB-S4-01). Inactive accounts are rejected at login (BE-S4-06) (see [09-authentication.md](09-authentication.md)) |
 
 **Indexes:**
 
@@ -351,6 +351,29 @@ Created by migration `packages/db/drizzle/0005_add_category_permission_audit_eve
 
 ---
 
+#### 12. `account_status_audit_events`
+
+Point-in-time record of an Admin changing a Member Team or Head of Team account status (BE-S4-06, O5 decided 2026-11-06). It is written in the same transaction as the status change. The application never updates or deletes these rows.
+
+| Column            | Type          | Constraints                                   | Description                                         |
+| ----------------- | ------------- | --------------------------------------------- | --------------------------------------------------- |
+| `id`              | `uuid`        | Primary Key, default random                   | Event identifier                                    |
+| `user_id`         | `uuid`        | Nullable, FK -> `users.id` ON DELETE SET NULL | Affected account; null after the account is deleted |
+| `user_name`       | `text`        | Nullable                                      | Account name at the time of the change              |
+| `user_email`      | `text`        | Nullable                                      | Account email at the time of the change             |
+| `previous_status` | `text`        | NOT NULL, CHECK `active` or `inactive`        | Status before the change                            |
+| `new_status`      | `text`        | NOT NULL, CHECK `active` or `inactive`        | Status after the change                             |
+| `actor_user_id`   | `uuid`        | Nullable, FK -> `users.id` ON DELETE SET NULL | Admin who made the change                           |
+| `actor_name`      | `text`        | Nullable                                      | Admin name at the time of the change                |
+| `actor_email`     | `text`        | Nullable                                      | Admin email at the time of the change               |
+| `changed_at`      | `timestamptz` | NOT NULL, default now()                       | Change timestamp                                    |
+
+**Indexes:**
+
+- `account_status_audit_events_user_id_idx` on `(user_id)`
+- `account_status_audit_events_actor_user_id_idx` on `(actor_user_id)`
+- `account_status_audit_events_changed_at_idx` on `(changed_at)`
+
 ## Status Vocabularies
 
 ### Processing Status Enum (`processing_status`)
@@ -368,10 +391,10 @@ Persisted PostgreSQL enum and shared contract:
 
 Stored as `text` with the CHECK constraint `users_status_check`, not as a PostgreSQL enum. The TypeScript literal union in `packages/db/src/schema/users.ts` and the CHECK values must match; `account-ownership.constraints.test.ts` asserts this.
 
-| Status     | Meaning                                                                    |
-| ---------- | -------------------------------------------------------------------------- |
-| `active`   | Default for every account. The account can sign in.                        |
-| `inactive` | Set by Admin (BE-S4-06, planned). The account must not be able to sign in. |
+| Status     | Meaning                                                           |
+| ---------- | ----------------------------------------------------------------- |
+| `active`   | Default for every account. The account can sign in.               |
+| `inactive` | Set by Admin (BE-S4-06). The account must not be able to sign in. |
 
 ### User Role Enum (`user_role`)
 

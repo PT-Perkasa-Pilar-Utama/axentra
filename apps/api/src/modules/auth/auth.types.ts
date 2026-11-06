@@ -1,4 +1,4 @@
-import type { AuthUser } from "@axentra/shared";
+import type { AccountStatus, AuthUser } from "@axentra/shared";
 import type { LoginAttemptDecision } from "./auth.policy";
 
 export type AuthSessionRecord = {
@@ -57,8 +57,11 @@ export type LoginAttemptStore = {
 export type AuthCredentials = {
   user: AuthUser;
   passwordHash: string;
+  status: AccountStatus;
 };
 
 export type AuthUserRepository = {
   findCredentialsByEmail(email: string): Promise<AuthCredentials | null>;
+  // Null when no users row has this id. The development path treats that as a rejected login.
+  findStatusById(userId: string): Promise<AccountStatus | null>;
 };
