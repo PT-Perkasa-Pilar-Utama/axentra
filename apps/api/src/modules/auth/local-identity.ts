@@ -1,5 +1,11 @@
 import { z } from "zod";
-import { authUserSchema, type AuthUser, type LoginRequest, type UserRole } from "@axentra/shared";
+import {
+  authUserSchema,
+  type AccountStatus,
+  type AuthUser,
+  type LoginRequest,
+  type UserRole,
+} from "@axentra/shared";
 import type { PasswordVerifier } from "./auth.password";
 import type { UserAuthenticator } from "./auth.service";
 
@@ -40,9 +46,12 @@ export function parseLocalIdentityDirectory(encodedDirectory: string): LocalIden
   return parsed.data;
 }
 
+// The directory has no status field. When a lookup is given, the account must exist in users and be active.
+// A missing row is rejected, because sessions reference users rows and could not be created anyway.
 export function createLocalIdentityAuthenticator(
   encodedDirectory: string,
   passwords: PasswordVerifier,
+  statusLookup?: ((userId: string) => Promise<AccountStatus | null>) | undefined,
 ): UserAuthenticator {
   const directory = parseLocalIdentityDirectory(encodedDirectory);
 
@@ -59,6 +68,7 @@ export function createLocalIdentityAuthenticator(
       passwordHash: record.passwordHash,
     });
     if (!passwordMatches) return null;
+    if (statusLookup !== undefined && (await statusLookup(record.id)) !== "active") return null;
 
     const user: AuthUser = {
       id: record.id,

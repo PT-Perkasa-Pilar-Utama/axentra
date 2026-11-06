@@ -1,5 +1,5 @@
-import { boolean, index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { boolean, check, index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { relations, sql } from "drizzle-orm";
 import { categories } from "./categories";
 import { documents } from "./documents";
 import { users } from "./users";
@@ -52,6 +52,36 @@ export const categoryPermissionAuditEvents = pgTable(
     index("category_permission_audit_events_category_id_idx").on(table.categoryId),
     index("category_permission_audit_events_user_id_idx").on(table.userId),
     index("category_permission_audit_events_changed_at_idx").on(table.changedAt),
+  ],
+);
+
+// Point-in-time record of an Admin changing a Member Team or Head of Team account status (BE-S4-06).
+export const accountStatusAuditEvents = pgTable(
+  "account_status_audit_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    userName: text("user_name"),
+    userEmail: text("user_email"),
+    previousStatus: text("previous_status", { enum: ["active", "inactive"] }).notNull(),
+    newStatus: text("new_status", { enum: ["active", "inactive"] }).notNull(),
+    actorUserId: uuid("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+    actorName: text("actor_name"),
+    actorEmail: text("actor_email"),
+    changedAt: timestamp("changed_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => [
+    check(
+      "account_status_audit_events_previous_status_check",
+      sql`${table.previousStatus} in ('active', 'inactive')`,
+    ),
+    check(
+      "account_status_audit_events_new_status_check",
+      sql`${table.newStatus} in ('active', 'inactive')`,
+    ),
+    index("account_status_audit_events_user_id_idx").on(table.userId),
+    index("account_status_audit_events_actor_user_id_idx").on(table.actorUserId),
+    index("account_status_audit_events_changed_at_idx").on(table.changedAt),
   ],
 );
 

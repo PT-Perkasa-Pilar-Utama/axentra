@@ -2,7 +2,7 @@
 
 Source: PROP-ADM-01, PROP-ADM-02, PROP-ADM-03, and PROP-ADM-05 in [proposals/admin-role-proposal.md](../proposals/admin-role-proposal.md). BA (Azizah) approved these scopes on 2026-10-29. The `PROP-ADM-*` identifiers are temporary and are not BA IDs; BA may renumber them.
 
-Status: **In Progress** (Sprint 4: Admin). `GET /admin/summary` is implemented (BE-S4-05). Account management (BE-S4-06), document management (BE-S4-07), and audit trail access (BE-S4-08) remain planned. Cards: DB-S4-01, BE-S4-05, BE-S4-06, BE-S4-07, and BE-S4-08 in [TASK_BREAKDOWN.md](../TASK_BREAKDOWN.md).
+Status: **In Progress** (Sprint 4: Admin). `GET /admin/summary` (BE-S4-05) and account management (BE-S4-06) are implemented. Document management (BE-S4-07) and audit trail access (BE-S4-08) remain planned. Cards: DB-S4-01, BE-S4-05, BE-S4-06, BE-S4-07, and BE-S4-08 in [TASK_BREAKDOWN.md](../TASK_BREAKDOWN.md).
 
 Items marked **(usulan)** are proposed defaults that the Tech Lead has not yet recorded. Items listed under [Open Decisions](#open-decisions) must be answered before the cards that depend on them start.
 
@@ -115,6 +115,8 @@ Behavior:
 - Deactivating the last active `head_of_team` is rejected with `422 LAST_HEAD_OF_TEAM` (usulan, see O4).
 - Setting the status it already has returns `200 OK` with no change (idempotent, per [01-conventions.md](01-conventions.md)).
 - Setting `inactive` revokes every active session of the target account (`auth_sessions.revoked_at`). Access and refresh tokens for those sessions return `401 UNAUTHORIZED` afterwards, as in [09-authentication.md](../technical-specs/09-authentication.md).
+- Every status change writes one row to `account_status_audit_events` in the same transaction, with the Admin as the actor (O5). A repeated status writes nothing.
+- Deactivating an account and the last-Head check run in one transaction. Heads of Team are locked in id order before the target row, so concurrent deactivations cannot both pass the last-head check.
 - A deactivated account cannot log in. See [Authentication Effects](#authentication-effects).
 
 Success (`200 OK`):
@@ -132,7 +134,7 @@ Success (`200 OK`):
 
 Errors:
 
-- `400 VALIDATION_ERROR`: body is malformed or `status` is not `active` or `inactive`.
+- `400 VALIDATION_ERROR`: body is malformed or `status` is not `active` or `inactive`. An `id` that is not a UUID is also `400`.
 - `401 UNAUTHORIZED`, `403 FORBIDDEN`.
 - `404 NOT_FOUND`: no user with that `id`. Message: `Pengguna tidak ditemukan`.
 - `422 INVALID_TARGET_ROLE`: target role is `admin` (usulan).
@@ -286,7 +288,7 @@ Required behavior:
 Covers `BE-S4-06`.
 
 - A deactivated account cannot log in. Login returns `401 UNAUTHORIZED` with the generic message `Email atau kata sandi salah` (usulan, see O2).
-- The rule applies to both login paths in [02-authentication.md](02-authentication.md): the development and test identity directory (`AUTH_LOCAL_IDENTITY_DIRECTORY`), and the production `users` table. Today only the production path reads a table, so the development path needs a status check as well (see O3).
+- The rule applies to both login paths in [02-authentication.md](02-authentication.md): the development and test identity directory (`AUTH_LOCAL_IDENTITY_DIRECTORY`), and the production `users` table. The production path reads the `users` table. The development path reads `users.status` by id after the password verifies (see O3).
 - Revoking sessions on deactivation follows the revocation rules in [09-authentication.md](../technical-specs/09-authentication.md).
 
 ## Traceability
@@ -301,19 +303,19 @@ Covers `BE-S4-06`.
 
 ## Open Decisions
 
-| ID  | Question                                                                                | Affects            | Proposed default                                                                                                          |
-| --- | --------------------------------------------------------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------- |
-| O1  | Admin access to document content (proposal questions 7 and 9)                           | BE-S4-08           | **Decided**: metadata only, no preview or download (Q7 by Tech Lead 2026-10-29, BA approved 2026-11-04; Q9 on 2026-11-04) |
-| O2  | Message and status for login by a deactivated account                                   | BE-S4-06, FE-S4-05 | `401` with the generic message, to avoid revealing account status                                                         |
-| O3  | The development and test identity directory has no status field                         | BE-S4-06, QA       | Check `users.status` by `id` after the directory verifies the password                                                    |
-| O4  | Can the last active Head of Team be deactivated?                                        | BE-S4-06           | Not allowed, `422 LAST_HEAD_OF_TEAM` (usulan)                                                                             |
-| O5  | Are Admin mutations written to an audit trail (deactivate, archive, unarchive, delete)? | BE-S4-06, BE-S4-07 | Yes (usulan). The audit record format for these actions is not defined in the docs yet; confirm before BE-S4-06 starts    |
-| O6  | Can Member Team or Head of Team open an archived document by direct URL?                | 03, 04, 05 specs   | `404 NOT_FOUND`, same as soft-deleted                                                                                     |
-| O7  | Do `totalDocuments` and `uploadedLast7Days` include archived documents?                 | BE-S4-05           | Yes, archived documents are still stored; decide explicitly                                                               |
-| O8  | Legacy documents have no uploader. How does the UI show them?                           | DB-S4-01, FE-S4-06 | **Decided** (Tech Lead, 2026-11-05): `ownerId` and `ownerName` are `null`, shown as "Tidak diketahui". No backfill.       |
-| O9  | Does the Admin document list include documents without a stored file?                   | BE-S4-07           | No, same rule as `totalDocuments`                                                                                         |
-| O10 | Does `usersByRole` include inactive accounts?                                           | BE-S4-05           | Yes (usulan)                                                                                                              |
-| O11 | Where does the Admin test account come from (seed, script, or manual input)?            | QA, BE-S4-06       | Add an Admin account to the local seed and run `bun run db:seed` (usulan)                                                 |
-| O12 | Who owns the Admin document menu and route?                                             | FE-S4-06, FE-S4-07 | **Decided (Option A):** FE-S4-06 retains the document menu and route. Arya approved verbally, as reported on 2026-11-06.  |
+| ID  | Question                                                                                | Affects            | Proposed default                                                                                                                                                                                                         |
+| --- | --------------------------------------------------------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| O1  | Admin access to document content (proposal questions 7 and 9)                           | BE-S4-08           | **Decided**: metadata only, no preview or download (Q7 by Tech Lead 2026-10-29, BA approved 2026-11-04; Q9 on 2026-11-04)                                                                                                |
+| O2  | Message and status for login by a deactivated account                                   | BE-S4-06, FE-S4-05 | `401` with the generic message, to avoid revealing account status Implemented in BE-S4-06 with this default (Tech Lead confirmation pending).                                                                            |
+| O3  | The development and test identity directory has no status field                         | BE-S4-06, QA       | Check `users.status` by `id` after the directory verifies the password Implemented in BE-S4-06 with this default (Tech Lead confirmation pending).                                                                       |
+| O4  | Can the last active Head of Team be deactivated?                                        | BE-S4-06           | Not allowed, `422 LAST_HEAD_OF_TEAM` (usulan)                                                                                                                                                                            |
+| O5  | Are Admin mutations written to an audit trail (deactivate, archive, unarchive, delete)? | BE-S4-06, BE-S4-07 | **Decided** (Tech Lead, 2026-11-06): yes for account status changes, recorded in `account_status_audit_events` (see [06-data-model.md](../technical-specs/06-data-model.md)). Document actions are recorded by BE-S4-07. |
+| O6  | Can Member Team or Head of Team open an archived document by direct URL?                | 03, 04, 05 specs   | `404 NOT_FOUND`, same as soft-deleted                                                                                                                                                                                    |
+| O7  | Do `totalDocuments` and `uploadedLast7Days` include archived documents?                 | BE-S4-05           | Yes, archived documents are still stored; decide explicitly                                                                                                                                                              |
+| O8  | Legacy documents have no uploader. How does the UI show them?                           | DB-S4-01, FE-S4-06 | **Decided** (Tech Lead, 2026-11-05): `ownerId` and `ownerName` are `null`, shown as "Tidak diketahui". No backfill.                                                                                                      |
+| O9  | Does the Admin document list include documents without a stored file?                   | BE-S4-07           | No, same rule as `totalDocuments`                                                                                                                                                                                        |
+| O10 | Does `usersByRole` include inactive accounts?                                           | BE-S4-05           | Yes (usulan)                                                                                                                                                                                                             |
+| O11 | Where does the Admin test account come from (seed, script, or manual input)?            | QA, BE-S4-06       | Add an Admin account to the local seed and run `bun run db:seed` (usulan)                                                                                                                                                |
+| O12 | Who owns the Admin document menu and route?                                             | FE-S4-06, FE-S4-07 | **Decided (Option A):** FE-S4-06 retains the document menu and route. Arya approved verbally, as reported on 2026-11-06.                                                                                                 |
 
 **Navigation ownership (Option A, Tech Lead decision 2026-11-05 for FE-S4-05; verbally approved for FE-S4-06 as reported on 2026-11-06):** FE-S4-05 delivered initial `admin` role resolution, the Manajemen Akun menu entry, and `/admin/users`. FE-S4-06 delivers the Manajemen Dokumen menu entry and `/admin/documents`. FE-S4-07 owns the remaining Admin menu entries (Dashboard, Audit Trail), remaining Admin routes, and the post-login redirect. This records task ownership; it does not decide any API question above.
