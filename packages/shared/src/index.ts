@@ -15,6 +15,13 @@ export {
   downloadAuditListQuerySchema,
   downloadAuditListResponseSchema,
 } from "./audit";
+export type { AdminSummary, AdminSummaryResponse, AdminSummaryUsersByRole } from "./admin";
+export {
+  ADMIN_SUMMARY_UPLOAD_WINDOW_DAYS,
+  adminSummaryResponseSchema,
+  adminSummarySchema,
+  adminSummaryUsersByRoleSchema,
+} from "./admin";
 export type { AnalyticsSummary, AnalyticsSummaryResponse } from "./analytics";
 export {
   ANALYTICS_UPLOAD_WINDOW_DAYS,

@@ -50,4 +50,4 @@ Success (`200 OK`):
 - Whether metrics are global or scoped to team/category (currently global across all active documents per AC-11.01).
 - Whether analytics count failed uploads (rejected uploads never persist a document row; persisted active documents are counted across processing states).
 - Whether duplicate upload attempts appear as a separate metric.
-- Whether archived documents count toward these metrics (Planned; see O7 in [09-admin.md](09-admin.md)).
+- Whether archived documents count toward these metrics (currently included in SQL count; see O7 in [09-admin.md](09-admin.md)).
