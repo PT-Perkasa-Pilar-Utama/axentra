@@ -5,6 +5,7 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import { AuthSessionProvider } from "../src/features/auth/auth-session.context";
 import { clearSession, type AuthSession } from "../src/features/auth/session.storage";
 import { router as productionRouter } from "../src/app/router";
+import { updateAdminUserStatusPayloadSchema } from "../src/features/admin-users/admin-users.api";
 
 const originalFetch = globalThis.fetch;
 
@@ -93,12 +94,17 @@ describe("Admin Users Feature (FE-S4-05 / PROP-ADM-AC-02)", () => {
   test("AC-02.01 & AC-02.02: renders user list, opens confirmation, and updates status to inactive", async () => {
     let currentStatus: "active" | "inactive" = "active";
     let patchCount = 0;
+    let releasePatch: (() => void) | undefined;
+    const patchDelay = new Promise<void>((resolve) => {
+      releasePatch = resolve;
+    });
 
     globalThis.fetch = Object.assign(
       async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
         if (init?.method === "PATCH") {
           patchCount += 1;
-          const payload = JSON.parse(String(init.body)) as { status: "active" | "inactive" };
+          const payload = updateAdminUserStatusPayloadSchema.parse(JSON.parse(String(init.body)));
+          await patchDelay;
           currentStatus = payload.status;
           return Response.json({
             success: true,
@@ -148,6 +154,18 @@ describe("Admin Users Feature (FE-S4-05 / PROP-ADM-AC-02)", () => {
     });
     fireEvent.click(confirmBtn);
 
+    await waitFor(() => {
+      expect(confirmBtn.textContent).toBe("Menyimpan...");
+      expect(confirmBtn.hasAttribute("disabled")).toBe(true);
+      expect(
+        within(screen.getByRole("dialog"))
+          .getByRole("button", { name: "Batal" })
+          .hasAttribute("disabled"),
+      ).toBe(true);
+    });
+
+    releasePatch?.();
+
     await waitFor(() => expect(screen.getByText("Nonaktif")).toBeTruthy());
     expect(patchCount).toBe(1);
   });
@@ -160,7 +178,7 @@ describe("Admin Users Feature (FE-S4-05 / PROP-ADM-AC-02)", () => {
       async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
         if (init?.method === "PATCH") {
           patchCount += 1;
-          const payload = JSON.parse(String(init.body)) as { status: "active" | "inactive" };
+          const payload = updateAdminUserStatusPayloadSchema.parse(JSON.parse(String(init.body)));
           currentStatus = payload.status;
           return Response.json({
             success: true,
@@ -293,18 +311,77 @@ describe("Admin Users Feature (FE-S4-05 / PROP-ADM-AC-02)", () => {
     expect(requests).toBe(3);
   });
 
+  test("shows the loading state while the account list request is pending", async () => {
+    let resolveList: ((response: Response) => void) | undefined;
+    const pendingList = new Promise<Response>((resolve) => {
+      resolveList = resolve;
+    });
+    globalThis.fetch = Object.assign(async (): Promise<Response> => pendingList, {
+      preconnect: (): void => {},
+    });
+
+    renderAdminUsersPage(adminSession);
+    expect(screen.getByText("Memuat daftar akun...")).toBeTruthy();
+    expect(screen.queryByText("Belum ada akun.")).toBeNull();
+    expect(screen.queryByRole("table")).toBeNull();
+
+    resolveList?.(
+      Response.json({
+        success: true,
+        data: [sampleMember],
+        meta: { page: 1, limit: 20, total: 1 },
+      }),
+    );
+    expect(await screen.findByText("Budi Santoso")).toBeTruthy();
+  });
+
+  test("shows the forbidden message when the account list is denied", async () => {
+    globalThis.fetch = Object.assign(
+      async (): Promise<Response> =>
+        Response.json(
+          { success: false, error: { code: "FORBIDDEN", message: "Access denied" } },
+          { status: 403 },
+        ),
+      { preconnect: (): void => {} },
+    );
+
+    renderAdminUsersPage(adminSession);
+    expect(await screen.findByText("Anda tidak memiliki izin untuk melihat akun.")).toBeTruthy();
+    expect(screen.queryByText("Belum ada akun.")).toBeNull();
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Coba lagi" })).toBeNull();
+  });
+
   test("blocks member_team from accessing /admin/users", async () => {
+    let requests = 0;
+    globalThis.fetch = Object.assign(
+      async (): Promise<Response> => {
+        requests += 1;
+        return Response.json({});
+      },
+      { preconnect: (): void => {} },
+    );
     renderAdminUsersPage(memberSession);
 
     expect(await screen.findByRole("heading", { name: "Akses Dibatasi" })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Manajemen Akun" })).toBeNull();
+    expect(requests).toBe(0);
   });
 
   test("blocks head_of_team from accessing /admin/users", async () => {
+    let requests = 0;
+    globalThis.fetch = Object.assign(
+      async (): Promise<Response> => {
+        requests += 1;
+        return Response.json({});
+      },
+      { preconnect: (): void => {} },
+    );
     renderAdminUsersPage(headOfTeamSession);
 
     expect(await screen.findByRole("heading", { name: "Akses Dibatasi" })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Manajemen Akun" })).toBeNull();
+    expect(requests).toBe(0);
   });
 
   test("redirects unauthenticated visitor to /login", async () => {

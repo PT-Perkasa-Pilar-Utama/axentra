@@ -11,7 +11,7 @@ Decided on 2026-10-30 by the Tech Lead (proposal question 8). Shown only to role
 - `Manajemen Dokumen`
 - `Audit Trail`
 
-Current state on `dev`: the menu lives in `apps/web/src/app/app-shell.menu.ts` (`ROLE_MENU`). It has entries for `member_team` and `head_of_team` only. `resolveShellRole` sends `admin` to the Member Team menu, and login sends every role to `/dashboard`. FE-S4-07 adds the `admin` entries above.
+Current state on `dev` at `b550bbe`: `ROLE_MENU` contains `member_team` and `head_of_team` entries; `resolveShellRole` sends `admin` to the Member Team menu, and login sends every role to `/dashboard`. In the FE-S4-05 branch, per the 2026-11-05 Tech Lead decision (Option A, review finding F6), `resolveShellRole` returns `admin`, `ROLE_MENU.admin` contains only `Manajemen Akun`, and the Admin account route is registered. FE-S4-07 remains responsible for the other Admin menu entries and routes, and the Admin login redirect.
 
 ## Routes (usulan)
 

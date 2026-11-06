@@ -91,6 +91,11 @@
   background: #fff1f3;
   color: #b31c3f;
 }
+.admin-users .admin-users__activate {
+  border-color: #a3e9ce;
+  background: #ebfbf4;
+  color: #116b52;
+}
 .admin-users__pagination {
   display: flex;
   justify-content: space-between;

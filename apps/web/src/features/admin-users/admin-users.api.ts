@@ -26,6 +26,11 @@ export type AdminUser = z.infer<typeof adminUserSchema>;
 
 export const adminUserListSchema = z.array(adminUserSchema);
 
+export const updateAdminUserStatusPayloadSchema = z.object({
+  status: adminUserStatusSchema,
+});
+export type UpdateAdminUserStatusPayload = z.infer<typeof updateAdminUserStatusPayloadSchema>;
+
 export const updateAdminUserStatusResponseSchema = z.object({
   id: z.string().uuid(),
   role: adminUserRoleSchema,
@@ -66,11 +71,12 @@ export async function updateAdminUserStatus(
   status: AdminUserStatus,
 ): Promise<UpdateAdminUserStatusResponse> {
   const safeId = encodeURIComponent(id);
+  const payload: UpdateAdminUserStatusPayload = { status };
   return apiRequest(`/admin/users/${safeId}/status`, updateAdminUserStatusResponseSchema, {
     method: "PATCH",
     headers: {
       "content-type": "application/json",
     },
-    body: JSON.stringify({ status }),
+    body: JSON.stringify(payload),
   });
 }

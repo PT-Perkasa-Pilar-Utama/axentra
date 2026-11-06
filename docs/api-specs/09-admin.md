@@ -314,3 +314,5 @@ Covers `BE-S4-06`.
 | O9  | Does the Admin document list include documents without a stored file?                   | BE-S4-07           | No, same rule as `totalDocuments`                                                                                         |
 | O10 | Does `usersByRole` include inactive accounts?                                           | BE-S4-05           | Yes (usulan)                                                                                                              |
 | O11 | Where does the Admin test account come from (seed, script, or manual input)?            | QA, BE-S4-06       | Add an Admin account to the local seed and run `bun run db:seed` (usulan)                                                 |
+
+**Navigation ownership (review F6, Option A, Tech Lead decision 2026-11-05):** FE-S4-05 delivers initial `admin` role resolution, its Manajemen Akun menu entry and `/admin/users` route. FE-S4-07 owns the remaining Admin menu entries and routes, and the post-login redirect. This records task ownership; it does not decide any API question above.

@@ -5,10 +5,6 @@ import "./admin-users.css";
 
 export const ADMIN_USERS_PAGE_TITLE = "Manajemen Akun";
 
-export type AdminUsersViewProps = {
-  presenter?: AdminUsersPresenter;
-};
-
 type ConfirmDialogProps = {
   presenter: AdminUsersPresenter;
 };
@@ -70,11 +66,8 @@ function ConfirmDialog({ presenter }: ConfirmDialogProps): React.JSX.Element | n
   );
 }
 
-export function AdminUsersView({
-  presenter: presenterProp,
-}: AdminUsersViewProps = {}): React.JSX.Element {
-  const defaultPresenter = useAdminUsersPresenter();
-  const presenter = presenterProp ?? defaultPresenter;
+export function AdminUsersView(): React.JSX.Element {
+  const presenter = useAdminUsersPresenter();
 
   return (
     <section aria-label="Manajemen akun" className="admin-users">

@@ -48,7 +48,7 @@ memantau ringkasan sistem.
 
 **Pertanyaan 1 (arti "tugas")** disetujui 2026-10-29 sesuai usulan: tugas Admin berarti dokumen dan hak unduh yang menjadi milik akun Member Team dan Head of Team. Hak unduh di sini berarti hak yang dikelola Admin, bukan hak Admin untuk mengunduh isi dokumen (lihat pertanyaan 9). Pertanyaan 2, 3, dan 4 mengikuti usulan default.
 
-**Pertanyaan 8 (nama menu dan template)** diputuskan 2026-10-30 oleh Tech Lead: menu Admin adalah `Dashboard`, `Manajemen Akun`, `Manajemen Dokumen`, dan `Audit Trail`. Label `Dashboard Admin` tidak dipakai. Template memakai satu `AppShell` bersama untuk semua peran; hanya menu dan isi halaman yang berbeda.
+**Pertanyaan 8 (nama menu dan template)** diputuskan 2026-10-30 oleh Tech Lead: menu Admin adalah `Dashboard`, `Manajemen Akun`, `Manajemen Dokumen`, dan `Audit Trail`. Label `Dashboard Admin` tidak dipakai. Template memakai satu `AppShell` bersama untuk semua peran; hanya menu dan isi halaman yang berbeda. Pada 2026-11-05 (F6 review PR #62), Tech Lead memutuskan Opsi A: peran `admin` pada `ShellRole`, `ROLE_MENU`, dan rute `/admin/users` dikerjakan lebih awal pada FE-S4-05 agar halaman Manajemen Akun dapat diakses mandiri; entri menu Admin lainnya (Dashboard, Manajemen Dokumen, Audit Trail), rute Admin lainnya, dan redirect login Admin tetap diselesaikan pada FE-S4-07.
 
 ## Pertanyaan terbuka untuk Tech Lead dan BA
 
