@@ -28,7 +28,11 @@ function resolveExistingItems(
   const targetMap = new Map(targets.map((target) => [target.document.id, target]));
   return uniqueIds.map((documentId) => {
     const target = targetMap.get(documentId);
-    if (!target || target.document.deletedAt !== null) {
+    if (
+      !target ||
+      target.document.deletedAt !== null ||
+      (target.document.archivedAt !== undefined && target.document.archivedAt !== null)
+    ) {
       throw new NotFoundError("Dokumen tidak ditemukan");
     }
     if (!target.file) {

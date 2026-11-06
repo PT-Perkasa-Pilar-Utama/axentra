@@ -2,7 +2,7 @@
 
 Source: PROP-ADM-01, PROP-ADM-02, PROP-ADM-03, and PROP-ADM-05 in [proposals/admin-role-proposal.md](../proposals/admin-role-proposal.md). BA (Azizah) approved these scopes on 2026-10-29. The `PROP-ADM-*` identifiers are temporary and are not BA IDs; BA may renumber them.
 
-Status: **In Progress** (Sprint 4: Admin). `GET /admin/summary` (BE-S4-05) and account management (BE-S4-06) are implemented. Document management (BE-S4-07) remains planned; audit trail access (BE-S4-08) is implemented. Cards: DB-S4-01, BE-S4-05, BE-S4-06, BE-S4-07, and BE-S4-08 in [TASK_BREAKDOWN.md](../TASK_BREAKDOWN.md).
+Status: **Implemented** (Sprint 4: Admin). `GET /admin/summary` (BE-S4-05), account management (`GET /admin/users`, `PATCH /admin/users/:id/status` in BE-S4-06), document management (`GET /admin/documents`, `GET /admin/documents/:id`, `POST /admin/documents/:id/archive`, `POST /admin/documents/:id/unarchive`, `DELETE /admin/documents/:id` in BE-S4-07), and audit trail access (BE-S4-08) are implemented. Cards: DB-S4-01, BE-S4-05, BE-S4-06, BE-S4-07, and BE-S4-08 in [TASK_BREAKDOWN.md](../TASK_BREAKDOWN.md).
 
 Items marked **(usulan)** are proposed defaults that the Tech Lead has not yet recorded. Items listed under [Open Decisions](#open-decisions) must be answered before the cards that depend on them start.
 
@@ -43,7 +43,7 @@ Success (`200 OK`):
 ```
 
 - `usersByRole` counts every account for each role, including inactive accounts (usulan, see O10).
-- `totalDocuments` counts documents with `deleted_at IS NULL` that have a stored file, the same rule as `GET /analytics/summary`. Whether archived documents are included is open (see O7).
+- `totalDocuments` counts documents with `deleted_at IS NULL` that have a stored file, the same rule as `GET /analytics/summary`. Archived documents (`archived_at IS NOT NULL`) are included (see O7).
 - `uploadedLast7Days` counts documents by `created_at >= now - 7 days`, with the same filters as `totalDocuments`.
 - `downloadCount` counts every row in `download_audit_events`, across all users.
 - `latestDownloadAt` is the latest `downloaded_at`, or `null` when no download has been recorded.
@@ -217,7 +217,9 @@ Success (`200 OK`):
 }
 ```
 
-Effect: the document no longer appears in Member Team or Head of Team lists, search, tags, or related documents. Direct access by those roles returns `404 NOT_FOUND` (usulan, see O6).
+Effect: the document no longer appears in Member Team or Head of Team lists, search, tags, or related documents. Direct access by those roles returns `404 NOT_FOUND` (usulan, see O6). Duplicate checks (`POST /documents/check-duplicate`) by Member Team or Head of Team treat archived documents as non-duplicate (`isDuplicate: false` without exposing `existingDocumentId`), and re-uploading identical content rebinds the content hash to the new active document (`BE-S4-07`).
+
+Audit: archiving an active document writes one row to `admin_document_audit_events` (`action = 'archive'`) in the same transaction, with the Admin as the actor (O5). Archiving an already-archived document writes nothing.
 
 Errors: `401 UNAUTHORIZED`, `403 FORBIDDEN`, `404 NOT_FOUND`.
 
@@ -239,6 +241,8 @@ Success (`200 OK`):
 }
 ```
 
+Audit: unarchiving an archived document writes one row to `admin_document_audit_events` (`action = 'unarchive'`) in the same transaction, with the Admin as the actor (O5). Unarchiving an already-active document writes nothing.
+
 Errors: `401 UNAUTHORIZED`, `403 FORBIDDEN`, `404 NOT_FOUND`.
 
 ### `DELETE /api/v1/admin/documents/:id`
@@ -259,7 +263,9 @@ Success (`200 OK`):
 }
 ```
 
-Effect: the document is removed from every list and from every detail route for every role, including Admin.
+Effect: the document is removed from every list and from every detail route for every role, including Admin. Duplicate checks (`POST /documents/check-duplicate`) treat soft-deleted documents as non-duplicate (`isDuplicate: false`), and re-uploading identical content rebinds the content hash to the new active document (`BE-S4-07`).
+
+Audit: soft-deleting a document writes one row to `admin_document_audit_events` (`action = 'delete'`) in the same transaction, with the Admin as the actor (O5).
 
 Errors: `401 UNAUTHORIZED`, `403 FORBIDDEN`, `404 NOT_FOUND` (already soft-deleted or never existed).
 
@@ -303,19 +309,19 @@ Covers `BE-S4-06`.
 
 ## Open Decisions
 
-| ID  | Question                                                                                | Affects            | Proposed default                                                                                                                                                                                                         |
-| --- | --------------------------------------------------------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| O1  | Admin access to document content (proposal questions 7 and 9)                           | BE-S4-08           | **Decided**: metadata only, no preview or download (Q7 by Tech Lead 2026-10-29, BA approved 2026-11-04; Q9 on 2026-11-04)                                                                                                |
-| O2  | Message and status for login by a deactivated account                                   | BE-S4-06, FE-S4-05 | `401` with the generic message, to avoid revealing account status Implemented in BE-S4-06 with this default (Tech Lead confirmation pending).                                                                            |
-| O3  | The development and test identity directory has no status field                         | BE-S4-06, QA       | Check `users.status` by `id` after the directory verifies the password Implemented in BE-S4-06 with this default (Tech Lead confirmation pending).                                                                       |
-| O4  | Can the last active Head of Team be deactivated?                                        | BE-S4-06           | Not allowed, `422 LAST_HEAD_OF_TEAM` (usulan)                                                                                                                                                                            |
-| O5  | Are Admin mutations written to an audit trail (deactivate, archive, unarchive, delete)? | BE-S4-06, BE-S4-07 | **Decided** (Tech Lead, 2026-11-06): yes for account status changes, recorded in `account_status_audit_events` (see [06-data-model.md](../technical-specs/06-data-model.md)). Document actions are recorded by BE-S4-07. |
-| O6  | Can Member Team or Head of Team open an archived document by direct URL?                | 03, 04, 05 specs   | `404 NOT_FOUND`, same as soft-deleted                                                                                                                                                                                    |
-| O7  | Do `totalDocuments` and `uploadedLast7Days` include archived documents?                 | BE-S4-05           | Yes, archived documents are still stored; decide explicitly                                                                                                                                                              |
-| O8  | Legacy documents have no uploader. How does the UI show them?                           | DB-S4-01, FE-S4-06 | **Decided** (Tech Lead, 2026-11-05): `ownerId` and `ownerName` are `null`, shown as "Tidak diketahui". No backfill.                                                                                                      |
-| O9  | Does the Admin document list include documents without a stored file?                   | BE-S4-07           | No, same rule as `totalDocuments`                                                                                                                                                                                        |
-| O10 | Does `usersByRole` include inactive accounts?                                           | BE-S4-05           | Yes (usulan)                                                                                                                                                                                                             |
-| O11 | Where does the Admin test account come from (seed, script, or manual input)?            | QA, BE-S4-06       | Add an Admin account to the local seed and run `bun run db:seed` (usulan)                                                                                                                                                |
-| O12 | Who owns the Admin document menu and route?                                             | FE-S4-06, FE-S4-07 | **Decided (Option A):** FE-S4-06 retains the document menu and route. Arya approved verbally, as reported on 2026-11-06.                                                                                                 |
+| ID  | Question                                                                                | Affects            | Proposed default                                                                                                                                                                                                                                       |
+| --- | --------------------------------------------------------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| O1  | Admin access to document content (proposal questions 7 and 9)                           | BE-S4-08           | **Decided**: metadata only, no preview or download (Q7 by Tech Lead 2026-10-29, BA approved 2026-11-04; Q9 on 2026-11-04)                                                                                                                              |
+| O2  | Message and status for login by a deactivated account                                   | BE-S4-06, FE-S4-05 | `401` with the generic message, to avoid revealing account status Implemented in BE-S4-06 with this default (Tech Lead confirmation pending).                                                                                                          |
+| O3  | The development and test identity directory has no status field                         | BE-S4-06, QA       | Check `users.status` by `id` after the directory verifies the password Implemented in BE-S4-06 with this default (Tech Lead confirmation pending).                                                                                                     |
+| O4  | Can the last active Head of Team be deactivated?                                        | BE-S4-06           | Not allowed, `422 LAST_HEAD_OF_TEAM` (usulan)                                                                                                                                                                                                          |
+| O5  | Are Admin mutations written to an audit trail (deactivate, archive, unarchive, delete)? | BE-S4-06, BE-S4-07 | **Decided** (Tech Lead, 2026-11-06): yes for account status changes (`account_status_audit_events` in BE-S4-06) and Admin document mutations (`admin_document_audit_events` in BE-S4-07; see [06-data-model.md](../technical-specs/06-data-model.md)). |
+| O6  | Can Member Team or Head of Team open an archived document by direct URL?                | 03, 04, 05 specs   | `404 NOT_FOUND`, same as soft-deleted                                                                                                                                                                                                                  |
+| O7  | Do `totalDocuments` and `uploadedLast7Days` include archived documents?                 | BE-S4-05           | **Decided**: yes, archived documents remain stored and are included in `totalDocuments` and `uploadedLast7Days` (only `deleted_at IS NOT NULL` is excluded).                                                                                           |
+| O8  | Legacy documents have no uploader. How does the UI show them?                           | DB-S4-01, FE-S4-06 | **Decided** (Tech Lead, 2026-11-05): `ownerId` and `ownerName` are `null`, shown as "Tidak diketahui". No backfill.                                                                                                                                    |
+| O9  | Does the Admin document list include documents without a stored file?                   | BE-S4-07           | No, same rule as `totalDocuments`                                                                                                                                                                                                                      |
+| O10 | Does `usersByRole` include inactive accounts?                                           | BE-S4-05           | Yes (usulan)                                                                                                                                                                                                                                           |
+| O11 | Where does the Admin test account come from (seed, script, or manual input)?            | QA, BE-S4-06       | Add an Admin account to the local seed and run `bun run db:seed` (usulan)                                                                                                                                                                              |
+| O12 | Who owns the Admin document menu and route?                                             | FE-S4-06, FE-S4-07 | **Decided (Option A):** FE-S4-06 retains the document menu and route. Arya approved verbally, as reported on 2026-11-06.                                                                                                                               |
 
 **Navigation ownership (Option A, Tech Lead decision 2026-11-05 for FE-S4-05; verbally approved for FE-S4-06 as reported on 2026-11-06):** FE-S4-05 delivered initial `admin` role resolution, the Manajemen Akun menu entry, and `/admin/users`. FE-S4-06 delivers the Manajemen Dokumen menu entry and `/admin/documents`. FE-S4-07 owns the remaining Admin menu entries (Dashboard, Audit Trail), remaining Admin routes, and the post-login redirect. This records task ownership; it does not decide any API question above.

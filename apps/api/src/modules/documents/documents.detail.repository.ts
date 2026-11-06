@@ -11,7 +11,7 @@ export type IDocumentDetailRepository = {
   findDocumentDetail: (id: string) => Promise<DocumentDetailRecord | null>;
 };
 
-// Active (not soft-deleted) document joined to its stored file. A document without a file record is absent.
+// Active (not soft-deleted or archived) document joined to its stored file. A document without a file record is absent.
 export async function findDocumentDetailRecord(
   db: PostgresJsDatabase,
   documentId: string,
@@ -20,7 +20,9 @@ export async function findDocumentDetailRecord(
     .select({ document: documents, file: documentFiles })
     .from(documents)
     .innerJoin(documentFiles, eq(documentFiles.documentId, documents.id))
-    .where(and(eq(documents.id, documentId), isNull(documents.deletedAt)))
+    .where(
+      and(eq(documents.id, documentId), isNull(documents.deletedAt), isNull(documents.archivedAt)),
+    )
     .limit(1);
   return rows[0] ?? null;
 }

@@ -6,6 +6,7 @@ export type PreviewTargetRecord = {
   document: {
     id: string;
     deletedAt: Date | null;
+    archivedAt?: Date | null | undefined;
   };
   file: {
     id: string;
@@ -28,6 +29,7 @@ export class DrizzlePreviewRepository implements IPreviewRepository {
       .select({
         docId: documents.id,
         docDeletedAt: documents.deletedAt,
+        docArchivedAt: documents.archivedAt,
         fileId: documentFiles.id,
         fileStorageKey: documentFiles.storageKey,
         fileOriginalName: documentFiles.originalName,
@@ -61,6 +63,7 @@ export class DrizzlePreviewRepository implements IPreviewRepository {
       document: {
         id: first.docId,
         deletedAt: first.docDeletedAt,
+        archivedAt: first.docArchivedAt,
       },
       file,
     };
