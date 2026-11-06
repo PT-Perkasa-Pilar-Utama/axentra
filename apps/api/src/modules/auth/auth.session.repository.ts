@@ -57,28 +57,41 @@ function toSessionRecord(row: SessionRow): AuthSessionRecord {
 export class DrizzleAuthSessionStore implements AuthSessionStore {
   public constructor(private readonly db: PostgresJsDatabase) {}
 
-  public async createSession(input: CreateAuthSessionInput): Promise<AuthSessionRecord> {
-    await this.db.insert(authSessions).values({
-      id: input.id,
-      userId: input.user.id,
-      rememberMe: input.rememberMe,
-      accessTokenHash: input.accessTokenHash,
-      refreshTokenHash: input.refreshTokenHash,
-      accessExpiresAt: input.accessExpiresAt,
-      refreshExpiresAt: input.refreshExpiresAt,
-      lastUsedAt: input.now,
-      createdAt: input.now,
-      updatedAt: input.now,
+  // The status check and the insert share one transaction. FOR SHARE on the users row makes a concurrent
+  // deactivation (which takes FOR UPDATE on the same row, then revokes sessions) either finish first, so this
+  // check sees inactive, or wait until this session is committed, so the revocation covers it.
+  public async createSession(input: CreateAuthSessionInput): Promise<AuthSessionRecord | null> {
+    return this.db.transaction(async (tx) => {
+      const [account] = await tx
+        .select({ status: users.status })
+        .from(users)
+        .where(eq(users.id, input.user.id))
+        .limit(1)
+        .for("share");
+      if (account?.status !== "active") return null;
+
+      await tx.insert(authSessions).values({
+        id: input.id,
+        userId: input.user.id,
+        rememberMe: input.rememberMe,
+        accessTokenHash: input.accessTokenHash,
+        refreshTokenHash: input.refreshTokenHash,
+        accessExpiresAt: input.accessExpiresAt,
+        refreshExpiresAt: input.refreshExpiresAt,
+        lastUsedAt: input.now,
+        createdAt: input.now,
+        updatedAt: input.now,
+      });
+      return {
+        id: input.id,
+        user: input.user,
+        rememberMe: input.rememberMe,
+        createdAt: input.now,
+        accessExpiresAt: input.accessExpiresAt,
+        refreshExpiresAt: input.refreshExpiresAt,
+        revokedAt: null,
+      };
     });
-    return {
-      id: input.id,
-      user: input.user,
-      rememberMe: input.rememberMe,
-      createdAt: input.now,
-      accessExpiresAt: input.accessExpiresAt,
-      refreshExpiresAt: input.refreshExpiresAt,
-      revokedAt: null,
-    };
   }
 
   public async findByAccessTokenHash(accessTokenHash: string): Promise<AuthSessionRecord | null> {

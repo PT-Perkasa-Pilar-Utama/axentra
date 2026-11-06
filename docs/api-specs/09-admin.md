@@ -288,7 +288,7 @@ Required behavior:
 Covers `BE-S4-06`.
 
 - A deactivated account cannot log in. Login returns `401 UNAUTHORIZED` with the generic message `Email atau kata sandi salah` (usulan, see O2).
-- The rule applies to both login paths in [02-authentication.md](02-authentication.md): the development and test identity directory (`AUTH_LOCAL_IDENTITY_DIRECTORY`), and the production `users` table. Today only the production path reads a table, so the development path needs a status check as well (see O3).
+- The rule applies to both login paths in [02-authentication.md](02-authentication.md): the development and test identity directory (`AUTH_LOCAL_IDENTITY_DIRECTORY`), and the production `users` table. Today only the production path reads a table, so the development path reads `users.status` by id after the password verifies (see O3).
 - Revoking sessions on deactivation follows the revocation rules in [09-authentication.md](../technical-specs/09-authentication.md).
 
 ## Traceability

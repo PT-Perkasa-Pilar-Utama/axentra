@@ -39,7 +39,8 @@ export type RotateAuthSessionInput = {
 };
 
 export type AuthSessionStore = {
-  createSession(input: CreateAuthSessionInput): Promise<AuthSessionRecord>;
+  // Null when the account is no longer active. The caller then rejects the login.
+  createSession(input: CreateAuthSessionInput): Promise<AuthSessionRecord | null>;
   findByAccessTokenHash(accessTokenHash: string): Promise<AuthSessionRecord | null>;
   findByRefreshTokenHash(refreshTokenHash: string): Promise<RefreshTokenMatch | null>;
   // Compare-and-swap: succeeds only while the presented refresh token is still the session's current one

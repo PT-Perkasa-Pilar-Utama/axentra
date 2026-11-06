@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { and, eq, inArray, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import type * as DbModule from "@axentra/db";
 import { createLogger } from "@axentra/observability";
 import {
@@ -13,6 +13,7 @@ import { createApp } from "../apps/api/src/app";
 import { createPasswordVerifier } from "../apps/api/src/modules/auth/auth.password";
 import { DrizzleLoginAttemptStore } from "../apps/api/src/modules/auth/auth.login-attempt.repository";
 import { DrizzleAuthSessionStore } from "../apps/api/src/modules/auth/auth.session.repository";
+import type { AuthSessionStore } from "../apps/api/src/modules/auth/auth.types";
 import { createAuthService } from "../apps/api/src/modules/auth/auth.service";
 import { DrizzleAuthUserRepository } from "../apps/api/src/modules/auth/auth.user.repository";
 import { createLocalIdentityAuthenticator } from "../apps/api/src/modules/auth/local-identity";
@@ -427,6 +428,94 @@ describe("Admin account management PostgreSQL integration (BE-S4-06)", () => {
       } finally {
         await restore();
       }
+    },
+  );
+
+  integrationTest("a login that loses a race with deactivation creates no session", async () => {
+    const { client, schema } = ready();
+    const member = await createAccount("member_team");
+    const inner = new DrizzleAuthSessionStore(client.db);
+    // The deactivation commits after the password check and before the session insert.
+    const racingStore: AuthSessionStore = Object.assign(Object.create(inner), {
+      createSession: async (input: Parameters<AuthSessionStore["createSession"]>[0]) => {
+        await client.db
+          .update(schema.users)
+          .set({ status: "inactive" })
+          .where(eq(schema.users.id, input.user.id));
+        return inner.createSession(input);
+      },
+    });
+    const authService = createAuthService({
+      authenticator: createDatabaseAuthenticator(
+        new DrizzleAuthUserRepository(client.db),
+        createPasswordVerifier({ logger }),
+      ),
+      sessionStore: racingStore,
+      loginAttemptStore: new DrizzleLoginAttemptStore(client.db),
+    });
+    const app = createApp({
+      logger,
+      version: "0.1.0",
+      readinessChecks: [],
+      authService,
+      adminService: createAdminService(new DrizzleAdminRepository(client.db)),
+      adminAccountService: createAdminAccountService(new DrizzleAdminAccountRepository(client.db)),
+    });
+
+    const response = await login(app, member.email);
+
+    expect(response.status).toBe(401);
+    const sessions = await client.db
+      .select({ id: schema.authSessions.id })
+      .from(schema.authSessions)
+      .where(eq(schema.authSessions.userId, member.id));
+    expect(sessions).toHaveLength(0);
+  });
+
+  integrationTest(
+    "a failed audit write rolls back the status change and the session revocation",
+    async () => {
+      const { client, schema } = ready();
+      const admin = await createAccount("admin");
+      const member = await createAccount("member_team");
+      const plainApp = buildApp();
+      const adminToken = await tokenFor(plainApp, admin.email);
+      const memberToken = await tokenFor(plainApp, member.email);
+
+      const base = new DrizzleAdminAccountRepository(client.db);
+      // Every transaction's audit insert fails, so the status change and revocation must roll back with it.
+      const failingAudit = Object.assign(Object.create(base), {
+        runInTransaction: (work: (tx: IAdminAccountRepository) => Promise<unknown>) =>
+          base.runInTransaction((tx) =>
+            work(
+              Object.assign(Object.create(tx), {
+                insertStatusAudit: async () => {
+                  throw new Error("audit write unavailable");
+                },
+              }),
+            ),
+          ),
+      });
+      const app = buildApp(createAdminAccountService(failingAudit));
+
+      const response = await patchStatus(app, adminToken, member.id, "inactive");
+
+      expect(response.status).toBe(500);
+      expect(await statusOf(member.id)).toBe("active");
+      const liveSessions = await client.db
+        .select({ id: schema.authSessions.id })
+        .from(schema.authSessions)
+        .where(
+          and(eq(schema.authSessions.userId, member.id), isNull(schema.authSessions.revokedAt)),
+        );
+      expect(liveSessions.length).toBeGreaterThan(0);
+      expect(
+        (
+          await app.request("/api/v1/auth/me", {
+            headers: { authorization: `Bearer ${memberToken}` },
+          })
+        ).status,
+      ).toBe(200);
     },
   );
 

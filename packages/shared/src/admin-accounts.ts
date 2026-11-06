@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { paginationMetaSchema } from "./api";
+import { pageLimitQueryFields } from "./pagination-query";
 
 // Same defaults and limits as GET /audit/downloads (api-specs/09-admin.md, Shared Rules).
 export const ADMIN_ACCOUNT_DEFAULT_PAGE = 1;
@@ -30,30 +31,13 @@ export const adminUserListResponseSchema = z.object({
 });
 export type AdminUserListResponse = z.infer<typeof adminUserListResponseSchema>;
 
-const parsePageQueryValue = (value: unknown, fallback: number): unknown => {
-  if (value === undefined || value === "") return fallback;
-  if (typeof value === "boolean") return Number.NaN;
-  return value;
-};
-
-export const adminUserListQuerySchema = z.object({
-  page: z.preprocess(
-    (value) => parsePageQueryValue(value, ADMIN_ACCOUNT_DEFAULT_PAGE),
-    z.coerce
-      .number({ message: "Halaman harus berupa angka" })
-      .int({ message: "Halaman harus berupa bilangan bulat" })
-      .min(1, { message: "Halaman minimal 1" })
-      .max(ADMIN_ACCOUNT_MAX_PAGE, { message: `Halaman maksimal ${ADMIN_ACCOUNT_MAX_PAGE}` }),
-  ),
-  limit: z.preprocess(
-    (value) => parsePageQueryValue(value, ADMIN_ACCOUNT_DEFAULT_LIMIT),
-    z.coerce
-      .number({ message: "Limit harus berupa angka" })
-      .int({ message: "Limit harus berupa bilangan bulat" })
-      .min(1, { message: "Limit minimal 1" })
-      .max(ADMIN_ACCOUNT_MAX_LIMIT, { message: `Limit maksimal ${ADMIN_ACCOUNT_MAX_LIMIT}` }),
-  ),
-});
+export const adminUserListQuerySchema = z.object(
+  pageLimitQueryFields({
+    defaultLimit: ADMIN_ACCOUNT_DEFAULT_LIMIT,
+    maxLimit: ADMIN_ACCOUNT_MAX_LIMIT,
+    maxPage: ADMIN_ACCOUNT_MAX_PAGE,
+  }),
+);
 export type AdminUserListQuery = z.infer<typeof adminUserListQuerySchema>;
 
 export const updateAdminUserStatusRequestSchema = z

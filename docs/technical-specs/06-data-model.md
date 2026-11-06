@@ -351,7 +351,9 @@ Created by migration `packages/db/drizzle/0005_add_category_permission_audit_eve
 
 ---
 
-#### 12. `account_status_audit_events`
+#### 15. `account_status_audit_events`
+
+Created by migration `packages/db/drizzle/0007_add_account_status_audit_events.sql`.
 
 Point-in-time record of an Admin changing a Member Team or Head of Team account status (BE-S4-06, O5 decided 2026-11-06). It is written in the same transaction as the status change. The application never updates or deletes these rows.
 
