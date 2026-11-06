@@ -1,6 +1,6 @@
 export type ShellRole = "member_team" | "head_of_team" | "admin";
 
-export type ShellIconName = "home" | "analytics" | "audit" | "permissions" | "document";
+export type ShellIconName = "home" | "analytics" | "audit" | "permissions" | "users" | "document";
 
 export type ShellMenuEntry = {
   id?: string | undefined;
@@ -13,6 +13,7 @@ export const DASHBOARD_PATH = "/dashboard";
 export const ANALYTICS_PATH = "/analytics";
 export const AUDIT_TRAIL_PATH = "/audit-trail";
 export const PERMISSION_CATEGORIES_PATH = "/permission-categories";
+export const ADMIN_USERS_PATH = "/admin/users";
 export const ADMIN_DOCUMENTS_PATH = "/admin/documents";
 
 const DASHBOARD_ENTRY: ShellMenuEntry = {
@@ -43,6 +44,13 @@ const PERMISSION_CATEGORIES_ENTRY: ShellMenuEntry = {
   icon: "permissions",
 };
 
+const ADMIN_USERS_ENTRY: ShellMenuEntry = {
+  id: "dashboard-admin-users-link",
+  label: "Manajemen Akun",
+  to: ADMIN_USERS_PATH,
+  icon: "users",
+};
+
 const ADMIN_DOCUMENTS_ENTRY: ShellMenuEntry = {
   id: "admin-documents-link",
   label: "Manajemen Dokumen",
@@ -52,16 +60,18 @@ const ADMIN_DOCUMENTS_ENTRY: ShellMenuEntry = {
 
 /**
  * Satu-satunya tempat menu per role diatur (13-app-shell.md, aturan 2).
- * Menu Admin ditambahkan oleh kartu Admin.
+ * FE-S4-05 menambahkan entri Manajemen Akun dan FE-S4-06 menambahkan entri Manajemen Dokumen;
+ * entri menu Admin lainnya (Dashboard dan Audit Trail) tetap milik FE-S4-07.
  */
 export const ROLE_MENU: Record<ShellRole, readonly ShellMenuEntry[]> = {
   member_team: [DASHBOARD_ENTRY],
   head_of_team: [DASHBOARD_ENTRY, ANALYTICS_ENTRY, AUDIT_TRAIL_ENTRY, PERMISSION_CATEGORIES_ENTRY],
-  admin: [ADMIN_DOCUMENTS_ENTRY],
+  admin: [ADMIN_USERS_ENTRY, ADMIN_DOCUMENTS_ENTRY],
 };
 
-/** Mengembalikan peran untuk shell; jika role tidak dikenal, fallback ke Member Team. */
+/** Mengembalikan ShellRole sesuai peran pengguna; fallback ke member_team. */
 export function resolveShellRole(role: string | undefined): ShellRole {
   if (role === "admin") return "admin";
-  return role === "head_of_team" ? "head_of_team" : "member_team";
+  if (role === "head_of_team") return "head_of_team";
+  return "member_team";
 }

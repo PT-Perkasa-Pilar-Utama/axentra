@@ -33,7 +33,7 @@ AC:          PROP-ADM-AC-03.01
 Card:        FE-S4-06
 Commit:      Belum tersedia untuk perbaikan lokal yang belum di-commit
 Environment: local, Web http://localhost:5173, API http://localhost:3001
-Role:        admin (seeded test account)
+Role:        admin (sesi uji sintetis; akun seed belum diverifikasi)
 Input:       GET /api/v1/admin/documents (data respons sintetis)
 Expected:    Daftar dokumen menampilkan judul, pengunggah, tanggal, dan status. Dokumen legacy tanpa pengunggah menampilkan teks "Tidak diketahui".
 Observed:    Tabel menampilkan judul dokumen, pengunggah (termasuk fallback "Tidak diketahui" untuk ownerName: null), tanggal, dan status pill. Pengujian unit dan integrasi lulus. Integrasi live terblokir karena BE-S4-07 belum tersedia di dev.
@@ -46,7 +46,7 @@ AC:          PROP-ADM-AC-03.02
 Card:        FE-S4-06
 Commit:      Belum tersedia untuk perbaikan lokal yang belum di-commit
 Environment: local, Web http://localhost:5173, API http://localhost:3001
-Role:        admin (seeded test account)
+Role:        admin (sesi uji sintetis; akun seed belum diverifikasi)
 Input:       Klik judul dokumen pada daftar (GET /api/v1/admin/documents/:id sintetis)
 Expected:    Dialog modal menampilkan metadata dokumen (judul, pengunggah, kategori, penulis, tanggal unggah/arsip) tanpa affordance pratinjau atau unduh dokumen.
 Observed:    Modal dialog semantik menampilkan detail metadata; tombol unduh dan pratinjau tidak ada sama sekali di DOM; status loading metadata tertangani. Integrasi live terblokir karena BE-S4-07 belum tersedia di dev.
@@ -59,7 +59,7 @@ AC:          PROP-ADM-AC-03.03
 Card:        FE-S4-06
 Commit:      Belum tersedia untuk perbaikan lokal yang belum di-commit
 Environment: local, Web http://localhost:5173, API http://localhost:3001
-Role:        admin (seeded test account)
+Role:        admin (sesi uji sintetis; akun seed belum diverifikasi)
 Input:       Klik tombol "Arsipkan" pada baris dokumen aktif
 Expected:    Muncul dialog konfirmasi arsip dengan keterangan bahwa dokumen tidak tampil untuk Member Team dan Head of Team; tombol terkunci saat pending; mutasi memanggil POST /admin/documents/:id/archive.
 Observed:    Dialog konfirmasi terbuka; saat mutasi berjalan tombol menampilkan "Memproses..." dan berstatus disabled; klik ganda dicegah; error 403 menampilkan alert di dalam dialog. Integrasi live terblokir karena BE-S4-07 belum tersedia di dev.
@@ -72,7 +72,7 @@ AC:          PROP-ADM-AC-03.04
 Card:        FE-S4-06
 Commit:      Belum tersedia untuk perbaikan lokal yang belum di-commit
 Environment: local, Web http://localhost:5173, API http://localhost:3001
-Role:        admin (seeded test account)
+Role:        admin (sesi uji sintetis; akun seed belum diverifikasi)
 Input:       Klik tombol "Hapus" pada baris dokumen
 Expected:    Muncul dialog konfirmasi hapus dengan keterangan hapus lunak (data tetap tersimpan di server); tombol konfirmasi terkunci saat pending; mutasi memanggil DELETE /admin/documents/:id; baris dokumen hilang dari daftar setelah berhasil.
 Observed:    Dialog konfirmasi hapus terbuka; saat mutasi tombol menampilkan "Menghapus..." dan berstatus disabled; klik ganda dicegah; error 403 menampilkan alert di dalam dialog; setelah sukses baris dokumen terhapus dari tampilan melalui query invalidation. Integrasi live terblokir karena BE-S4-07 belum tersedia di dev.
@@ -85,7 +85,7 @@ AC:          PROP-ADM-AC-03.05
 Card:        FE-S4-06
 Commit:      Belum tersedia untuk perbaikan lokal yang belum di-commit
 Environment: local, Web http://localhost:5173, API http://localhost:3001
-Role:        admin (seeded test account)
+Role:        admin (sesi uji sintetis; akun seed belum diverifikasi)
 Input:       Pilih tab "Diarsipkan", klik tombol "Batalkan Arsip" pada baris dokumen
 Expected:    Muncul dialog konfirmasi pembatalan arsip; tombol konfirmasi terkunci saat pending; mutasi memanggil POST /admin/documents/:id/unarchive; dokumen kembali aktif.
 Observed:    Tab Diarsipkan menampilkan daftar arsip dengan tombol "Batalkan Arsip"; dialog konfirmasi pembatalan arsip berfungsi dengan pending state "Memproses...", pencegahan klik ganda, dan penanganan galat 403. Integrasi live terblokir karena BE-S4-07 belum tersedia di dev.
@@ -99,8 +99,8 @@ Screenshot:  docs/screenshots/FE-S4-06/preview-diarsipkan-sintetis.png (screensh
 
 1. **Keputusan Navigasi Opsi A (2026-11-06)**:
    - Sesuai persetujuan lisan Tech Lead Arya yang dilaporkan oleh pengembang pada 2026-11-06, rute `/admin/documents` dan entri menu "Manajemen Dokumen" dipertahankan di `FE-S4-06`.
-   - Di `dev` (`b550bbe`), PR #62 (`FE-S4-05`) belum di-merge, sehingga branch ini saat ini baru memuat entri Manajemen Dokumen.
-   - Penyatuan menu lengkap Admin (`Dashboard`, `Manajemen Akun`, `Manajemen Dokumen`, `Audit Trail`) harus diverifikasi bersama setelah PR #62 dan branch ini digabungkan ke `dev`.
+   - PR #62 (`FE-S4-05`) telah di-merge ke `dev` (`6b12a5f`). Dengan penggabungan `origin/dev` ke branch ini, `ROLE_MENU.admin` memuat kedua entri (`Manajemen Akun` dan `Manajemen Dokumen`) dan kedua rute terproteksi (`/admin/users` dan `/admin/documents`) terdaftar serta diverifikasi bersama.
+   - Entri menu Admin yang tersisa (`Dashboard` dan `Audit Trail`) serta redirect login Admin diselesaikan oleh `FE-S4-07`.
 
 2. **Cakupan Filter Status dan Pencarian (F9)**:
    - Kontrak API `GET /api/v1/admin/documents` saat ini hanya mendukung parameter `page` dan `limit`.
