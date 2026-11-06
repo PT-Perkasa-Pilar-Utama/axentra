@@ -7,7 +7,7 @@ export async function readDocumentSmartTags(
   documentId: string,
 ): Promise<ReadonlyArray<SmartTag>> {
   const document = await smartTagsRepository.findDocumentById(documentId);
-  if (!document) {
+  if (!document || document.deletedAt || document.archivedAt) {
     throw new NotFoundError("Dokumen tidak ditemukan");
   }
 

@@ -33,6 +33,7 @@ export async function listRelatedDocuments(
         inArray(documentSmartTags.tagId, sourceTagIds),
         not(eq(documents.id, documentId)),
         isNull(documents.deletedAt),
+        isNull(documents.archivedAt),
       ),
     )
     .groupBy(

@@ -15,12 +15,44 @@ export {
   downloadAuditListQuerySchema,
   downloadAuditListResponseSchema,
 } from "./audit";
-export type { AdminSummary, AdminSummaryResponse, AdminSummaryUsersByRole } from "./admin";
+export type {
+  AdminArchiveDocumentResponse,
+  AdminArchiveDocumentResult,
+  AdminDeleteDocumentResponse,
+  AdminDeleteDocumentResult,
+  AdminDocumentDetail,
+  AdminDocumentDetailResponse,
+  AdminDocumentListItem,
+  AdminDocumentMetadata,
+  AdminDocumentsListQuery,
+  AdminDocumentsListResponse,
+  AdminSummary,
+  AdminSummaryResponse,
+  AdminSummaryUsersByRole,
+  AdminUnarchiveDocumentResponse,
+  AdminUnarchiveDocumentResult,
+} from "./admin";
 export {
+  ADMIN_LIST_DEFAULT_LIMIT,
+  ADMIN_LIST_DEFAULT_PAGE,
+  ADMIN_LIST_MAX_LIMIT,
+  ADMIN_LIST_MAX_PAGE,
   ADMIN_SUMMARY_UPLOAD_WINDOW_DAYS,
+  adminArchiveDocumentResponseSchema,
+  adminArchiveDocumentResultSchema,
+  adminDeleteDocumentResponseSchema,
+  adminDeleteDocumentResultSchema,
+  adminDocumentDetailResponseSchema,
+  adminDocumentDetailSchema,
+  adminDocumentListItemSchema,
+  adminDocumentMetadataSchema,
+  adminDocumentsListQuerySchema,
+  adminDocumentsListResponseSchema,
   adminSummaryResponseSchema,
   adminSummarySchema,
   adminSummaryUsersByRoleSchema,
+  adminUnarchiveDocumentResponseSchema,
+  adminUnarchiveDocumentResultSchema,
 } from "./admin";
 export type { AnalyticsSummary, AnalyticsSummaryResponse } from "./analytics";
 export {

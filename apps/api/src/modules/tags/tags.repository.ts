@@ -76,6 +76,7 @@ export class DrizzleTopTagsRepository implements TopTagsRepository {
 
     return and(
       isNull(documents.deletedAt),
+      isNull(documents.archivedAt),
       eq(documents.processingStatus, "completed"),
       documentIdCondition,
     );

@@ -35,6 +35,7 @@ export class DrizzleDownloadRepository implements IDownloadRepository {
         docCategoryId: documents.categoryId,
         docProcessingStatus: documents.processingStatus,
         docDeletedAt: documents.deletedAt,
+        docArchivedAt: documents.archivedAt,
         fileId: documentFiles.id,
         fileStorageKey: documentFiles.storageKey,
         fileOriginalName: documentFiles.originalName,
@@ -69,6 +70,7 @@ export class DrizzleDownloadRepository implements IDownloadRepository {
         docCategoryId: documents.categoryId,
         docProcessingStatus: documents.processingStatus,
         docDeletedAt: documents.deletedAt,
+        docArchivedAt: documents.archivedAt,
         fileId: documentFiles.id,
         fileStorageKey: documentFiles.storageKey,
         fileOriginalName: documentFiles.originalName,
@@ -119,6 +121,7 @@ export class DrizzleDownloadRepository implements IDownloadRepository {
         id: documents.id,
         categoryId: documents.categoryId,
         deletedAt: documents.deletedAt,
+        archivedAt: documents.archivedAt,
       })
       .from(documents)
       .where(inArray(documents.id, [...documentIds]));
@@ -148,6 +151,7 @@ export class DrizzleDownloadRepository implements IDownloadRepository {
       documentId: doc.id,
       categoryId: doc.categoryId,
       deletedAt: doc.deletedAt,
+      archivedAt: doc.archivedAt,
       downloadEnabled: doc.categoryId ? (permMap.get(doc.categoryId) ?? null) : null,
     }));
   }

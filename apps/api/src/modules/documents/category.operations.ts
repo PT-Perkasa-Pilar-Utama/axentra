@@ -7,7 +7,7 @@ export async function readDocumentCategory(
   documentId: string,
 ): Promise<CategorySummary | null> {
   const document = await categoryRepository.findDocumentById(documentId);
-  if (!document || document.deletedAt) {
+  if (!document || document.deletedAt || document.archivedAt) {
     throw new NotFoundError("Dokumen tidak ditemukan");
   }
 

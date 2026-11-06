@@ -1,13 +1,45 @@
-import { count, eq, gte, isNull, max, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, isNull, max, sql } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import { documentFiles, documents, downloadAuditEvents, users } from "@axentra/db";
-import type { AdminSummary, ProcessingStatus, UserRole } from "@axentra/shared";
+import {
+  categories,
+  documentFiles,
+  documentMetadata,
+  documents,
+  downloadAuditEvents,
+  users,
+} from "@axentra/db";
+import {
+  ADMIN_LIST_DEFAULT_LIMIT,
+  ADMIN_LIST_DEFAULT_PAGE,
+  ADMIN_LIST_MAX_LIMIT,
+  ADMIN_LIST_MAX_PAGE,
+  type AdminArchiveDocumentResult,
+  type AdminDeleteDocumentResult,
+  type AdminDocumentDetail,
+  type AdminDocumentListItem,
+  type AdminDocumentsListQuery,
+  type AdminSummary,
+  type AdminUnarchiveDocumentResult,
+} from "@axentra/shared";
+
+export type AdminDocumentsPage = {
+  items: ReadonlyArray<AdminDocumentListItem>;
+  total: number;
+};
 
 export type IAdminRepository = {
   getSummary: (uploadedSince: Date) => Promise<AdminSummary>;
+  listDocuments: (query: AdminDocumentsListQuery) => Promise<AdminDocumentsPage>;
+  findDocumentDetailById: (documentId: string) => Promise<AdminDocumentDetail | null>;
+  archiveDocument: (documentId: string, now: Date) => Promise<AdminArchiveDocumentResult | null>;
+  unarchiveDocument: (
+    documentId: string,
+    now: Date,
+  ) => Promise<AdminUnarchiveDocumentResult | null>;
+  softDeleteDocument: (documentId: string, now: Date) => Promise<AdminDeleteDocumentResult | null>;
 };
 
-function formatLatestDownloadAt(raw: unknown): string | null {
+function formatTimestamp(raw: unknown): string | null {
   if (raw instanceof Date) {
     return raw.toISOString();
   }
@@ -16,6 +48,14 @@ function formatLatestDownloadAt(raw: unknown): string | null {
     return new Date(raw).toISOString();
   }
   return null;
+}
+
+function activeStoredDocumentCondition(documentId: string) {
+  return and(
+    eq(documents.id, documentId),
+    isNull(documents.deletedAt),
+    sql`exists (select 1 from ${documentFiles} where ${eq(documentFiles.documentId, documents.id)})`,
+  );
 }
 
 // Justification for class: implements IAdminRepository port to support dependency
@@ -54,7 +94,7 @@ export class DrizzleAdminRepository implements IAdminRepository {
     const usersRow = usersQuery[0];
     const downloadsRow = downloadsQuery[0];
 
-    const latestDownloadAt = formatLatestDownloadAt(downloadsRow?.latestDownloadAt);
+    const latestDownloadAt = formatTimestamp(downloadsRow?.latestDownloadAt);
 
     return {
       usersByRole: {
@@ -68,87 +108,193 @@ export class DrizzleAdminRepository implements IAdminRepository {
       latestDownloadAt,
     };
   }
-}
 
-export type InMemoryAdminUserRecord = {
-  id: string;
-  role: UserRole;
-  // Retained for test fixture parity; getSummary counts all users regardless of status per proposed default O10.
-  status?: "active" | "inactive" | undefined;
-};
+  public async listDocuments(
+    query: AdminDocumentsListQuery = {
+      page: ADMIN_LIST_DEFAULT_PAGE,
+      limit: ADMIN_LIST_DEFAULT_LIMIT,
+    },
+  ): Promise<AdminDocumentsPage> {
+    const effectivePage = Math.min(Math.max(1, query.page), ADMIN_LIST_MAX_PAGE);
+    const effectiveLimit = Math.min(Math.max(1, query.limit), ADMIN_LIST_MAX_LIMIT);
 
-export type InMemoryAdminDocumentRecord = {
-  id: string;
-  createdAt: Date;
-  deletedAt?: Date | null | undefined;
-  // Retained for test fixture parity; getSummary includes archived documents per proposed default O7.
-  archivedAt?: Date | null | undefined;
-  hasFile: boolean;
-  // Retained for test fixture parity with the document schema across processing states.
-  processingStatus?: ProcessingStatus | undefined;
-};
+    const [counted] = await this.sqlDb
+      .select({ total: count() })
+      .from(documents)
+      .innerJoin(documentFiles, eq(documentFiles.documentId, documents.id))
+      .where(isNull(documents.deletedAt));
 
-export type InMemoryAdminDownloadRecord = {
-  id: string;
-  downloadedAt: Date;
-};
+    const total = Number(counted?.total ?? 0);
 
-// In-memory repository implementation for unit and route tests.
-export class InMemoryAdminRepository implements IAdminRepository {
-  public readonly users = new Map<string, InMemoryAdminUserRecord>();
-  public readonly documents = new Map<string, InMemoryAdminDocumentRecord>();
-  public readonly downloads = new Map<string, InMemoryAdminDownloadRecord>();
+    const rows = await this.sqlDb
+      .select({
+        id: documents.id,
+        title: documents.title,
+        ownerId: users.id,
+        ownerName: users.name,
+        uploadedAt: documents.createdAt,
+        archivedAt: documents.archivedAt,
+      })
+      .from(documents)
+      .innerJoin(documentFiles, eq(documentFiles.documentId, documents.id))
+      .leftJoin(users, eq(users.id, documents.uploadedBy))
+      .where(isNull(documents.deletedAt))
+      .orderBy(desc(documents.createdAt), desc(documents.id))
+      .limit(effectiveLimit)
+      .offset((effectivePage - 1) * effectiveLimit);
 
-  public async getSummary(uploadedSince: Date): Promise<AdminSummary> {
-    const usersByRole = {
-      member_team: 0,
-      head_of_team: 0,
-      admin: 0,
+    return {
+      items: rows.map((row) => {
+        const ownerId = row.ownerId ?? null;
+        return {
+          id: row.id,
+          title: row.title,
+          ownerId,
+          ownerName: ownerId ? (row.ownerName ?? null) : null,
+          uploadedAt: formatTimestamp(row.uploadedAt) ?? new Date(0).toISOString(),
+          archivedAt: formatTimestamp(row.archivedAt),
+        };
+      }),
+      total,
     };
+  }
 
-    for (const user of this.users.values()) {
-      if (user.role in usersByRole) {
-        usersByRole[user.role] += 1;
-      }
+  public async findDocumentDetailById(documentId: string): Promise<AdminDocumentDetail | null> {
+    const rows = await this.sqlDb
+      .select({
+        id: documents.id,
+        title: documents.title,
+        ownerId: users.id,
+        ownerName: users.name,
+        uploadedAt: documents.createdAt,
+        archivedAt: documents.archivedAt,
+        categoryId: categories.id,
+        categoryName: categories.name,
+        metadataId: documentMetadata.id,
+        metadataAuthor: documentMetadata.author,
+        metadataExtractedAt: documentMetadata.extractedAt,
+      })
+      .from(documents)
+      .innerJoin(documentFiles, eq(documentFiles.documentId, documents.id))
+      .leftJoin(users, eq(users.id, documents.uploadedBy))
+      .leftJoin(categories, eq(categories.id, documents.categoryId))
+      .leftJoin(documentMetadata, eq(documentMetadata.documentId, documents.id))
+      .where(and(eq(documents.id, documentId), isNull(documents.deletedAt)))
+      .limit(1);
+
+    const row = rows[0];
+    if (!row) {
+      return null;
     }
 
-    let totalDocuments = 0;
-    let uploadedLast7Days = 0;
-    const cutoffMs = uploadedSince.getTime();
+    const ownerId = row.ownerId ?? null;
+    const categoryId = row.categoryId ?? null;
 
-    for (const doc of this.documents.values()) {
-      if (doc.deletedAt !== undefined && doc.deletedAt !== null) {
-        continue;
-      }
-      // Require an attached file record, matching the SQL inner join with document_files.
-      if (!doc.hasFile) {
-        continue;
-      }
-      totalDocuments += 1;
-      if (doc.createdAt.getTime() >= cutoffMs) {
-        uploadedLast7Days += 1;
-      }
-    }
+    return {
+      id: row.id,
+      title: row.title,
+      ownerId,
+      ownerName: ownerId ? (row.ownerName ?? null) : null,
+      uploadedAt: formatTimestamp(row.uploadedAt) ?? new Date(0).toISOString(),
+      archivedAt: formatTimestamp(row.archivedAt),
+      categoryId,
+      categoryName: categoryId ? (row.categoryName ?? null) : null,
+      metadata: row.metadataId
+        ? {
+            author: row.metadataAuthor ?? null,
+            extractedAt: formatTimestamp(row.metadataExtractedAt),
+          }
+        : null,
+    };
+  }
 
-    let downloadCount = 0;
-    let latestDownloadAtDate: Date | null = null;
+  public async archiveDocument(
+    documentId: string,
+    now: Date,
+  ): Promise<AdminArchiveDocumentResult | null> {
+    const nowIso = now.toISOString();
+    const [updated] = await this.sqlDb
+      .update(documents)
+      .set({
+        archivedAt: sql`coalesce(${documents.archivedAt}, ${nowIso}::timestamptz)`,
+        updatedAt: sql`case when ${documents.archivedAt} is null then ${nowIso}::timestamptz else ${documents.updatedAt} end`,
+      })
+      .where(activeStoredDocumentCondition(documentId))
+      .returning({
+        id: documents.id,
+        archivedAt: documents.archivedAt,
+      });
 
-    for (const download of this.downloads.values()) {
-      downloadCount += 1;
-      if (
-        latestDownloadAtDate === null ||
-        download.downloadedAt.getTime() > latestDownloadAtDate.getTime()
-      ) {
-        latestDownloadAtDate = download.downloadedAt;
-      }
+    const archivedAtIso = formatTimestamp(updated?.archivedAt);
+    if (!updated || !archivedAtIso) {
+      return null;
     }
 
     return {
-      usersByRole,
-      totalDocuments,
-      uploadedLast7Days,
-      downloadCount,
-      latestDownloadAt: latestDownloadAtDate ? latestDownloadAtDate.toISOString() : null,
+      id: updated.id,
+      archivedAt: archivedAtIso,
+    };
+  }
+
+  public async unarchiveDocument(
+    documentId: string,
+    now: Date,
+  ): Promise<AdminUnarchiveDocumentResult | null> {
+    const nowIso = now.toISOString();
+    const [updated] = await this.sqlDb
+      .update(documents)
+      .set({
+        archivedAt: null,
+        updatedAt: sql`case when ${documents.archivedAt} is not null then ${nowIso}::timestamptz else ${documents.updatedAt} end`,
+      })
+      .where(activeStoredDocumentCondition(documentId))
+      .returning({
+        id: documents.id,
+      });
+
+    if (!updated) {
+      return null;
+    }
+
+    return {
+      id: updated.id,
+      archivedAt: null,
+    };
+  }
+
+  public async softDeleteDocument(
+    documentId: string,
+    now: Date,
+  ): Promise<AdminDeleteDocumentResult | null> {
+    const [updated] = await this.sqlDb
+      .update(documents)
+      .set({
+        deletedAt: now,
+        updatedAt: now,
+      })
+      .where(activeStoredDocumentCondition(documentId))
+      .returning({
+        id: documents.id,
+        deletedAt: documents.deletedAt,
+      });
+
+    const deletedAtIso = formatTimestamp(updated?.deletedAt);
+    if (!updated || !deletedAtIso) {
+      return null;
+    }
+
+    return {
+      id: updated.id,
+      deletedAt: deletedAtIso,
     };
   }
 }
+
+export {
+  InMemoryAdminRepository,
+  type InMemoryAdminCategoryRecord,
+  type InMemoryAdminDocumentMetadataRecord,
+  type InMemoryAdminDocumentRecord,
+  type InMemoryAdminDownloadRecord,
+  type InMemoryAdminUserRecord,
+} from "./admin.in-memory-repository";

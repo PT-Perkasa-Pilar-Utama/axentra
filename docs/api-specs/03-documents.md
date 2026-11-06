@@ -21,7 +21,7 @@ GET  /api/v1/documents/:id/download       Implemented (BE-S3-02)
 POST /api/v1/documents/bulk-download      Implemented (BE-S3-03)
 ```
 
-## Archived Documents (Planned, BE-S4-07)
+## Archived Documents (Implemented, BE-S4-07)
 
 An archived document has `documents.archived_at` set (see [06-data-model.md](../technical-specs/06-data-model.md)). Archiving is an Admin action defined in [09-admin.md](09-admin.md).
 

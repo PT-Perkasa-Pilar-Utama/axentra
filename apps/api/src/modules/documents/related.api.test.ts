@@ -120,7 +120,7 @@ describe("GET /api/v1/documents/:id/related — BE-S2-06", () => {
     expect(body.error.message).toBe("ID dokumen harus berupa UUID yang valid");
   });
 
-  test("returns not found for missing or deleted source documents", async () => {
+  test("returns not found for missing, deleted, or archived source documents", async () => {
     const missingResponse = await appWith(null, []).request(
       `/api/v1/documents/${SOURCE_ID}/related`,
       {
@@ -133,9 +133,17 @@ describe("GET /api/v1/documents/:id/related — BE-S2-06", () => {
     ).request(`/api/v1/documents/${SOURCE_ID}/related`, {
       headers: { authorization: "Bearer member-token" },
     });
+    const archivedResponse = await appWith(
+      { ...sourceDocument, archivedAt: new Date("2026-11-04T03:00:00.000Z") },
+      [],
+    ).request(`/api/v1/documents/${SOURCE_ID}/related`, {
+      headers: { authorization: "Bearer member-token" },
+    });
 
     expect(missingResponse.status).toBe(404);
     expect(deletedResponse.status).toBe(404);
+    expect(archivedResponse.status).toBe(404);
     expect(apiErrorSchema.parse(await deletedResponse.json()).error.code).toBe("NOT_FOUND");
+    expect(apiErrorSchema.parse(await archivedResponse.json()).error.code).toBe("NOT_FOUND");
   });
 });

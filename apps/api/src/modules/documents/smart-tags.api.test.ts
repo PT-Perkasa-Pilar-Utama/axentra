@@ -175,7 +175,7 @@ describe("GET /api/v1/documents/:id/smart-tags - Task BE-S2-01 (AC-04.02)", () =
   });
 
   describe("Resource Not Found Handling", () => {
-    it("returns 404 Not Found when document does not exist", async () => {
+    it("returns 404 Not Found when document does not exist or is archived", async () => {
       const response = await app.request(`/api/v1/documents/${nonExistentDocId}/smart-tags`, {
         method: "GET",
         headers: {
@@ -188,6 +188,24 @@ describe("GET /api/v1/documents/:id/smart-tags - Task BE-S2-01 (AC-04.02)", () =
       expect(json.success).toBe(false);
       expect(json.error.code).toBe("NOT_FOUND");
       expect(json.error.message).toBe("Dokumen tidak ditemukan");
+
+      const archivedDocId = "88888888-8888-4888-8888-888888888888";
+      repository.addDocument({
+        id: archivedDocId,
+        title: "Dokumen Arsip.pdf",
+        processingStatus: "completed",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        archivedAt: new Date("2026-11-04T03:00:00.000Z"),
+      });
+
+      const archivedResponse = await app.request(`/api/v1/documents/${archivedDocId}/smart-tags`, {
+        method: "GET",
+        headers: {
+          authorization: "Bearer valid-member-token",
+        },
+      });
+      expect(archivedResponse.status).toBe(404);
     });
   });
 
