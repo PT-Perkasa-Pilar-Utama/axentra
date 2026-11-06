@@ -2,7 +2,7 @@
 
 Source: PROP-ADM-01, PROP-ADM-02, PROP-ADM-03, and PROP-ADM-05 in [proposals/admin-role-proposal.md](../proposals/admin-role-proposal.md). BA (Azizah) approved these scopes on 2026-10-29. The `PROP-ADM-*` identifiers are temporary and are not BA IDs; BA may renumber them.
 
-Status: **In Progress** (Sprint 4: Admin). `GET /admin/summary` is implemented (BE-S4-05). Account management (BE-S4-06), document management (BE-S4-07), and audit trail access (BE-S4-08) remain planned. Cards: DB-S4-01, BE-S4-05, BE-S4-06, BE-S4-07, and BE-S4-08 in [TASK_BREAKDOWN.md](../TASK_BREAKDOWN.md).
+Status: **In Progress** (Sprint 4: Admin). `GET /admin/summary` (BE-S4-05) and document management (`GET /admin/documents`, `GET /admin/documents/:id`, `POST /admin/documents/:id/archive`, `POST /admin/documents/:id/unarchive`, `DELETE /admin/documents/:id` in BE-S4-07) are implemented. Account management (BE-S4-06) and audit trail access (BE-S4-08) remain planned. Cards: DB-S4-01, BE-S4-05, BE-S4-06, BE-S4-07, and BE-S4-08 in [TASK_BREAKDOWN.md](../TASK_BREAKDOWN.md).
 
 Items marked **(usulan)** are proposed defaults that the Tech Lead has not yet recorded. Items listed under [Open Decisions](#open-decisions) must be answered before the cards that depend on them start.
 

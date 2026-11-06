@@ -12,7 +12,7 @@ export async function listRecentDocumentsWithTagFilter(
   const normalizedTags = tags.map((t) => t.trim().toLowerCase()).filter((t) => t.length > 0);
   const uniqueTags = Array.from(new Set(normalizedTags));
 
-  const whereActive = isNull(documents.deletedAt);
+  const whereActive = and(isNull(documents.deletedAt), isNull(documents.archivedAt));
 
   if (uniqueTags.length === 0) {
     const [counted] = await sqlDb

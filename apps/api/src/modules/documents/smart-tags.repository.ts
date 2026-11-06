@@ -26,7 +26,13 @@ export class DrizzleDocumentSmartTagsRepository implements IDocumentSmartTagsRep
         updatedAt: documents.updatedAt,
       })
       .from(documents)
-      .where(and(eq(documents.id, documentId), isNull(documents.deletedAt)))
+      .where(
+        and(
+          eq(documents.id, documentId),
+          isNull(documents.deletedAt),
+          isNull(documents.archivedAt),
+        ),
+      )
       .limit(1);
 
     return rows[0] ?? null;
@@ -124,7 +130,11 @@ export class InMemoryDocumentSmartTagsRepository implements IDocumentSmartTagsRe
   }
 
   public async findDocumentById(documentId: string): Promise<DocumentRecord | null> {
-    return this.documentsMap.get(documentId) ?? null;
+    const doc = this.documentsMap.get(documentId);
+    if (!doc || doc.deletedAt || doc.archivedAt) {
+      return null;
+    }
+    return doc;
   }
 
   public async findSmartTagsByDocumentId(documentId: string): Promise<ReadonlyArray<SmartTag>> {

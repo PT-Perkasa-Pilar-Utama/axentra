@@ -329,4 +329,31 @@ describe("GET /api/v1/search/documents — BE-S2-05 Document Search (AC-06.01 to
     const body = apiErrorSchema.parse(await response.json());
     expect(body.error.code).toBe("VALIDATION_ERROR");
   });
+
+  test("excludes archived and soft-deleted documents from Member Team and Head of Team search results (PROP-ADM-AC-03.03)", async () => {
+    const { app, repository } = setupSearchTestApp();
+    repository.addDocument(
+      {
+        id: "77777777-7777-4777-8777-777777777777",
+        filename: "arsip-keuangan.pdf",
+        processingStatus: "completed",
+        createdAt: "2026-09-26T00:00:00.000Z",
+        snippet: null,
+      },
+      {
+        title: "Arsip Keuangan",
+        extractedText: "Dokumen keuangan yang telah diarsipkan oleh Admin.",
+        archivedAt: new Date("2026-11-04T03:00:00.000Z"),
+      },
+    );
+
+    const response = await app.request("/api/v1/search/documents?q=diarsipkan", {
+      headers: { authorization: "Bearer member-token" },
+    });
+
+    expect(response.status).toBe(200);
+    const body = searchDocumentsResponseSchema.parse(await response.json());
+    expect(body.data).toEqual([]);
+    expect(body.meta.total).toBe(0);
+  });
 });

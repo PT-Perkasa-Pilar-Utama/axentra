@@ -50,6 +50,7 @@ export class InMemoryDownloadRepository implements IDownloadRepository {
           documentId: target.document.id,
           categoryId: target.document.categoryId,
           deletedAt: target.document.deletedAt,
+          archivedAt: target.document.archivedAt ?? null,
           // Mirrors PostgreSQL, where a document without a category has no permission to read.
           downloadEnabled:
             target.document.categoryId === null

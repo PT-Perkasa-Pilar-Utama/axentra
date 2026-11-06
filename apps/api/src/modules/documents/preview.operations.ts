@@ -17,9 +17,13 @@ export type PreviewOperationResult = {
 
 export type PreviewFileRecord = NonNullable<PreviewTargetRecord["file"]>;
 
-// Shared by the metadata and content routes so both apply the same deletedAt and file rules.
+// Shared by the metadata and content routes so both apply the same deletedAt, archivedAt, and file rules.
 export function assertPreviewAllowed(target: PreviewTargetRecord | null): PreviewFileRecord {
-  if (!target || target.document.deletedAt !== null) {
+  if (
+    !target ||
+    target.document.deletedAt !== null ||
+    (target.document.archivedAt !== undefined && target.document.archivedAt !== null)
+  ) {
     throw new NotFoundError("Dokumen tidak ditemukan");
   }
 

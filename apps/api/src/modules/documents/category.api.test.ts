@@ -189,7 +189,7 @@ describe("GET /api/v1/documents/:id/category - Task BE-S2-04 (US-05 / AC-05.01)"
     expect(body.error.message).toBe("Dokumen tidak ditemukan");
   });
 
-  it("returns 404 when document is soft-deleted", async () => {
+  it("returns 404 when document is soft-deleted or archived", async () => {
     const res = await app.request(`/api/v1/documents/${deletedDocId}/category`, {
       method: "GET",
       headers: {
@@ -202,5 +202,20 @@ describe("GET /api/v1/documents/:id/category - Task BE-S2-04 (US-05 / AC-05.01)"
     expect(body.success).toBe(false);
     expect(body.error.code).toBe("NOT_FOUND");
     expect(body.error.message).toBe("Dokumen tidak ditemukan");
+
+    const archivedDocId = "44444444-4444-4444-8444-444444444444";
+    repository.documents.set(archivedDocId, {
+      id: archivedDocId,
+      categoryId,
+      archivedAt: new Date("2026-11-04T03:00:00.000Z"),
+    });
+
+    const archivedRes = await app.request(`/api/v1/documents/${archivedDocId}/category`, {
+      method: "GET",
+      headers: {
+        Authorization: "Bearer valid-member-token",
+      },
+    });
+    expect(archivedRes.status).toBe(404);
   });
 });

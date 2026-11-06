@@ -113,13 +113,17 @@ export function createInMemoryDocumentStore(): InMemoryDocumentStore {
       limit: number,
       tags?: ReadonlyArray<string> | undefined,
     ): Promise<RecentDocumentPage> => {
-      let filtered = recentDocuments;
+      let filtered = recentDocuments.filter((doc) => {
+        const detail = detailRecords.get(doc.id);
+        if (!detail) return true;
+        return detail.document.deletedAt === null && detail.document.archivedAt === null;
+      });
       if (tags && tags.length > 0) {
         const uniqueTags = Array.from(
           new Set(tags.map((t) => t.trim().toLowerCase()).filter((t) => t.length > 0)),
         );
         if (uniqueTags.length > 0) {
-          filtered = recentDocuments.filter((doc) => {
+          filtered = filtered.filter((doc) => {
             const tagsForDoc = documentTags.get(doc.id);
             if (!tagsForDoc) return false;
             return uniqueTags.every((t) => tagsForDoc.has(t));
@@ -171,7 +175,13 @@ export function createInMemoryDocumentStore(): InMemoryDocumentStore {
     markProcessingEnqueueFailed: async () => undefined,
   };
   const detailRepository: IDocumentDetailRepository = {
-    findDocumentDetail: async (id) => detailRecords.get(id) ?? null,
+    findDocumentDetail: async (id) => {
+      const record = detailRecords.get(id);
+      if (!record || record.document.deletedAt !== null || record.document.archivedAt !== null) {
+        return null;
+      }
+      return record;
+    },
   };
   return { repository, detailRepository };
 }

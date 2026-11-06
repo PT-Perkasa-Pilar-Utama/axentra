@@ -92,7 +92,7 @@ export class DocumentRepository implements IDocumentRepository {
     if (tags && tags.length > 0) {
       return listRecentDocumentsWithTagFilter(this.sqlDb, page, limit, tags);
     }
-    const whereActive = isNull(documents.deletedAt);
+    const whereActive = and(isNull(documents.deletedAt), isNull(documents.archivedAt));
     const [counted] = await this.sqlDb
       .select({ total: count() })
       .from(documents)
