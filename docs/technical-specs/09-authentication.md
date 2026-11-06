@@ -17,7 +17,7 @@ Axentra's API and Web surfaces.
 | Runtime identity directory     | Implemented | `BE-S1-01`: development/test directory; sessions reference seeded `users` rows                                                             |
 | Refresh cookie and CORS        | Implemented | `FND-10`: HttpOnly `axentra_refresh` cookie; CORS for `WEB_ORIGIN` only                                                                    |
 | Login rate limit               | Implemented | `FND-10`: 5 failures per normalized email in 15 minutes lock it for 15 minutes (`auth_login_attempts`)                                     |
-| Account deactivation           | Planned     | `BE-S4-06`: `users.status = inactive` blocks login on both paths and revokes active sessions (see [09-admin.md](../api-specs/09-admin.md)) |
+| Account deactivation           | Implemented | `BE-S4-06`: `users.status = inactive` blocks login on both paths and revokes active sessions (see [09-admin.md](../api-specs/09-admin.md)) |
 | Client route gating            | In Progress | Frontend integration with `/api/v1/auth/me`                                                                                                |
 
 ## Approved Architecture & Token Strategy
@@ -43,7 +43,7 @@ export type TokenVerifier = {
 - **Refresh Token:** Random token (`ax_rt_...`) carried only in the HttpOnly cookie. With `remember_me` its lifetime is 30 days. Without it, the lifetime is 12 hours of idle time, and each successful refresh pushes it forward. Every session also has an absolute lifetime of 30 days from login.
 - **Rotation:** Each refresh replaces both tokens in one compare-and-swap update. The update succeeds only while the presented refresh token is still the session's current one. The previous access token and refresh token stop working.
 - **Reuse detection:** Presenting a refresh token that was already rotated revokes the whole session and returns `401 Unauthorized`. A concurrent refresh that loses the rotation race is treated the same way.
-- **Revocation / Invalidation:** `/api/v1/auth/logout` marks the session revoked. Its access token and refresh token are rejected with `401 Unauthorized` afterwards.
+- **Revocation / Invalidation:** `/api/v1/auth/logout` marks the session revoked, and so does an Admin deactivating the account (`BE-S4-06`). Its access token and refresh token are rejected with `401 Unauthorized` afterwards.
 - **Expiry:** Expired and revoked sessions are rejected on every path: access verification, refresh, and logout. Logout is idempotent.
 
 ### 3. Role-Based Access Control (RBAC)
@@ -72,7 +72,7 @@ Route middleware evaluates:
 ### 5. App and Service Composition
 
 - When `authService` is provided to `createApp({ authService })` without an explicit `tokenVerifier`, `createApp` automatically selects `dependencies.authService.tokenVerifier`. This guarantees that `/api/v1/auth/login`, `/api/v1/auth/me`, and all protected routes share the identical session registry.
-- Development and test startup verify credentials against `AUTH_LOCAL_IDENTITY_DIRECTORY`. Production verifies against the `users` table through `createRuntimeAuthenticator(config, { userRepository })`, with `DrizzleAuthUserRepository`, and takes the role from the stored row. A missing or empty directory fails startup in every environment. Malformed directory contents fail startup only in development and test. Planned (`BE-S4-06`): an account whose `users.status` is `inactive` is rejected on both paths. In development and test, the status is read from `users` by the directory entry's `id` after the password verifies (see O3 in [09-admin.md](../api-specs/09-admin.md)).
+- Development and test startup verify credentials against `AUTH_LOCAL_IDENTITY_DIRECTORY`. Production verifies against the `users` table through `createRuntimeAuthenticator(config, { userRepository })`, with `DrizzleAuthUserRepository`, and takes the role from the stored row. A missing or empty directory fails startup in every environment. Malformed directory contents fail startup only in development and test. Implemented (`BE-S4-06`): an account whose `users.status` is `inactive` is rejected on both paths. Session creation re-checks the status under a row lock, so a login that races a deactivation creates no session. In development and test, the status is read from `users` by the directory entry's `id` after the password verifies (see O3 in [09-admin.md](../api-specs/09-admin.md)).
 - Session and login-attempt persistence are injected explicitly through `DrizzleAuthSessionStore` and `DrizzleLoginAttemptStore`. `createAuthService` requires these stores and has no default store. `createInMemoryAuthService` is for unit tests only.
 - When no auth service is injected, the auth routes reject every login and refresh, and `/api/v1/auth/logout` still clears the cookie.
 

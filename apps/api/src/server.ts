@@ -33,6 +33,8 @@ import { DrizzlePermissionCategoriesRepository } from "./modules/permission-cate
 import { createPermissionCategoriesService } from "./modules/permission-categories/permission-categories.service";
 import { DrizzleAdminRepository } from "./modules/admin/admin.repository";
 import { createAdminService } from "./modules/admin/admin.service";
+import { DrizzleAdminAccountRepository } from "./modules/admin/admin.accounts.repository";
+import { createAdminAccountService } from "./modules/admin/admin.accounts.service";
 
 const closeResourcesWithinDeadline = async (
   operations: Array<() => Promise<unknown>>,
@@ -121,6 +123,9 @@ async function start(): Promise<void> {
     new DrizzlePermissionCategoriesRepository(database.db),
   );
   const adminService = createAdminService(new DrizzleAdminRepository(database.db));
+  const adminAccountService = createAdminAccountService(
+    new DrizzleAdminAccountRepository(database.db),
+  );
 
   const app = createApp({
     logger,
@@ -139,6 +144,7 @@ async function start(): Promise<void> {
     analyticsService,
     permissionCategoriesService,
     adminService,
+    adminAccountService,
     enableUploadRoute: true,
     webOrigin: config.WEB_ORIGIN,
     appEnvironment: config.APP_ENV,

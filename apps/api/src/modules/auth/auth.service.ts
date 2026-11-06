@@ -108,7 +108,7 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
 
       const rememberMe = input.rememberMe ?? false;
       const tokens = createTokenSet(now);
-      await sessionStore.createSession({
+      const session = await sessionStore.createSession({
         id: randomUUID(),
         user,
         rememberMe,
@@ -118,6 +118,8 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
         refreshExpiresAt: computeRefreshExpiry({ now, rememberMe, createdAt: now }),
         now,
       });
+      // The account was deactivated between the password check and the session insert.
+      if (session === null) throw new UnauthorizedError(INVALID_CREDENTIALS_MESSAGE);
       return issued(user, tokens, rememberMe);
     },
 
