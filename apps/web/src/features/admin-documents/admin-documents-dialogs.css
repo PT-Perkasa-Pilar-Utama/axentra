@@ -63,6 +63,16 @@
   background: #b42318;
 }
 
+.admin-documents__btn-confirm-archive {
+  background: var(--sidebar-accent, #65a448);
+  border: 1px solid var(--sidebar-accent, #65a448);
+  color: #fff;
+}
+
+.admin-documents__btn-confirm-archive:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
 .admin-documents__detail-list {
   display: grid;
   grid-template-columns: 1fr;

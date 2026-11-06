@@ -15,16 +15,11 @@ import {
   getAdminDocument,
   type AdminDocument,
   type AdminDocumentDetail,
-  type AdminDocumentsPage,
 } from "./admin-documents.api";
 
 export const ADMIN_DOCUMENTS_QUERY_KEY = ["admin-documents"] as const;
 
 export type AdminDocumentTab = "active" | "archived";
-
-export type AdminDocumentsPresenterOptions = {
-  fetchFn?: (page: number, limit: number) => Promise<AdminDocumentsPage>;
-};
 
 export type AdminDocumentsPresenter = {
   items: AdminDocument[];
@@ -63,11 +58,8 @@ export type AdminDocumentsPresenter = {
   isDetailLoading: boolean;
 };
 
-export function useAdminDocumentsPresenter(
-  options: AdminDocumentsPresenterOptions = {},
-): AdminDocumentsPresenter {
+export function useAdminDocumentsPresenter(): AdminDocumentsPresenter {
   const queryClient = useQueryClient();
-  const fetchFn = options.fetchFn ?? listAdminDocuments;
   const [page, setPage] = useState(DOWNLOAD_AUDIT_DEFAULT_PAGE);
   const [currentTab, setTab] = useState<AdminDocumentTab>("active");
   const [searchQuery, setSearchQuery] = useState("");
@@ -79,7 +71,7 @@ export function useAdminDocumentsPresenter(
 
   const query = useQuery({
     queryKey: [...ADMIN_DOCUMENTS_QUERY_KEY, page],
-    queryFn: () => fetchFn(page, DOWNLOAD_AUDIT_DEFAULT_LIMIT),
+    queryFn: () => listAdminDocuments(page, DOWNLOAD_AUDIT_DEFAULT_LIMIT),
     retry: createTransientRetry(1),
   });
 
@@ -149,7 +141,7 @@ export function useAdminDocumentsPresenter(
   const items = tabFilteredItems.filter((item) =>
     item.title.toLowerCase().includes(searchQuery.trim().toLowerCase()),
   );
-  // ponytail: filter berlaku satu halaman; gunakan filter API saat kontrak mendukungnya.
+  // Filter status dan pencarian diterapkan di sisi klien pada halaman aktif sesuai batas kontrak API saat ini.
 
   const total = query.data?.meta.total ?? 0;
   const isAccessDenied = query.error instanceof ApiClientError && query.error.status === 403;

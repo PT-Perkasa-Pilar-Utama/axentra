@@ -61,7 +61,7 @@ export function ArchiveConfirmDialog({
           Batal
         </button>
         <button
-          className="admin-documents__btn-cancel"
+          className="admin-documents__btn-confirm-archive"
           disabled={presenter.isMutating}
           onClick={() => void confirm()}
           type="button"

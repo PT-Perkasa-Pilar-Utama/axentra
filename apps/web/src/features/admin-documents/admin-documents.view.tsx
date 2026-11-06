@@ -1,8 +1,5 @@
 import type React from "react";
-import {
-  useAdminDocumentsPresenter,
-  type AdminDocumentsPresenter,
-} from "./admin-documents.presenter";
+import { useAdminDocumentsPresenter } from "./admin-documents.presenter";
 import type { AdminDocument } from "./admin-documents.api";
 import { DeleteConfirmDialog } from "./admin-documents-delete.dialog";
 import { DocumentDetailDialog } from "./admin-documents-detail.dialog";
@@ -38,15 +35,8 @@ function SearchIcon(): React.JSX.Element {
   );
 }
 
-export type AdminDocumentsViewProps = {
-  presenter?: AdminDocumentsPresenter;
-};
-
-export function AdminDocumentsView({
-  presenter: presenterProp,
-}: AdminDocumentsViewProps = {}): React.JSX.Element {
-  const defaultPresenter = useAdminDocumentsPresenter();
-  const presenter = presenterProp ?? defaultPresenter;
+export function AdminDocumentsView(): React.JSX.Element {
+  const presenter = useAdminDocumentsPresenter();
 
   const isArchivedTab = presenter.currentTab === "archived";
 

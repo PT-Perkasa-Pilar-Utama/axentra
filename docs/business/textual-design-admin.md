@@ -11,7 +11,7 @@ Decided on 2026-10-30 by the Tech Lead (proposal question 8). Shown only to role
 - `Manajemen Dokumen`
 - `Audit Trail`
 
-Current state on `dev`: the menu lives in `apps/web/src/app/app-shell.menu.ts` (`ROLE_MENU`). It has entries for `member_team` and `head_of_team` only. `resolveShellRole` sends `admin` to the Member Team menu, and login sends every role to `/dashboard`. FE-S4-07 adds the `admin` entries above.
+Current state on `dev`: the menu lives in `apps/web/src/app/app-shell.menu.ts` (`ROLE_MENU`). It has entries for `member_team` and `head_of_team` only. `resolveShellRole` sends `admin` to the Member Team menu, and login sends every role to `/dashboard`. Under Option A, verbally approved by Tech Lead Arya as reported on 2026-11-06 (see [09-admin.md](../api-specs/09-admin.md), O12), FE-S4-06 provides the `/admin/documents` route and document management menu entry, while FE-S4-05 provides the `/admin/users` entry. FE-S4-07 adds the Dashboard and Audit Trail entries, along with the Admin login redirect. Merge order for FE-S4-05 and FE-S4-06 remains pending; once both branches land on `dev`, verify that both entries appear in the Admin menu.
 
 ## Routes (usulan)
 

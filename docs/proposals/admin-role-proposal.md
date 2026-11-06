@@ -50,6 +50,8 @@ memantau ringkasan sistem.
 
 **Pertanyaan 8 (nama menu dan template)** diputuskan 2026-10-30 oleh Tech Lead: menu Admin adalah `Dashboard`, `Manajemen Akun`, `Manajemen Dokumen`, dan `Audit Trail`. Label `Dashboard Admin` tidak dipakai. Template memakai satu `AppShell` bersama untuk semua peran; hanya menu dan isi halaman yang berbeda.
 
+**Pembagian pekerjaan navigasi Admin (FE-S4-06, Opsi A):** Tech Lead Arya menyetujui secara lisan bahwa menu dan rute Manajemen Dokumen tetap dalam FE-S4-06; persetujuan disampaikan pengembang pada 2026-11-06. FE-S4-05 menangani menu dan rute Manajemen Akun. FE-S4-07 menangani menu Dashboard dan Audit Trail, rute terkait, dan pengalihan login Admin. Urutan penggabungan FE-S4-05 dan FE-S4-06 belum ditetapkan; setelah penggabungan, kedua menu dan rutenya harus diverifikasi bersama. Persetujuan ini tidak memutuskan perubahan filter atau kolom kategori pada daftar dokumen.
+
 ## Pertanyaan terbuka untuk Tech Lead dan BA
 
 Dokumen ini memuat 15 pertanyaan. Pertanyaan 1, 5, 7, 8, dan 9 sudah diputuskan (lihat bagian Keputusan); sisanya masih terbuka. Pertanyaan 1 sampai 9 berasal dari versi 29 Oktober 2026. Pertanyaan 10 sampai 15 ditambahkan pada 4 November 2026 dari pemeriksaan kesiapan kartu. Rincian dan nilai usulan tiap pertanyaan juga ada di [09-admin.md](../api-specs/09-admin.md#open-decisions).

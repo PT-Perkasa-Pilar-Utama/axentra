@@ -1,13 +1,16 @@
 # Acceptance Evidence: FE-S4-06 (Build document management page)
 
-## Status: Belum selesai — dependensi live BE-S4-07 blocked
+## Status: Blocked — verifikasi live menunggu BE-S4-07; belum ada sign-off Arya.
 
 - **Card ID**: `FE-S4-06`
-- **Acceptance Criteria**: `PROP-ADM-AC-03.01` hingga `PROP-ADM-AC-03.05` (Manajemen Dokumen Admin)
+- **Acceptance Criteria**: `PROP-ADM-AC-03.01` sampai `PROP-ADM-AC-03.05`
 - **PIC**: Aiman
 - **Tech Lead / Approver**: Arya Isnaidi
-- **Tanggal**: 2026-11-05
+- **Pembaruan catatan**: 2026-11-06
 - **Branch**: `FE-S4-06-Build-document-management-page`
+- **Baseline review**: `cf541e8ef9fa8c1b00541330b368549213c9fb8e`.
+- **HEAD lokal**: `d47e399ba87176a674007b0e9293c84738741c63`; perubahan Round 1 belum di-commit dan tidak diwakili oleh SHA ini.
+- **Status rilis**: bukti live dan persetujuan akhir Arya belum tersedia.
 
 ---
 
@@ -15,76 +18,127 @@
 
 Sesuai aturan `docs/E2E_TESTING.md` ("Mark `Blocked`, not `Pass`, when a dependency is missing"):
 
-| Komponen Dependensi            | Status      | Keterangan                                                                                                                                                                                                                                                                         |
-| ------------------------------ | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Database Schema (DB-S4-01)** | **Merged**  | Kolom `users.status`, `documents.uploaded_by`, `documents.archived_at` telah tersedia di `dev` (PR #61, merge `2f22949`).                                                                                                                                                          |
-| **Backend API (BE-S4-07)**     | **Blocked** | Endpoint `GET /api/v1/admin/documents`, `GET /api/v1/admin/documents/:id`, `POST /api/v1/admin/documents/:id/archive`, `POST /api/v1/admin/documents/:id/unarchive`, dan `DELETE /api/v1/admin/documents/:id` belum di-merge ke `dev`. Integrasi live tidak dapat dinyatakan Pass. |
-| **Frontend UI (FE-S4-06)**     | **Ready**   | Komponen API client, presenter, view, dialog aksi (delete, archive, unarchive, metadata detail), dan menu AppShell selesai dibangun tanpa memalsukan integrasi langsung.                                                                                                           |
+| Komponen Dependensi            | Status        | Keterangan                                                                                                                                                                                                                             |
+| ------------------------------ | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Database Schema (DB-S4-01)** | **Merged**    | Kolom `users.status`, `documents.uploaded_by`, `documents.archived_at` telah tersedia di `dev` (PR #61, merge `2f22949`).                                                                                                              |
+| **Backend API (BE-S4-07)**     | **Blocked**   | Endpoint `GET /api/v1/admin/documents`, `GET /api/v1/admin/documents/:id`, `POST /api/v1/admin/documents/:id/archive`, `POST /api/v1/admin/documents/:id/unarchive`, dan `DELETE /api/v1/admin/documents/:id` belum di-merge ke `dev`. |
+| **Frontend UI (FE-S4-06)**     | **In review** | UI diuji dengan respons sintetis; integrasi live dan persetujuan akhir belum tersedia.                                                                                                                                                 |
 
 ---
 
-### 2. Keselarasan Kontrak API dan Tampilan Desain
+### 2. Evidence Records (docs/E2E_TESTING.md §5.2)
 
-1. **Keputusan Hak Akses Admin (2026-11-04, PROP-ADM-AC-05.02)**:
-   - Admin hanya melihat metadata dokumen.
-   - Tidak ada tombol pratinjau (preview), unduhan file (download), storage key, atau signed URL pada halaman Admin.
-2. **Penanganan Dokumen Legacy (Keputusan O8, 2026-11-05)**:
-   - Dokumen tanpa uploader (`ownerId: null`, `ownerName: null`) ditampilkan dengan teks "Tidak diketahui".
-3. **Cakupan Filter dan Pencarian**:
-   - Kontrak API `GET /api/v1/admin/documents` saat ini hanya mendukung `page` dan `limit`.
-   - UI secara transparan memberikan keterangan bahwa pencarian judul dan tab status berlaku pada halaman yang sedang dimuat, tanpa memalsukan pencarian global seluruh basis data.
-4. **Konfirmasi Tindakan**:
-   - Hapus Dokumen (soft delete): Dialog konfirmasi dengan penjelasan bahwa data tetap tersimpan di server.
-   - Arsipkan Dokumen: Dialog konfirmasi dengan penjelasan bahwa dokumen tidak akan tampil lagi di Member Team maupun Head of Team.
-   - Batalkan Arsip: Dialog konfirmasi untuk mengembalikan dokumen ke daftar aktif.
-   - Detail Metadata: Dialog modal semantik dengan focus trapping dan tombol Escape.
+```text
+AC:          PROP-ADM-AC-03.01
+Card:        FE-S4-06
+Commit:      Belum tersedia untuk perbaikan lokal yang belum di-commit
+Environment: local, Web http://localhost:5173, API http://localhost:3001
+Role:        admin (seeded test account)
+Input:       GET /api/v1/admin/documents (data respons sintetis)
+Expected:    Daftar dokumen menampilkan judul, pengunggah, tanggal, dan status. Dokumen legacy tanpa pengunggah menampilkan teks "Tidak diketahui".
+Observed:    Tabel menampilkan judul dokumen, pengunggah (termasuk fallback "Tidak diketahui" untuk ownerName: null), tanggal, dan status pill. Pengujian unit dan integrasi lulus. Integrasi live terblokir karena BE-S4-07 belum tersedia di dev.
+Result:      Blocked (BE-S4-07 belum tersedia di dev)
+Screenshot:  docs/screenshots/FE-S4-06/preview-aktif-sintetis.png (screenshot pratinjau komponen lokal dengan data sintetis)
+```
+
+```text
+AC:          PROP-ADM-AC-03.02
+Card:        FE-S4-06
+Commit:      Belum tersedia untuk perbaikan lokal yang belum di-commit
+Environment: local, Web http://localhost:5173, API http://localhost:3001
+Role:        admin (seeded test account)
+Input:       Klik judul dokumen pada daftar (GET /api/v1/admin/documents/:id sintetis)
+Expected:    Dialog modal menampilkan metadata dokumen (judul, pengunggah, kategori, penulis, tanggal unggah/arsip) tanpa affordance pratinjau atau unduh dokumen.
+Observed:    Modal dialog semantik menampilkan detail metadata; tombol unduh dan pratinjau tidak ada sama sekali di DOM; status loading metadata tertangani. Integrasi live terblokir karena BE-S4-07 belum tersedia di dev.
+Result:      Blocked (BE-S4-07 belum tersedia di dev)
+Screenshot:  No screenshot (detail metadata diverifikasi melalui pengujian komponen otomatis)
+```
+
+```text
+AC:          PROP-ADM-AC-03.03
+Card:        FE-S4-06
+Commit:      Belum tersedia untuk perbaikan lokal yang belum di-commit
+Environment: local, Web http://localhost:5173, API http://localhost:3001
+Role:        admin (seeded test account)
+Input:       Klik tombol "Arsipkan" pada baris dokumen aktif
+Expected:    Muncul dialog konfirmasi arsip dengan keterangan bahwa dokumen tidak tampil untuk Member Team dan Head of Team; tombol terkunci saat pending; mutasi memanggil POST /admin/documents/:id/archive.
+Observed:    Dialog konfirmasi terbuka; saat mutasi berjalan tombol menampilkan "Memproses..." dan berstatus disabled; klik ganda dicegah; error 403 menampilkan alert di dalam dialog. Integrasi live terblokir karena BE-S4-07 belum tersedia di dev.
+Result:      Blocked (BE-S4-07 belum tersedia di dev)
+Screenshot:  No screenshot (alur mutasi dan pending state diverifikasi melalui pengujian komponen otomatis)
+```
+
+```text
+AC:          PROP-ADM-AC-03.04
+Card:        FE-S4-06
+Commit:      Belum tersedia untuk perbaikan lokal yang belum di-commit
+Environment: local, Web http://localhost:5173, API http://localhost:3001
+Role:        admin (seeded test account)
+Input:       Klik tombol "Hapus" pada baris dokumen
+Expected:    Muncul dialog konfirmasi hapus dengan keterangan hapus lunak (data tetap tersimpan di server); tombol konfirmasi terkunci saat pending; mutasi memanggil DELETE /admin/documents/:id; baris dokumen hilang dari daftar setelah berhasil.
+Observed:    Dialog konfirmasi hapus terbuka; saat mutasi tombol menampilkan "Menghapus..." dan berstatus disabled; klik ganda dicegah; error 403 menampilkan alert di dalam dialog; setelah sukses baris dokumen terhapus dari tampilan melalui query invalidation. Integrasi live terblokir karena BE-S4-07 belum tersedia di dev.
+Result:      Blocked (BE-S4-07 belum tersedia di dev)
+Screenshot:  docs/screenshots/FE-S4-06/preview-konfirmasi-hapus-sintetis.png (screenshot pratinjau komponen lokal; catatan: blur backdrop dinonaktifkan sementara saat pengambilan gambar)
+```
+
+```text
+AC:          PROP-ADM-AC-03.05
+Card:        FE-S4-06
+Commit:      Belum tersedia untuk perbaikan lokal yang belum di-commit
+Environment: local, Web http://localhost:5173, API http://localhost:3001
+Role:        admin (seeded test account)
+Input:       Pilih tab "Diarsipkan", klik tombol "Batalkan Arsip" pada baris dokumen
+Expected:    Muncul dialog konfirmasi pembatalan arsip; tombol konfirmasi terkunci saat pending; mutasi memanggil POST /admin/documents/:id/unarchive; dokumen kembali aktif.
+Observed:    Tab Diarsipkan menampilkan daftar arsip dengan tombol "Batalkan Arsip"; dialog konfirmasi pembatalan arsip berfungsi dengan pending state "Memproses...", pencegahan klik ganda, dan penanganan galat 403. Integrasi live terblokir karena BE-S4-07 belum tersedia di dev.
+Result:      Blocked (BE-S4-07 belum tersedia di dev)
+Screenshot:  docs/screenshots/FE-S4-06/preview-diarsipkan-sintetis.png (screenshot pratinjau komponen lokal dengan data sintetis)
+```
 
 ---
 
-### 3. Automated Quality Gate
+### 3. Catatan Keputusan dan Keterbatasan Tampilan
 
-Hasil eksekusi `bun run complete-check`:
+1. **Keputusan Navigasi Opsi A (2026-11-06)**:
+   - Sesuai persetujuan lisan Tech Lead Arya yang dilaporkan oleh pengembang pada 2026-11-06, rute `/admin/documents` dan entri menu "Manajemen Dokumen" dipertahankan di `FE-S4-06`.
+   - Di `dev` (`b550bbe`), PR #62 (`FE-S4-05`) belum di-merge, sehingga branch ini saat ini baru memuat entri Manajemen Dokumen.
+   - Penyatuan menu lengkap Admin (`Dashboard`, `Manajemen Akun`, `Manajemen Dokumen`, `Audit Trail`) harus diverifikasi bersama setelah PR #62 dan branch ini digabungkan ke `dev`.
 
-- **Type Check**: Lulus 100% pada semua package dan apps (`tsc --noEmit`).
-- **Lint**: Lulus 100% (`oxlint .` 0 error, 0 warning).
-- **Format**: Lulus 100% (`oxfmt --check .`).
-- **Unit & Integration Tests**: Lulus 100% (507 API + 71 Worker + 307 Web + 290 Packages = 1175 tests pass).
-- **Build**: Lulus 100% (Vite web build, Hono api bundle, BullMQ worker bundle).
+2. **Cakupan Filter Status dan Pencarian (F9)**:
+   - Kontrak API `GET /api/v1/admin/documents` saat ini hanya mendukung parameter `page` dan `limit`.
+   - Filter tab ("Aktif" / "Diarsipkan") dan pencarian judul dokumen diterapkan pada halaman aktif (client-side) dan dijelaskan secara jujur kepada pengguna melalui teks UI pembantu.
+   - Perluasan kontrak filter server-side dan penambahan kolom Kategori pada daftar dokumen merupakan keputusan terbuka untuk Tech Lead dan BA.
 
-Berkas pengujian spesifik FE-S4-06:
+3. **Catatan Tangkapan Layar Dialog (F10)**:
+   - Tangkapan layar `preview-konfirmasi-hapus-sintetis.png` diambil dengan `backdrop-filter: blur(2px)` yang dinonaktifkan sementara pada peramban lokal saat sesi pratinjau.
+   - Kode CSS yang dikirimkan tetap menyertakan aturan `backdrop-filter: blur(2px)` di `admin-documents-dialogs.css`.
+
+4. **Hak Akses Admin Tanpa Pratinjau/Unduh**:
+   - Mematuhi keputusan 2026-11-04 (PROP-ADM-AC-05.02): Admin hanya melihat metadata dokumen. Tidak ada tautan atau tombol unduh/pratinjau.
+
+---
+
+### 4. Automated Verification Results
+
+Hasil eksekusi pengujian spesifik `FE-S4-06` (semua lulus):
 
 - `apps/web/test/admin-documents.api.test.ts` (4 unit tests):
-  - Memverifikasi parsing data dan meta paginasi `listAdminDocuments`.
-  - Memverifikasi pemanggilan endpoint `POST /admin/documents/:id/archive`.
-  - Memverifikasi pengambilan detail metadata `GET /admin/documents/:id`.
-  - Memverifikasi pemanggilan `DELETE /admin/documents/:id`.
-- `apps/web/test/admin-documents.view.test.tsx` (8 integration tests):
-  - `AC-03.01`: Menampilkan daftar dokumen beserta judul, pengunggah, dan status (termasuk dokumen legacy "Tidak diketahui").
-  - `AC-03.01 & AC-03.05`: Berpindah ke tab Diarsipkan dan memverifikasi tombol Batalkan Arsip.
-  - `AC-03.03`: Alur dialog konfirmasi arsip memicu mutasi archive.
-  - `AC-03.05`: Alur dialog konfirmasi pembatalan arsip memicu mutasi unarchive.
-  - `AC-03.04`: Alur dialog konfirmasi hapus lunak memicu mutasi delete.
-  - `AC-03.02`: Dialog detail metadata dokumen menampilkan metadata tanpa affordance preview/download.
-  - Proteksi Rute: Role selain `admin` (`member_team`) ditolak dengan pesan "Akses Dibatasi".
-  - Penanganan Galat: Respons galat 500 menampilkan pesan dan tombol "Coba lagi" yang berfungsi.
-
----
-
-### 4. Bukti Pratinjau Visual (Data Sintetis)
-
-Tangkapan layar ini diambil langsung dari komponen aktual di peramban (`http://localhost:5173/admin/documents`) menggunakan data respons sintetis lokal karena backend `BE-S4-07` belum tersedia:
-
-1. **Tab Dokumen Aktif**:
-   ![Pratinjau Tab Aktif](preview-aktif-sintetis.png)
-   - Berkas: [`preview-aktif-sintetis.png`](preview-aktif-sintetis.png)
-   - Menampilkan AppShell Admin, menu aktif "Manajemen Dokumen", tab Aktif, tabel metadata dengan status pill hijau "Aktif", tombol Arsipkan dan Hapus, serta paginasi.
-
-2. **Tab Dokumen Diarsipkan**:
-   ![Pratinjau Tab Diarsipkan](preview-diarsipkan-sintetis.png)
-   - Berkas: [`preview-diarsipkan-sintetis.png`](preview-diarsipkan-sintetis.png)
-   - Menampilkan tab Diarsipkan aktif dengan indikator garis bawah hijau, kolom tanggal berubah menjadi "Diarsipkan", status pill abu-abu "Diarsipkan", tombol "Batalkan Arsip" dan "Hapus".
-
-3. **Dialog Konfirmasi Hapus Dokumen**:
-   ![Pratinjau Dialog Hapus](preview-konfirmasi-hapus-sintetis.png)
-   - Berkas: [`preview-konfirmasi-hapus-sintetis.png`](preview-konfirmasi-hapus-sintetis.png)
-   - Menampilkan modal semantik `<dialog>` konfirmasi soft delete dengan latar backdrop, teks penjelasan data tetap di server, tombol Batal dan Hapus Dokumen (merah).
+  - Parsing data dan meta paginasi `listAdminDocuments`.
+  - Pemanggilan `POST /admin/documents/:id/archive`.
+  - Pemanggilan `GET /admin/documents/:id` (detail metadata).
+  - Pemanggilan `DELETE /admin/documents/:id`.
+- `apps/web/test/admin-documents.view.test.tsx` (16 integration tests):
+  - `AC-03.01`: Menampilkan daftar dokumen beserta judul, pengunggah, dan status (termasuk fallback dokumen legacy "Tidak diketahui").
+  - Loading daftar: Menampilkan teks indikator status "Memuat daftar dokumen...".
+  - `AC-03.01 & AC-03.05`: Berpindah ke tab Diarsipkan dan menampilkan tombol Batalkan Arsip.
+  - `AC-03.03`: Alur dialog konfirmasi arsip dengan pending state ("Memproses...", tombol disabled) dan pencegahan klik ganda.
+  - `AC-03.03`: Penanganan galat 403 pada mutasi arsip menampilkan alert izin di dalam dialog.
+  - `AC-03.05`: Alur dialog pembatalan arsip dengan pending state ("Memproses...", tombol disabled) dan pencegahan klik ganda.
+  - `AC-03.05`: Penanganan galat 403 pada mutasi pembatalan arsip menampilkan alert izin di dalam dialog.
+  - `AC-03.04`: Alur dialog konfirmasi hapus lunak dengan pending state ("Menghapus...", tombol disabled), pencegahan klik ganda, dan penghapusan baris dokumen setelah mutasi berhasil melalui query invalidation.
+  - `AC-03.04`: Penanganan galat 403 pada mutasi hapus menampilkan alert izin di dalam dialog.
+  - `AC-03.02`: Dialog detail metadata dokumen menampilkan loading "Memuat metadata..." lalu menyajikan metadata tanpa affordance pratinjau/unduh.
+  - Pencarian: Memfilter dokumen berdasarkan judul pada halaman aktif.
+  - Paginasi: Interaksi tombol Sebelumnya dan Berikutnya serta pembaruan nomor halaman.
+  - Proteksi rute (`member_team`): Ditolak ("Akses Dibatasi") dan memastikan 0 request dikirim ke endpoint dokumen.
+  - Proteksi rute (`head_of_team`): Ditolak ("Akses Dibatasi") dan memastikan 0 request dikirim ke endpoint dokumen.
+  - Menu peran (`admin`): Memverifikasi fungsi `resolveShellRole("admin")` dan entri "Manajemen Dokumen" pada `ROLE_MENU.admin`.
+  - Penanganan galat: Respons 500 menampilkan pesan dan tombol "Coba lagi" yang memicu refetch.
