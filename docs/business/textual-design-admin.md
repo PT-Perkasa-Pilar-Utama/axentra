@@ -11,7 +11,7 @@ Decided on 2026-10-30 by the Tech Lead (proposal question 8). Shown only to role
 - `Manajemen Dokumen`
 - `Audit Trail`
 
-Current state on `dev` at `b550bbe`: `ROLE_MENU` contains `member_team` and `head_of_team` entries; `resolveShellRole` sends `admin` to the Member Team menu, and login sends every role to `/dashboard`. In the FE-S4-05 branch, per the 2026-11-05 Tech Lead decision (Option A, review finding F6), `resolveShellRole` returns `admin`, `ROLE_MENU.admin` contains only `Manajemen Akun`, and the Admin account route is registered. FE-S4-07 remains responsible for the other Admin menu entries and routes, and the Admin login redirect.
+Current state on `dev`: `ROLE_MENU` contains entries for `member_team`, `head_of_team`, and `admin` (`Manajemen Akun` from FE-S4-05). Under Option A, with verbal approval from Tech Lead Arya reported on 2026-11-06 (see [09-admin.md](../api-specs/09-admin.md), O12), FE-S4-06 adds `Manajemen Dokumen` and `/admin/documents`. FE-S4-07 delivers `Dashboard`, `Audit Trail`, their routes, and the Admin login redirect.
 
 ## Routes (usulan)
 
