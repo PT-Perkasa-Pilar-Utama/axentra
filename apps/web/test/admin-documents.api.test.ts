@@ -1,15 +1,27 @@
-import { describe, expect, it, mock } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import {
   archiveAdminDocument,
   deleteAdminDocument,
   getAdminDocument,
   listAdminDocuments,
+  unarchiveAdminDocument,
 } from "../src/features/admin-documents/admin-documents.api";
 
+function mockFetch(
+  handler: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
+): typeof fetch {
+  return Object.assign(handler, { preconnect: (): void => {} });
+}
+
 describe("admin-documents.api", () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
   it("listAdminDocuments parses valid list page", async () => {
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = mock(
+    globalThis.fetch = mockFetch(
       async () =>
         new Response(
           JSON.stringify({
@@ -28,24 +40,21 @@ describe("admin-documents.api", () => {
           }),
           { status: 200, headers: { "content-type": "application/json" } },
         ),
-    ) as unknown as typeof fetch;
+    );
 
-    try {
-      const res = await listAdminDocuments(1, 20);
-      expect(res.items).toHaveLength(1);
-      const firstItem = res.items[0];
-      expect(firstItem?.title).toBe("Laporan-Q1.pdf");
-      expect(res.meta.total).toBe(1);
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
+    const res = await listAdminDocuments(1, 20);
+    expect(res.items).toHaveLength(1);
+    const firstItem = res.items[0];
+    expect(firstItem?.title).toBe("Laporan-Q1.pdf");
+    expect(res.meta.total).toBe(1);
   });
 
-  it("archiveAdminDocument calls archive endpoint", async () => {
-    const originalFetch = globalThis.fetch;
+  it("archiveAdminDocument calls archive endpoint with POST", async () => {
     let calledUrl = "";
-    globalThis.fetch = mock(async (req: Request | string) => {
-      calledUrl = typeof req === "string" ? req : req.url;
+    let calledMethod = "";
+    globalThis.fetch = mockFetch(async (req: RequestInfo | URL, init?: RequestInit) => {
+      calledUrl = String(req);
+      calledMethod = init?.method ?? "GET";
       return new Response(
         JSON.stringify({
           success: true,
@@ -56,19 +65,38 @@ describe("admin-documents.api", () => {
         }),
         { status: 200, headers: { "content-type": "application/json" } },
       );
-    }) as unknown as typeof fetch;
+    });
 
-    try {
-      await archiveAdminDocument("11111111-1111-4111-8111-111111111111");
-      expect(calledUrl).toContain("/admin/documents/11111111-1111-4111-8111-111111111111/archive");
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
+    await archiveAdminDocument("11111111-1111-4111-8111-111111111111");
+    expect(calledUrl).toContain("/admin/documents/11111111-1111-4111-8111-111111111111/archive");
+    expect(calledMethod).toBe("POST");
+  });
+
+  it("unarchiveAdminDocument calls unarchive endpoint with POST", async () => {
+    let calledUrl = "";
+    let calledMethod = "";
+    globalThis.fetch = mockFetch(async (req: RequestInfo | URL, init?: RequestInit) => {
+      calledUrl = String(req);
+      calledMethod = init?.method ?? "GET";
+      return new Response(
+        JSON.stringify({
+          success: true,
+          data: {
+            id: "11111111-1111-4111-8111-111111111111",
+            archivedAt: null,
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+
+    await unarchiveAdminDocument("11111111-1111-4111-8111-111111111111");
+    expect(calledUrl).toContain("/admin/documents/11111111-1111-4111-8111-111111111111/unarchive");
+    expect(calledMethod).toBe("POST");
   });
 
   it("getAdminDocument returns metadata detail", async () => {
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = mock(
+    globalThis.fetch = mockFetch(
       async () =>
         new Response(
           JSON.stringify({
@@ -90,21 +118,16 @@ describe("admin-documents.api", () => {
           }),
           { status: 200, headers: { "content-type": "application/json" } },
         ),
-    ) as unknown as typeof fetch;
+    );
 
-    try {
-      const doc = await getAdminDocument("11111111-1111-4111-8111-111111111111");
-      expect(doc.categoryName).toBe("Keuangan");
-      expect(doc.metadata?.author).toBe("Siti Rahma");
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
+    const doc = await getAdminDocument("11111111-1111-4111-8111-111111111111");
+    expect(doc.categoryName).toBe("Keuangan");
+    expect(doc.metadata?.author).toBe("Siti Rahma");
   });
 
   it("deleteAdminDocument calls DELETE endpoint", async () => {
-    const originalFetch = globalThis.fetch;
     let calledMethod = "";
-    globalThis.fetch = mock(async (req: Request | string, init?: RequestInit) => {
+    globalThis.fetch = mockFetch(async (_req: RequestInfo | URL, init?: RequestInit) => {
       calledMethod = init?.method ?? "GET";
       return new Response(
         JSON.stringify({
@@ -116,13 +139,9 @@ describe("admin-documents.api", () => {
         }),
         { status: 200, headers: { "content-type": "application/json" } },
       );
-    }) as unknown as typeof fetch;
+    });
 
-    try {
-      await deleteAdminDocument("11111111-1111-4111-8111-111111111111");
-      expect(calledMethod).toBe("DELETE");
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
+    await deleteAdminDocument("11111111-1111-4111-8111-111111111111");
+    expect(calledMethod).toBe("DELETE");
   });
 });

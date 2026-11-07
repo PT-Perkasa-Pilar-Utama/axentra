@@ -9,7 +9,7 @@
 - **Pembaruan catatan**: 2026-11-06
 - **Branch**: `FE-S4-06-Build-document-management-page`
 - **Baseline review**: `cf541e8ef9fa8c1b00541330b368549213c9fb8e`.
-- **HEAD lokal**: `d47e399ba87176a674007b0e9293c84738741c63`; perubahan Round 1 belum di-commit dan tidak diwakili oleh SHA ini.
+- **Commit yang direview pada Round 2**: `7199e810565d928a561f345085170f61a121ac24`. Review Arya menjalankan tes otomatis pada commit ini; perbaikan Round 2 berikutnya belum di-commit dan tidak diwakili oleh SHA ini.
 - **Status rilis**: bukti live dan persetujuan akhir Arya belum tersedia.
 
 ---
@@ -31,7 +31,7 @@ Sesuai aturan `docs/E2E_TESTING.md` ("Mark `Blocked`, not `Pass`, when a depende
 ```text
 AC:          PROP-ADM-AC-03.01
 Card:        FE-S4-06
-Commit:      Belum tersedia untuk perbaikan lokal yang belum di-commit
+Commit:      7199e810565d928a561f345085170f61a121ac24 (review Round 2; perbaikan setelahnya belum di-commit)
 Environment: local, Web http://localhost:5173, API http://localhost:3001
 Role:        admin (sesi uji sintetis; akun seed belum diverifikasi)
 Input:       GET /api/v1/admin/documents (data respons sintetis)
@@ -44,7 +44,7 @@ Screenshot:  docs/screenshots/FE-S4-06/preview-aktif-sintetis.png (screenshot pr
 ```text
 AC:          PROP-ADM-AC-03.02
 Card:        FE-S4-06
-Commit:      Belum tersedia untuk perbaikan lokal yang belum di-commit
+Commit:      7199e810565d928a561f345085170f61a121ac24 (review Round 2; perbaikan setelahnya belum di-commit)
 Environment: local, Web http://localhost:5173, API http://localhost:3001
 Role:        admin (sesi uji sintetis; akun seed belum diverifikasi)
 Input:       Klik judul dokumen pada daftar (GET /api/v1/admin/documents/:id sintetis)
@@ -57,7 +57,7 @@ Screenshot:  No screenshot (detail metadata diverifikasi melalui pengujian kompo
 ```text
 AC:          PROP-ADM-AC-03.03
 Card:        FE-S4-06
-Commit:      Belum tersedia untuk perbaikan lokal yang belum di-commit
+Commit:      7199e810565d928a561f345085170f61a121ac24 (review Round 2; perbaikan setelahnya belum di-commit)
 Environment: local, Web http://localhost:5173, API http://localhost:3001
 Role:        admin (sesi uji sintetis; akun seed belum diverifikasi)
 Input:       Klik tombol "Arsipkan" pada baris dokumen aktif
@@ -70,7 +70,7 @@ Screenshot:  No screenshot (alur mutasi dan pending state diverifikasi melalui p
 ```text
 AC:          PROP-ADM-AC-03.04
 Card:        FE-S4-06
-Commit:      Belum tersedia untuk perbaikan lokal yang belum di-commit
+Commit:      7199e810565d928a561f345085170f61a121ac24 (review Round 2; perbaikan setelahnya belum di-commit)
 Environment: local, Web http://localhost:5173, API http://localhost:3001
 Role:        admin (sesi uji sintetis; akun seed belum diverifikasi)
 Input:       Klik tombol "Hapus" pada baris dokumen
@@ -83,7 +83,7 @@ Screenshot:  docs/screenshots/FE-S4-06/preview-konfirmasi-hapus-sintetis.png (sc
 ```text
 AC:          PROP-ADM-AC-03.05
 Card:        FE-S4-06
-Commit:      Belum tersedia untuk perbaikan lokal yang belum di-commit
+Commit:      7199e810565d928a561f345085170f61a121ac24 (review Round 2; perbaikan setelahnya belum di-commit)
 Environment: local, Web http://localhost:5173, API http://localhost:3001
 Role:        admin (sesi uji sintetis; akun seed belum diverifikasi)
 Input:       Pilih tab "Diarsipkan", klik tombol "Batalkan Arsip" pada baris dokumen
@@ -102,10 +102,10 @@ Screenshot:  docs/screenshots/FE-S4-06/preview-diarsipkan-sintetis.png (screensh
    - PR #62 (`FE-S4-05`) telah di-merge ke `dev` (`6b12a5f`). Dengan penggabungan `origin/dev` ke branch ini, `ROLE_MENU.admin` memuat kedua entri (`Manajemen Akun` dan `Manajemen Dokumen`) dan kedua rute terproteksi (`/admin/users` dan `/admin/documents`) terdaftar serta diverifikasi bersama.
    - Entri menu Admin yang tersisa (`Dashboard` dan `Audit Trail`) serta redirect login Admin diselesaikan oleh `FE-S4-07`.
 
-2. **Cakupan Filter Status dan Pencarian (F9)**:
+2. **Cakupan Filter Status dan Pencarian (F9 - Deferred)**:
    - Kontrak API `GET /api/v1/admin/documents` saat ini hanya mendukung parameter `page` dan `limit`.
    - Filter tab ("Aktif" / "Diarsipkan") dan pencarian judul dokumen diterapkan pada halaman aktif (client-side) dan dijelaskan secara jujur kepada pengguna melalui teks UI pembantu.
-   - Perluasan kontrak filter server-side dan penambahan kolom Kategori pada daftar dokumen merupakan keputusan terbuka untuk Tech Lead dan BA.
+   - Review Round 2 mencatat F9 sebagai Deferred pada 2026-11-07, dengan syarat penetapan ID dan PIC kartu tindak lanjut serta konfirmasi formal nama approver. Filter server-side, hitungan per tab, dan kolom Kategori menunggu penetapan tersebut.
 
 3. **Catatan Tangkapan Layar Dialog (F10)**:
    - Tangkapan layar `preview-konfirmasi-hapus-sintetis.png` diambil dengan `backdrop-filter: blur(2px)` yang dinonaktifkan sementara pada peramban lokal saat sesi pratinjau.

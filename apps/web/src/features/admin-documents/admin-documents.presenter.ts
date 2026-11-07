@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   DOWNLOAD_AUDIT_DEFAULT_LIMIT,
@@ -68,6 +68,8 @@ export function useAdminDocumentsPresenter(): AdminDocumentsPresenter {
   const [unarchiveTarget, setUnarchiveTarget] = useState<AdminDocument | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [selectedDetailId, setSelectedDetailId] = useState<string | null>(null);
+  // Kunci sinkron mencegah klik ganda sebelum status mutasi memicu render ulang.
+  const isPerformingActionRef = useRef(false);
 
   const query = useQuery({
     queryKey: [...ADMIN_DOCUMENTS_QUERY_KEY, page],
@@ -177,11 +179,14 @@ export function useAdminDocumentsPresenter(): AdminDocumentsPresenter {
       if (!isMutating) setDeleteTarget(null);
     },
     confirmDelete: async () => {
-      if (!deleteTarget || isMutating) return;
+      if (!deleteTarget || isMutating || isPerformingActionRef.current) return;
+      isPerformingActionRef.current = true;
       try {
         await deleteMutation.mutateAsync(deleteTarget.id);
       } catch {
         // Exposed via mutationError
+      } finally {
+        isPerformingActionRef.current = false;
       }
     },
     openArchiveConfirm: (doc) => {
@@ -192,11 +197,14 @@ export function useAdminDocumentsPresenter(): AdminDocumentsPresenter {
       if (!isMutating) setArchiveTarget(null);
     },
     confirmArchive: async () => {
-      if (!archiveTarget || isMutating) return;
+      if (!archiveTarget || isMutating || isPerformingActionRef.current) return;
+      isPerformingActionRef.current = true;
       try {
         await archiveMutation.mutateAsync(archiveTarget.id);
       } catch {
         // Exposed via mutationError
+      } finally {
+        isPerformingActionRef.current = false;
       }
     },
     openUnarchiveConfirm: (doc) => {
@@ -207,11 +215,14 @@ export function useAdminDocumentsPresenter(): AdminDocumentsPresenter {
       if (!isMutating) setUnarchiveTarget(null);
     },
     confirmUnarchive: async () => {
-      if (!unarchiveTarget || isMutating) return;
+      if (!unarchiveTarget || isMutating || isPerformingActionRef.current) return;
+      isPerformingActionRef.current = true;
       try {
         await unarchiveMutation.mutateAsync(unarchiveTarget.id);
       } catch {
         // Exposed via mutationError
+      } finally {
+        isPerformingActionRef.current = false;
       }
     },
     selectedDetailId,
