@@ -211,20 +211,48 @@ describe("GET /api/v1/audit/downloads - Task BE-S4-02 (AC-12.01)", () => {
     expect(invalidBody.error.code).toBe("UNAUTHORIZED");
   });
 
-  it("returns 403 FORBIDDEN for member_team and admin roles in BE-S4-02", async () => {
+  it("returns 403 FORBIDDEN for member_team role", async () => {
     const app = createTestAuditApp(sampleEvents);
 
-    for (const token of ["valid-member-token", "valid-admin-token"]) {
-      const res = await app.request("/api/v1/audit/downloads", {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      expect(res.status).toBe(403);
-      const body = apiErrorSchema.parse(await res.json());
-      expect(body.error.code).toBe("FORBIDDEN");
-      expect(body.error.message).toBe("Anda tidak memiliki akses untuk tindakan ini");
-    }
+    const res = await app.request("/api/v1/audit/downloads", {
+      method: "GET",
+      headers: {
+        Authorization: "Bearer valid-member-token",
+      },
+    });
+    expect(res.status).toBe(403);
+    const body = apiErrorSchema.parse(await res.json());
+    expect(body.error.code).toBe("FORBIDDEN");
+    expect(body.error.message).toBe("Anda tidak memiliki akses untuk tindakan ini");
+  });
+
+  it("returns 200 for admin with download events from all users (BE-S4-08, PROP-ADM-AC-05.01)", async () => {
+    const app = createTestAuditApp(sampleEvents);
+    const res = await app.request("/api/v1/audit/downloads", {
+      method: "GET",
+      headers: {
+        Authorization: "Bearer valid-admin-token",
+      },
+    });
+
+    expect(res.status).toBe(200);
+    const body = downloadAuditListResponseSchema.parse(await res.json());
+    expect(body.meta).toEqual({
+      page: 1,
+      limit: 20,
+      total: 3,
+    });
+    // Events span a member_team download, a head_of_team download, and a former
+    // user's download: Admin is not scoped to its own downloads.
+    expect(body.data.map((event) => event.id)).toEqual([
+      "00000000-0000-4000-8000-000000000003",
+      "00000000-0000-4000-8000-000000000002",
+      "00000000-0000-4000-8000-000000000001",
+    ]);
+    expect(body.data.map((event) => event.userEmail)).toEqual([
+      "head@axentra.test",
+      "former@axentra.test",
+      "member@axentra.test",
+    ]);
   });
 });

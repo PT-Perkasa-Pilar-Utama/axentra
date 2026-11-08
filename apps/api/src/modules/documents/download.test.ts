@@ -391,20 +391,32 @@ describe("GET /api/v1/documents/:id/download — BE-S3-02", () => {
       expect(auditEvents[0]?.documentId).toBe(DISABLED_CAT_DOC_ID);
     });
 
-    test("allows admin to download even if category download permission is disabled", async () => {
+    test("rejects admin with 403 and writes no audit event (BE-S4-08, PROP-ADM-AC-05.02)", async () => {
       const { app, downloadRepo } = createSetup();
       const response = await app.request(`/api/v1/documents/${DISABLED_CAT_DOC_ID}/download`, {
         headers: { authorization: "Bearer admin-token" },
       });
 
-      expect(response.status).toBe(200);
-      const body = downloadDocumentSuccessResponseSchema.parse(await response.json());
-      expect(body.data.filename).toBe("rahasia.pdf");
+      expect(response.status).toBe(403);
+      const body = apiErrorSchema.parse(await response.json());
+      expect(body.error.code).toBe("FORBIDDEN");
+      expect(body.error.message).toBe("Anda tidak memiliki akses untuk tindakan ini");
+      expect(downloadRepo.getRecordedAuditEvents().length).toBe(0);
+    });
 
-      const auditEvents = downloadRepo.getRecordedAuditEvents();
-      expect(auditEvents.length).toBe(1);
-      expect(auditEvents[0]?.userId).toBe("usr-admin-1");
-      expect(auditEvents[0]?.userName).toBe("Admin User");
+    test("rejects admin with 403 even when the document does not exist (BE-S4-08)", async () => {
+      const { app, downloadRepo } = createSetup();
+      const response = await app.request(
+        `/api/v1/documents/99999999-9999-4999-8999-999999999999/download`,
+        { headers: { authorization: "Bearer admin-token" } },
+      );
+
+      // The role check runs before any document lookup, so the response does
+      // not reveal whether the document exists.
+      expect(response.status).toBe(403);
+      const body = apiErrorSchema.parse(await response.json());
+      expect(body.error.code).toBe("FORBIDDEN");
+      expect(downloadRepo.getRecordedAuditEvents().length).toBe(0);
     });
   });
 

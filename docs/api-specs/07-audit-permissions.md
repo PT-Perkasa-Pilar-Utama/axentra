@@ -13,7 +13,7 @@ Status: **Implemented** (`BE-S4-02`, `AC-12.01`).
 Authorization:
 
 - Requires authentication (`Bearer` access token).
-- Allowed roles: `head_of_team`, and `admin` once `BE-S4-08` ships (Planned; see [09-admin.md](09-admin.md)). `member_team` receives `403 FORBIDDEN`. Until `BE-S4-08` ships, `admin` also receives `403 FORBIDDEN`.
+- Allowed roles: `head_of_team` and `admin` (`admin` added by `BE-S4-08`; see [09-admin.md](09-admin.md)). `member_team` receives `403 FORBIDDEN`.
 
 Query parameters:
 
@@ -66,11 +66,11 @@ Item fields (`DownloadAuditEvent` in `@axentra/shared`):
 
 Error responses:
 
-| Status | Code               | When                                              |
-| ------ | ------------------ | ------------------------------------------------- |
-| `400`  | `VALIDATION_ERROR` | `page` or `limit` is not a valid integer in range |
-| `401`  | `UNAUTHORIZED`     | Missing or invalid `Bearer` token                 |
-| `403`  | `FORBIDDEN`        | Authenticated user role is not `head_of_team`     |
+| Status | Code               | When                                                     |
+| ------ | ------------------ | -------------------------------------------------------- |
+| `400`  | `VALIDATION_ERROR` | `page` or `limit` is not a valid integer in range        |
+| `401`  | `UNAUTHORIZED`     | Missing or invalid `Bearer` token                        |
+| `403`  | `FORBIDDEN`        | Authenticated user role is not `head_of_team` or `admin` |
 
 ## Permission Category
 

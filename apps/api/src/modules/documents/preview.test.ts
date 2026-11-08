@@ -81,18 +81,27 @@ describe("GET /api/v1/documents/:id/preview — metadata only", () => {
       expect(rawBody).not.toContain("https://");
     });
 
-    test("allows head_of_team and admin to read preview metadata", async () => {
+    test("allows head_of_team to read preview metadata", async () => {
       const { app } = createPreviewSetup();
 
       const headResponse = await app.request(`/api/v1/documents/${PDF_DOC_ID}/preview`, {
         headers: { authorization: "Bearer head-token" },
       });
       expect(headResponse.status).toBe(200);
+    });
 
-      const adminResponse = await app.request(`/api/v1/documents/${PDF_DOC_ID}/preview`, {
-        headers: { authorization: "Bearer admin-token" },
-      });
-      expect(adminResponse.status).toBe(200);
+    test("rejects admin with 403 before any document lookup (BE-S4-08, PROP-ADM-AC-05.02)", async () => {
+      const { app } = createPreviewSetup();
+
+      for (const documentId of [PDF_DOC_ID, MISSING_DOC_ID]) {
+        const response = await app.request(`/api/v1/documents/${documentId}/preview`, {
+          headers: { authorization: "Bearer admin-token" },
+        });
+        expect(response.status).toBe(403);
+        const body = apiErrorSchema.parse(await response.json());
+        expect(body.error.code).toBe("FORBIDDEN");
+        expect(body.error.message).toBe("Anda tidak memiliki akses untuk tindakan ini");
+      }
     });
 
     test("returns preview metadata for DOCX documents", async () => {

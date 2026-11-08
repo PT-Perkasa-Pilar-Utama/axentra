@@ -62,15 +62,29 @@ describe("GET /api/v1/documents/:id/preview/content — BE-S3-01 byte stream", (
   });
 
   describe("Authorization (same rules as the metadata route)", () => {
-    test("allows member_team, head_of_team, and admin to stream an active PDF", async () => {
+    test("allows member_team and head_of_team to stream an active PDF", async () => {
       const { app } = createPreviewSetup();
 
-      for (const token of ["member-token", "head-token", "admin-token"]) {
+      for (const token of ["member-token", "head-token"]) {
         const response = await app.request(contentUrl(PDF_DOC_ID), {
           headers: { authorization: `Bearer ${token}` },
         });
         expect(response.status).toBe(200);
         expect(await bytesOf(response)).toEqual(Array.from(samplePdfBytes));
+      }
+    });
+
+    test("rejects admin with 403 before any document lookup (BE-S4-08, PROP-ADM-AC-05.02)", async () => {
+      const { app } = createPreviewSetup();
+
+      for (const documentId of [PDF_DOC_ID, MISSING_DOC_ID]) {
+        const response = await app.request(contentUrl(documentId), {
+          headers: { authorization: "Bearer admin-token" },
+        });
+        expect(response.status).toBe(403);
+        const body = apiErrorSchema.parse(await response.json());
+        expect(body.error.code).toBe("FORBIDDEN");
+        expect(body.error.message).toBe("Anda tidak memiliki akses untuk tindakan ini");
       }
     });
 

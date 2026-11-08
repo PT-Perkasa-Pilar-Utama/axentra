@@ -119,12 +119,19 @@ describe("canDownload rule for document detail (AC-13.01)", () => {
     expect(resolveCanDownload("member_team", CATEGORY)).toBe(true);
   });
 
-  test("head_of_team and admin are not gated by the category permission", () => {
+  test("head_of_team is not gated by the category permission", () => {
     const disabled = { ...CATEGORY, downloadEnabled: false };
 
     expect(resolveCanDownload("head_of_team", null)).toBe(true);
     expect(resolveCanDownload("head_of_team", disabled)).toBe(true);
-    expect(resolveCanDownload("admin", null)).toBe(true);
+  });
+
+  test("admin can never download, whatever the category (BE-S4-08, PROP-ADM-AC-05.02)", () => {
+    const disabled = { ...CATEGORY, downloadEnabled: false };
+
+    expect(resolveCanDownload("admin", null)).toBe(false);
+    expect(resolveCanDownload("admin", disabled)).toBe(false);
+    expect(resolveCanDownload("admin", CATEGORY)).toBe(false);
   });
 });
 

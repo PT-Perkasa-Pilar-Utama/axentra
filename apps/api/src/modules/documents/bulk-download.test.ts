@@ -581,7 +581,7 @@ describe("POST /api/v1/documents/bulk-download — BE-S3-03", () => {
       expect(auditEvents[0]?.userName).toBe("Head User");
     });
 
-    test("allows admin to download documents even if category permission is disabled", async () => {
+    test("rejects admin with 403 and writes no audit event (BE-S4-08, PROP-ADM-AC-05.02)", async () => {
       const { app, downloadRepo } = createSetup();
       const response = await app.request("/api/v1/documents/bulk-download", {
         method: "POST",
@@ -592,12 +592,31 @@ describe("POST /api/v1/documents/bulk-download — BE-S3-03", () => {
         body: JSON.stringify({ documentIds: [DISABLED_DOC] }),
       });
 
-      expect(response.status).toBe(200);
-      const buffer = await response.arrayBuffer();
-      expect(buffer.byteLength).toBeGreaterThan(0);
-      const auditEvents = downloadRepo.getRecordedAuditEvents();
-      expect(auditEvents).toHaveLength(1);
-      expect(auditEvents[0]?.userEmail).toBe("admin@axentra.local");
+      expect(response.status).toBe(403);
+      const body = apiErrorSchema.parse(await response.json());
+      expect(body.error.code).toBe("FORBIDDEN");
+      expect(body.error.message).toBe("Anda tidak memiliki akses untuk tindakan ini");
+      expect(downloadRepo.getRecordedAuditEvents()).toHaveLength(0);
+    });
+
+    test("rejects admin with 403 even when the document does not exist (BE-S4-08)", async () => {
+      const { app, downloadRepo } = createSetup();
+      const response = await app.request("/api/v1/documents/bulk-download", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer admin-token",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ documentIds: [NON_EXISTENT_DOC] }),
+      });
+
+      // The role check runs before any document lookup, so the response does
+      // not reveal whether the document exists.
+      expect(response.status).toBe(403);
+      const body = apiErrorSchema.parse(await response.json());
+      expect(body.error.code).toBe("FORBIDDEN");
+      expect(body.error.message).toBe("Anda tidak memiliki akses untuk tindakan ini");
+      expect(downloadRepo.getRecordedAuditEvents()).toHaveLength(0);
     });
   });
 
