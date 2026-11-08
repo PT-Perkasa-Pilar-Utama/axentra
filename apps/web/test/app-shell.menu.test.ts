@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  ADMIN_DOCUMENTS_PATH,
   ADMIN_USERS_PATH,
   ANALYTICS_PATH,
   AUDIT_TRAIL_PATH,
@@ -9,7 +10,7 @@ import {
   resolveShellRole,
 } from "../src/app/app-shell.menu";
 
-describe("AppShell Menu Configuration (FE-S4-05 & FE-S4-07)", () => {
+describe("AppShell Menu Configuration (FE-S4-05, FE-S4-06 & FE-S4-07)", () => {
   describe("resolveShellRole", () => {
     test("resolves admin role to admin", () => {
       expect(resolveShellRole("admin")).toBe("admin");
@@ -48,14 +49,21 @@ describe("AppShell Menu Configuration (FE-S4-05 & FE-S4-07)", () => {
       ]);
     });
 
-    test("admin menu contains Manajemen Akun entry delivered in FE-S4-05 per Opsi A", () => {
-      expect(ROLE_MENU.admin).toHaveLength(1);
+    test("admin menu contains Manajemen Akun and Manajemen Dokumen entries per Opsi A", () => {
+      expect(ROLE_MENU.admin).toHaveLength(2);
       const adminUsersEntry = ROLE_MENU.admin[0];
-      if (!adminUsersEntry) throw new Error("Expected admin menu entry to exist");
+      if (!adminUsersEntry) throw new Error("Expected admin users menu entry to exist");
       expect(adminUsersEntry.to).toBe(ADMIN_USERS_PATH);
       expect(adminUsersEntry.label).toBe("Manajemen Akun");
       expect(adminUsersEntry.icon).toBe("users");
       expect(adminUsersEntry.id).toBe("dashboard-admin-users-link");
+
+      const adminDocsEntry = ROLE_MENU.admin[1];
+      if (!adminDocsEntry) throw new Error("Expected admin documents menu entry to exist");
+      expect(adminDocsEntry.to).toBe(ADMIN_DOCUMENTS_PATH);
+      expect(adminDocsEntry.label).toBe("Manajemen Dokumen");
+      expect(adminDocsEntry.icon).toBe("document");
+      expect(adminDocsEntry.id).toBe("admin-documents-link");
     });
   });
 });

@@ -61,10 +61,4 @@ The Admin home label is **Dashboard**, not "Dasbor Admin".
 
 ## Ownership
 
-`AppShell` and the role menu config (`ROLE_MENU` in `app-shell.menu.ts`) are on `dev`, delivered by
-FE-S4-01 to FE-S4-03. As of `dev` commit `b550bbe`, `admin` still falls back to the Member Team menu.
-Per the Tech Lead's 2026-11-05 Option A decision (review finding F6), the FE-S4-05 branch adds `admin`
-to `ShellRole`, `ROLE_MENU` with a single `Manajemen Akun` entry, `resolveShellRole`, and the
-`/admin/users` route. These changes are not yet on `dev`. FE-S4-07 (Azis) retains the remaining
-Admin entries (Dashboard, Manajemen Dokumen, Audit Trail), remaining Admin routes and post-login
-redirect. See [textual-design-admin.md](../business/textual-design-admin.md).
+`AppShell` and the role menu config (`ROLE_MENU` in `app-shell.menu.ts`) are on `dev`. FE-S4-05 delivered the `admin` role, the `Manajemen Akun` menu entry, and the `/admin/users` route. Under Option A, with verbal approval from Tech Lead Arya reported on 2026-11-06 (see [09-admin.md](../api-specs/09-admin.md), O12), FE-S4-06 adds the `Manajemen Dokumen` entry and `/admin/documents` route. FE-S4-07 (Azis) delivers the Dashboard and Audit Trail entries, related routes, and the Admin login redirect.
