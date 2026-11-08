@@ -598,6 +598,26 @@ describe("POST /api/v1/documents/bulk-download — BE-S3-03", () => {
       expect(body.error.message).toBe("Anda tidak memiliki akses untuk tindakan ini");
       expect(downloadRepo.getRecordedAuditEvents()).toHaveLength(0);
     });
+
+    test("rejects admin with 403 even when the document does not exist (BE-S4-08)", async () => {
+      const { app, downloadRepo } = createSetup();
+      const response = await app.request("/api/v1/documents/bulk-download", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer admin-token",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ documentIds: [NON_EXISTENT_DOC] }),
+      });
+
+      // The role check runs before any document lookup, so the response does
+      // not reveal whether the document exists.
+      expect(response.status).toBe(403);
+      const body = apiErrorSchema.parse(await response.json());
+      expect(body.error.code).toBe("FORBIDDEN");
+      expect(body.error.message).toBe("Anda tidak memiliki akses untuk tindakan ini");
+      expect(downloadRepo.getRecordedAuditEvents()).toHaveLength(0);
+    });
   });
 
   describe("ZIP Archive Structure & Filename Collision Handling", () => {
