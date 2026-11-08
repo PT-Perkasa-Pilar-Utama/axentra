@@ -13,11 +13,13 @@ export type DocumentDetailDependencies = {
 };
 
 // Member Team may download only from a category whose permission is enabled (AC-13.01).
-// Head of Team and Admin are not gated by the category permission.
+// Head of Team is not gated by the category permission. Admin never downloads:
+// Admin sees document metadata only (BE-S4-08, PROP-ADM-AC-05.02).
 export function resolveCanDownload(
   role: AuthUser["role"],
   category: CategorySummary | null,
 ): boolean {
+  if (role === "admin") return false;
   if (role !== "member_team") return true;
   return category !== null && category.downloadEnabled;
 }

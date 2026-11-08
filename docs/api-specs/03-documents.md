@@ -27,7 +27,7 @@ An archived document has `documents.archived_at` set (see [06-data-model.md](../
 
 - For `member_team` and `head_of_team`, every route in this file treats an archived document as soft-deleted: it is omitted from lists and search, and direct access returns `404 NOT_FOUND`. This is the proposed default (see O6 in [09-admin.md](09-admin.md)).
 - `admin` does not use these routes for lists or detail. Admin reads documents through `/api/v1/admin/documents`.
-- Decided 2026-11-04 (proposal questions 7 and 9): `admin` is removed from the preview, preview content, download, and bulk-download routes in this file by `BE-S4-08`. Until `BE-S4-08` ships, `dev` still allows `admin` on those routes. See [Admin Document Access](09-admin.md#admin-document-access).
+- Decided 2026-11-04 (proposal questions 7 and 9) and implemented by `BE-S4-08`: `admin` is removed from the preview, preview content, download, and bulk-download routes in this file. See [Admin Document Access](09-admin.md#admin-document-access).
 
 ## Recent Document List
 
@@ -166,7 +166,7 @@ Status: Implemented. Authorization: `member_team` and `head_of_team`, the same a
 
 **Success Response (`200 OK`):** `data` contains `id`, `title`, `processingStatus`, `category` (or `null`), `tags` (Smart Tags), `file` (`originalName`, `mimeType`, `fileSize`, `fileExtension`, `createdAt`), `metadata` (`author`, `extractedAt`, or `null` when no metadata is stored), `errorMessage`, `canDownload`, `createdAt`, and `updatedAt`.
 
-- `canDownload` is `true` for `head_of_team`. `admin` cannot call this route (`403`). `BE-S4-08` will make `resolveCanDownload` return `false` for `admin`; it returns `true` for `admin` today (see [09-admin.md](09-admin.md#admin-document-access)). For `member_team` it is `true` only when the document's category has download permission enabled (AC-13.01).
+- `canDownload` is `true` for `head_of_team`. `admin` cannot call this route (`403`). `resolveCanDownload` returns `false` for `admin` (`BE-S4-08`; see [09-admin.md](09-admin.md#admin-document-access)). For `member_team` it is `true` only when the document's category has download permission enabled (AC-13.01).
 
 **Error Responses:**
 
@@ -186,7 +186,7 @@ The file bytes are fetched from `GET /api/v1/documents/:id/preview/content`.
 **Authorization:**
 
 - Requires authenticated session (`Bearer <token>`).
-- Allowed roles: `member_team`, `head_of_team`. `admin` is removed by `BE-S4-08` (decided 2026-11-04); until it ships, `admin` is also allowed.
+- Allowed roles: `member_team`, `head_of_team`. `admin` was removed by `BE-S4-08` (decided 2026-11-04).
 - Preview is not gated by category download permission; that permission controls
   `GET /documents/:id/download` only.
 
@@ -227,7 +227,7 @@ to render or fall back.
 **Authorization:**
 
 - Requires authenticated session (`Bearer <token>`).
-- Allowed roles: `member_team`, `head_of_team`. `admin` is removed by `BE-S4-08` (decided 2026-11-04); until it ships, `admin` is also allowed.
+- Allowed roles: `member_team`, `head_of_team`. `admin` was removed by `BE-S4-08` (decided 2026-11-04).
 - Same rules as the metadata route: soft-deleted documents and documents without a stored file record
   are not found. Category download permission does not apply.
 
@@ -270,10 +270,10 @@ Downloads original file format when the current user has permission. Supports is
 **Authorization:**
 
 - Requires authenticated session (`Bearer <token>`).
-- Allowed roles: `member_team`, `head_of_team`. `admin` is removed by `BE-S4-08` (decided 2026-11-04); until it ships, `admin` is also allowed.
+- Allowed roles: `member_team`, `head_of_team`. `admin` was removed by `BE-S4-08` (decided 2026-11-04).
 - **Category Permission Recheck:**
   - `member_team`: Can download only when the document belongs to a category with `download_enabled = true`. Returns `403 FORBIDDEN` if uncategorized or permission is disabled.
-  - `head_of_team`: Download is permitted. `admin`: removed by `BE-S4-08`; until then, download is permitted without a category check.
+  - `head_of_team`: Download is permitted.
 - **Audit Logging:** Every successful download records a point-in-time fact in `download_audit_events` (`userId`, `userName`, `userEmail`, `documentId`, `documentName`, `downloadedAt`). Denied or failed requests do not write audit records.
 
 **Parameters:**
@@ -326,10 +326,10 @@ Accepts selected document IDs, validates existence, enforces category download p
 **Authorization:**
 
 - Requires authenticated session (`Bearer <token>`).
-- Allowed roles: `member_team`, `head_of_team`. `admin` is removed by `BE-S4-08` (decided 2026-11-04); until it ships, `admin` is also allowed.
+- Allowed roles: `member_team`, `head_of_team`. `admin` was removed by `BE-S4-08` (decided 2026-11-04).
 - **Category Permission Recheck per Document:**
   - `member_team`: Every requested document must belong to a category with `download_enabled = true`. Returns `403 FORBIDDEN` (`"Akses unduh tidak diizinkan untuk kategori dokumen ini"`) if any document is uncategorized or its category download permission is disabled.
-  - `head_of_team`: Download is permitted. `admin`: removed by `BE-S4-08`; until then, download is permitted without a category check.
+  - `head_of_team`: Download is permitted.
 - **Audit Logging:** Every successful bulk download records a point-in-time fact in `download_audit_events` for each document (`userId`, `userName`, `userEmail`, `documentId`, `documentName`, `downloadedAt`). Denied or failed requests do not write audit records.
 
 **Request (`application/json`):**
@@ -413,7 +413,7 @@ Success response:
 
 ## Authorization Rules
 
-- Preview is available to Member Team and Head of Team for active documents; `admin` is removed by `BE-S4-08` (decided 2026-11-04); until it ships, `admin` is also allowed. It is not
+- Preview is available to Member Team and Head of Team for active documents; `admin` was removed by `BE-S4-08` (decided 2026-11-04). It is not
   gated by category download permission.
 - Member Team can download only when category permission allows it.
 - Newly auto-created categories start without download permission.

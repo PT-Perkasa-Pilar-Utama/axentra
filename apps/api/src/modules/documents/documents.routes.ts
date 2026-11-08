@@ -91,28 +91,28 @@ export function createDocumentRoutes(
   routes.get(
     "/:id/preview",
     requireAuth(verifier),
-    requireRole(["member_team", "head_of_team", "admin"]),
+    requireRole(["member_team", "head_of_team"]),
     createPreviewDocumentHandler(dependencies),
   );
 
   routes.get(
     "/:id/preview/content",
     requireAuth(verifier),
-    requireRole(["member_team", "head_of_team", "admin"]),
+    requireRole(["member_team", "head_of_team"]),
     createPreviewDocumentContentHandler(dependencies),
   );
 
   routes.get(
     "/:id/download",
     requireAuth(verifier),
-    requireRole(["member_team", "head_of_team", "admin"]),
+    requireRole(["member_team", "head_of_team"]),
     createDownloadDocumentHandler(dependencies),
   );
 
   routes.post(
     "/bulk-download",
     requireAuth(verifier),
-    requireRole(["member_team", "head_of_team", "admin"]),
+    requireRole(["member_team", "head_of_team"]),
     createBulkDownloadHandler(dependencies),
   );
 

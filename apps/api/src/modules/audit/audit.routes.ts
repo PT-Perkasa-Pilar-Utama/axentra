@@ -17,7 +17,7 @@ export function createAuditRoutes(dependencies: AuditRouteDependencies): Hono<Ap
   routes.get(
     "/downloads",
     requireAuth(verifier),
-    requireRole("head_of_team"),
+    requireRole(["head_of_team", "admin"]),
     createListDownloadAuditEventsHandler(dependencies),
   );
 

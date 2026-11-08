@@ -2,7 +2,7 @@
 
 Source: PROP-ADM-01, PROP-ADM-02, PROP-ADM-03, and PROP-ADM-05 in [proposals/admin-role-proposal.md](../proposals/admin-role-proposal.md). BA (Azizah) approved these scopes on 2026-10-29. The `PROP-ADM-*` identifiers are temporary and are not BA IDs; BA may renumber them.
 
-Status: **In Progress** (Sprint 4: Admin). `GET /admin/summary` (BE-S4-05) and account management (BE-S4-06) are implemented. Document management (BE-S4-07) and audit trail access (BE-S4-08) remain planned. Cards: DB-S4-01, BE-S4-05, BE-S4-06, BE-S4-07, and BE-S4-08 in [TASK_BREAKDOWN.md](../TASK_BREAKDOWN.md).
+Status: **In Progress** (Sprint 4: Admin). `GET /admin/summary` (BE-S4-05) and account management (BE-S4-06) are implemented. Document management (BE-S4-07) remains planned; audit trail access (BE-S4-08) is implemented. Cards: DB-S4-01, BE-S4-05, BE-S4-06, BE-S4-07, and BE-S4-08 in [TASK_BREAKDOWN.md](../TASK_BREAKDOWN.md).
 
 Items marked **(usulan)** are proposed defaults that the Tech Lead has not yet recorded. Items listed under [Open Decisions](#open-decisions) must be answered before the cards that depend on them start.
 
@@ -14,7 +14,7 @@ Items marked **(usulan)** are proposed defaults that the Tech Lead has not yet r
 - List endpoints use `page` and `limit` with the same defaults and limits as `GET /audit/downloads`: `page` defaults to `1` (`1 <= page <= 1000`), and `limit` defaults to `20` (`1 <= limit <= 100`). Lists are ordered deterministically (usulan: by `email ASC, id ASC` for users, and by `created_at DESC, id DESC` for documents).
 - Admin cannot upload documents (usulan, proposal question 2).
 - Admin cannot change an account's role (usulan, proposal question 3). The proposal marks this out of scope.
-- Admin sees document metadata only. Admin cannot preview or download document content from any category. Decided for proposal questions 7 and 9: question 7 by the Tech Lead on 2026-10-29 and approved by BA on 2026-11-04; question 9 on 2026-11-04. Target behavior: until `BE-S4-08` ships, `dev` still allows `admin` on these routes. `BE-S4-08` implements it (see [Admin Document Access](#admin-document-access)).
+- Admin sees document metadata only. Admin cannot preview or download document content from any category. Decided for proposal questions 7 and 9: question 7 by the Tech Lead on 2026-10-29 and approved by BA on 2026-11-04; question 9 on 2026-11-04. `BE-S4-08` implements it (see [Admin Document Access](#admin-document-access)).
 - Category download permission management by Admin (PROP-ADM-04) is out of scope and is not defined here.
 
 ## Dashboard Summary
@@ -279,7 +279,7 @@ Required behavior:
 
 - `GET /documents/:id/preview`, `GET /documents/:id/preview/content`, `GET /documents/:id/download`, and `POST /documents/bulk-download` reject role `admin` with `403 FORBIDDEN`. The role check runs before any document lookup, so the response does not reveal whether the document exists.
 - `admin` is removed from the allowed roles of those routes in [03-documents.md](03-documents.md). `member_team` and `head_of_team` keep their current behavior.
-- `resolveCanDownload` returns `false` for `admin`. It returns `true` today (see `documents.detail.operations.ts`). `GET /documents/:id` already returns `403` for `admin`, so this change only closes a path that could grant download rights later.
+- `resolveCanDownload` returns `false` for `admin` (see `documents.detail.operations.ts`). `GET /documents/:id` already returns `403` for `admin`, so this only closes a path that could grant download rights later.
 - A rejected Admin request writes no download audit event, so Admin attempts do not appear in the audit trail or in Head of Team analytics.
 - Admin pages never show a preview or download button, and Admin responses never contain storage keys or signed URLs.
 

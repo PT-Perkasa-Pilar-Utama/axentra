@@ -102,7 +102,7 @@ PLANNED POST   /admin/documents/:id/unarchive
 PLANNED DELETE /admin/documents/:id
 ```
 
-`GET /audit/downloads` will also accept role `admin` (`BE-S4-08`), and the preview and download routes will stop accepting it. The second change is decided (proposal questions 7 and 9, 2026-11-04) and is not blocked.
+`GET /audit/downloads` also accepts role `admin` (`BE-S4-08`), and the preview and download routes no longer accept it. The second change was decided on 2026-11-04 (proposal questions 7 and 9).
 
 ## Documents
 
