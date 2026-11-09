@@ -11,6 +11,7 @@ const DOCUMENT_TITLE_SUFFIX = "Axentra";
 export type AppShellProps = {
   role: ShellRole;
   title: string;
+  subtitle?: string | undefined;
   /** Konten kanan header, misalnya pencarian. */
   actions?: React.ReactNode;
   /** Slot sidebar khusus role, misalnya CategoryNavigationView. */
@@ -27,6 +28,7 @@ const SHELL_BASE_CLASS = "app-shell min-h-[100dvh] bg-[#f0f2f4] text-[#252930]";
 export function AppShell({
   role,
   title,
+  subtitle,
   actions,
   sidebarExtras,
   className,
@@ -45,7 +47,6 @@ export function AppShell({
         {/* Dari md ke atas sidebar setinggi layar: menu dan kategori scroll di dalamnya,
             badge sesi tetap terlihat di dasar. */}
         <aside className="dashboard-sidebar flex flex-col justify-between">
-          {" "}
           <div className="flex min-h-0 flex-col gap-4 md:flex-1 md:overflow-y-auto">
             <div className="dashboard-sidebar-brand">
               <img src={perkasaLogo} alt="PERKASA" className="dashboard-sidebar-logo" />
@@ -77,7 +78,10 @@ export function AppShell({
 
         <div className="min-w-0 px-4 sm:px-6 md:px-4" data-testid={testId}>
           <header className="flex min-h-[4.5rem] items-center justify-between gap-4 py-4">
-            <h1 className="text-lg font-semibold leading-none">{title}</h1>
+            <div className="min-w-0">
+              <h1 className="text-lg font-semibold leading-none">{title}</h1>
+              {subtitle && <p className="mt-1.5 text-sm text-[#5b626b]">{subtitle}</p>}
+            </div>
             {actions}
           </header>
 

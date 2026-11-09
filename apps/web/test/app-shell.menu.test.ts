@@ -8,6 +8,7 @@ import {
   PERMISSION_CATEGORIES_PATH,
   ROLE_MENU,
   resolveShellRole,
+  ADMIN_DASHBOARD_PATH,
 } from "../src/app/app-shell.menu";
 
 describe("AppShell Menu Configuration (FE-S4-05, FE-S4-06 & FE-S4-07)", () => {
@@ -49,21 +50,45 @@ describe("AppShell Menu Configuration (FE-S4-05, FE-S4-06 & FE-S4-07)", () => {
       ]);
     });
 
-    test("admin menu contains Manajemen Akun and Manajemen Dokumen entries per Opsi A", () => {
-      expect(ROLE_MENU.admin).toHaveLength(2);
-      const adminUsersEntry = ROLE_MENU.admin[0];
+    test("admin menu lists Dashboard, Manajemen Akun, Manajemen Dokumen, and Audit Trail in order", () => {
+      expect(ROLE_MENU.admin.map((entry) => entry.label)).toEqual([
+        "Dashboard",
+        "Manajemen Akun",
+        "Manajemen Dokumen",
+        "Audit Trail",
+      ]);
+    });
+
+    test("admin menu keeps the Manajemen Akun and Manajemen Dokumen entries per Opsi A", () => {
+      const adminUsersEntry = ROLE_MENU.admin.find((entry) => entry.to === ADMIN_USERS_PATH);
       if (!adminUsersEntry) throw new Error("Expected admin users menu entry to exist");
-      expect(adminUsersEntry.to).toBe(ADMIN_USERS_PATH);
       expect(adminUsersEntry.label).toBe("Manajemen Akun");
       expect(adminUsersEntry.icon).toBe("users");
       expect(adminUsersEntry.id).toBe("dashboard-admin-users-link");
 
-      const adminDocsEntry = ROLE_MENU.admin[1];
+      const adminDocsEntry = ROLE_MENU.admin.find((entry) => entry.to === ADMIN_DOCUMENTS_PATH);
       if (!adminDocsEntry) throw new Error("Expected admin documents menu entry to exist");
-      expect(adminDocsEntry.to).toBe(ADMIN_DOCUMENTS_PATH);
       expect(adminDocsEntry.label).toBe("Manajemen Dokumen");
       expect(adminDocsEntry.icon).toBe("document");
       expect(adminDocsEntry.id).toBe("admin-documents-link");
+    });
+
+    test("admin menu starts with the admin dashboard, not the Member Team dashboard", () => {
+      const adminDashboardEntry = ROLE_MENU.admin[0];
+      if (!adminDashboardEntry) throw new Error("Expected admin dashboard menu entry to exist");
+      expect(adminDashboardEntry.to).toBe(ADMIN_DASHBOARD_PATH);
+      expect(adminDashboardEntry.label).toBe("Dashboard");
+      expect(adminDashboardEntry.icon).toBe("home");
+      expect(adminDashboardEntry.id).toBe("admin-dashboard-link");
+      expect(ROLE_MENU.admin.some((entry) => entry.to === DASHBOARD_PATH)).toBe(false);
+    });
+
+    test("admin menu includes the shared Audit Trail entry", () => {
+      const auditTrailEntry = ROLE_MENU.admin.find((entry) => entry.to === AUDIT_TRAIL_PATH);
+      if (!auditTrailEntry) throw new Error("Expected admin audit trail menu entry to exist");
+      expect(auditTrailEntry.label).toBe("Audit Trail");
+      expect(auditTrailEntry.icon).toBe("audit");
+      expect(auditTrailEntry.id).toBe("dashboard-audit-trail-link");
     });
   });
 });

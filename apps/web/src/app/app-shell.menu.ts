@@ -13,6 +13,7 @@ export const DASHBOARD_PATH = "/dashboard";
 export const ANALYTICS_PATH = "/analytics";
 export const AUDIT_TRAIL_PATH = "/audit-trail";
 export const PERMISSION_CATEGORIES_PATH = "/permission-categories";
+export const ADMIN_DASHBOARD_PATH = "/admin/dashboard";
 export const ADMIN_USERS_PATH = "/admin/users";
 export const ADMIN_DOCUMENTS_PATH = "/admin/documents";
 
@@ -44,6 +45,13 @@ const PERMISSION_CATEGORIES_ENTRY: ShellMenuEntry = {
   icon: "permissions",
 };
 
+const ADMIN_DASHBOARD_ENTRY: ShellMenuEntry = {
+  id: "admin-dashboard-link",
+  label: "Dashboard",
+  to: ADMIN_DASHBOARD_PATH,
+  icon: "home",
+};
+
 const ADMIN_USERS_ENTRY: ShellMenuEntry = {
   id: "dashboard-admin-users-link",
   label: "Manajemen Akun",
@@ -58,15 +66,11 @@ const ADMIN_DOCUMENTS_ENTRY: ShellMenuEntry = {
   icon: "document",
 };
 
-/**
- * Satu-satunya tempat menu per role diatur (13-app-shell.md, aturan 2).
- * FE-S4-05 menambahkan entri Manajemen Akun dan FE-S4-06 menambahkan entri Manajemen Dokumen;
- * entri menu Admin lainnya (Dashboard dan Audit Trail) tetap milik FE-S4-07.
- */
+/** Satu-satunya tempat menu per role diatur (13-app-shell.md, aturan 2). */
 export const ROLE_MENU: Record<ShellRole, readonly ShellMenuEntry[]> = {
   member_team: [DASHBOARD_ENTRY],
   head_of_team: [DASHBOARD_ENTRY, ANALYTICS_ENTRY, AUDIT_TRAIL_ENTRY, PERMISSION_CATEGORIES_ENTRY],
-  admin: [ADMIN_USERS_ENTRY, ADMIN_DOCUMENTS_ENTRY],
+  admin: [ADMIN_DASHBOARD_ENTRY, ADMIN_USERS_ENTRY, ADMIN_DOCUMENTS_ENTRY, AUDIT_TRAIL_ENTRY],
 };
 
 /** Mengembalikan ShellRole sesuai peran pengguna; fallback ke member_team. */
