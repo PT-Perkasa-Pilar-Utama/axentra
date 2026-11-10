@@ -40,6 +40,7 @@ export function AdminRoleBreakdown({
             <div aria-hidden="true" className="mt-1.5 h-2 rounded-full bg-[#e6e9ec]">
               <div
                 className="h-2 rounded-full bg-[#65a448]"
+                data-testid={`admin-role-bar-${row.id}`}
                 style={{ width: `${row.widthPercent}%` }}
               />
             </div>

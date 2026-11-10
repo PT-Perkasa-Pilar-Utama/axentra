@@ -97,6 +97,11 @@ function renderAdminDashboard(session: AuthSession): void {
   );
 }
 
+/** Lebar isi bar peran dalam persen, dibaca dari style yang di-render. */
+function readBarWidthPercent(roleId: string): number {
+  return Number.parseFloat(screen.getByTestId(`admin-role-bar-${roleId}`).style.width);
+}
+
 describe("Admin Dashboard Integration (FE-S4-04 / PROP-ADM-AC-01)", () => {
   const originalFetch = globalThis.fetch;
 
@@ -128,6 +133,20 @@ describe("Admin Dashboard Integration (FE-S4-04 / PROP-ADM-AC-01)", () => {
     expect(within(breakdown).getByText("Admin")).toBeTruthy();
     expect(within(breakdown).getByText("2")).toBeTruthy();
     expect(api.summaryAuthorization).toBe(`Bearer ${adminSession.token}`);
+  });
+
+  test("sizes each role bar by its share of all accounts", async () => {
+    mockApi(() => jsonResponse({ success: true, data: summary }));
+
+    await act(async () => {
+      renderAdminDashboard(adminSession);
+    });
+
+    await screen.findByRole("region", { name: "Pengguna per Peran" });
+    // 24, 5, dan 2 dari 31 akun.
+    expect(readBarWidthPercent("member_team")).toBeCloseTo(77.42, 2);
+    expect(readBarWidthPercent("head_of_team")).toBeCloseTo(16.13, 2);
+    expect(readBarWidthPercent("admin")).toBeCloseTo(6.45, 2);
   });
 
   test("PROP-ADM-AC-01.02: shows total documents and uploads in the last 7 days", async () => {
@@ -196,6 +215,11 @@ describe("Admin Dashboard Integration (FE-S4-04 / PROP-ADM-AC-01)", () => {
     expect(within(users).getByText("0 Member · 0 Head · 0 Admin")).toBeTruthy();
     const documents = screen.getByRole("region", { name: "Total Dokumen" });
     expect(within(documents).getByText("0")).toBeTruthy();
+
+    // Tanpa akun, bar harus 0%, bukan NaN dari pembagian dengan nol.
+    expect(readBarWidthPercent("member_team")).toBe(0);
+    expect(readBarWidthPercent("head_of_team")).toBe(0);
+    expect(readBarWidthPercent("admin")).toBe(0);
   });
 
   test("links to account management from the role breakdown", async () => {
@@ -252,6 +276,21 @@ describe("Admin Dashboard Integration (FE-S4-04 / PROP-ADM-AC-01)", () => {
 
     const total = await screen.findByRole("region", { name: "Total Pengguna" });
     expect(within(total).getByText("31")).toBeTruthy();
+  });
+
+  test("retries a transient 500 once before showing the error", async () => {
+    const api = mockApi(() =>
+      jsonResponse({ success: false, error: { code: "SERVER_ERROR", message: "private" } }, 500),
+    );
+
+    await act(async () => {
+      renderAdminDashboard(adminSession);
+    });
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Data dasbor gagal dimuat.");
+    expect(screen.queryByText("private")).toBeNull();
+    expect(api.summaryRequests).toBe(2);
   });
 
   test("403 shows an error without retrying or leaking server details", async () => {
