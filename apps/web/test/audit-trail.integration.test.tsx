@@ -319,10 +319,7 @@ describe("Audit Trail Feature (FE-S4-02 / AC-12.01)", () => {
     expect(calls).toBe(1);
   });
 
-  test.each([
-    ["member_team", memberTeamSession],
-    ["admin", adminSession],
-  ])("route blocks %s without an API request", (_role, session) => {
+  test("route blocks member_team without an API request", () => {
     let calls = 0;
     globalThis.fetch = mockFetch(async () => {
       calls += 1;
@@ -332,9 +329,24 @@ describe("Audit Trail Feature (FE-S4-02 / AC-12.01)", () => {
         total: sampleAuditEvents.length,
       });
     });
-    renderAuditTrail(session);
+    renderAuditTrail(memberTeamSession);
     expect(screen.getByText("Akses Dibatasi")).toBeTruthy();
     expect(calls).toBe(0);
+  });
+
+  test("admin can open the audit trail, without the category sidebar", async () => {
+    globalThis.fetch = mockFetch(async (input) => {
+      const { page, limit } = readAuditPageRequest(input);
+      return auditPageResponse(sampleAuditEvents.slice((page - 1) * limit, page * limit), {
+        page,
+        limit,
+        total: sampleAuditEvents.length,
+      });
+    });
+    renderAuditTrail(adminSession);
+    expect(await screen.findByRole("heading", { name: "Audit Trail" })).toBeTruthy();
+    expect(screen.getByLabelText("Daftar aktivitas unduhan")).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Kategori" })).toBeNull();
   });
 
   test("shows safe transient failure and manual retry", async () => {

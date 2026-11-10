@@ -10,9 +10,11 @@ import { LoginPage } from "../features/auth/login.view";
 import { ProtectedRoute } from "../features/auth/protected-route.view";
 import { AuditTrailPage } from "./audit-trail.page";
 import { PermissionCategoriesPage } from "./permission-categories.page";
+import { AdminDashboardPage } from "./admin-dashboard.page";
 import { AdminUsersPage } from "./admin-users.page";
 import { AdminDocumentsPage } from "./admin-documents.page";
-import { ADMIN_DOCUMENTS_PATH, ADMIN_USERS_PATH } from "./app-shell.menu";
+import { ADMIN_DASHBOARD_PATH, ADMIN_DOCUMENTS_PATH, ADMIN_USERS_PATH } from "./app-shell.menu";
+import { resolvePostLoginPath } from "./post-login-path";
 
 export const router = createBrowserRouter([
   {
@@ -21,7 +23,7 @@ export const router = createBrowserRouter([
   },
   {
     path: "/login",
-    element: <LoginPage />,
+    element: <LoginPage resolveDestination={resolvePostLoginPath} />,
   },
   {
     element: <ProtectedRoute />,
@@ -37,12 +39,17 @@ export const router = createBrowserRouter([
     ],
   },
   {
-    element: <ProtectedRoute allowedRoles={["head_of_team"]} />,
+    element: <ProtectedRoute allowedRoles={["head_of_team", "admin"]} />,
     children: [
       {
         path: "/audit-trail",
         element: <AuditTrailPage />,
       },
+    ],
+  },
+  {
+    element: <ProtectedRoute allowedRoles={["head_of_team"]} />,
+    children: [
       {
         path: "/permission-categories",
         element: <PermissionCategoriesPage />,
@@ -52,6 +59,10 @@ export const router = createBrowserRouter([
   {
     element: <ProtectedRoute allowedRoles={["admin"]} />,
     children: [
+      {
+        path: ADMIN_DASHBOARD_PATH,
+        element: <AdminDashboardPage />,
+      },
       {
         path: ADMIN_USERS_PATH,
         element: <AdminUsersPage />,

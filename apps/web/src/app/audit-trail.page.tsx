@@ -11,13 +11,14 @@ import { HeadOfTeamCategoryNavigation } from "./head-of-team-category-navigation
 export function AuditTrailPage(): React.JSX.Element {
   const { user } = useAuthSession();
   const presenter = useAuditTrailPresenter();
+  const role = resolveShellRole(user?.role);
 
   return (
     <AppShell
-      role={resolveShellRole(user?.role)}
+      role={role}
       title={AUDIT_TRAIL_PAGE_TITLE}
       actions={<AuditTrailSearchView presenter={presenter} />}
-      sidebarExtras={<HeadOfTeamCategoryNavigation />}
+      sidebarExtras={role === "head_of_team" ? <HeadOfTeamCategoryNavigation /> : undefined}
     >
       <AuditTrailView presenter={presenter} />
     </AppShell>

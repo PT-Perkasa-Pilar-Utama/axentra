@@ -9,9 +9,16 @@ import { useOptionalAuthSession } from "./auth-session.context";
 
 export { PerkasaLogo, PerkasaBackgroundDecorations, PerkasaLoginForm };
 
+export type DestinationResolver = (role: string | undefined, from: string | undefined) => string;
+
+const DEFAULT_DESTINATION = "/dashboard";
+
+const defaultResolveDestination: DestinationResolver = (_role, from) => from || DEFAULT_DESTINATION;
+
 export type LoginPageProps = UseLoginPresenterOptions & {
   navigate?: (to: string, options?: { replace?: boolean; state?: unknown }) => void;
   onPresenterReady?: (presenter: ReturnType<typeof useLoginPresenter>) => void;
+  resolveDestination?: DestinationResolver;
 };
 
 export function LoginPage(props: LoginPageProps = {}): React.JSX.Element {
@@ -19,22 +26,23 @@ export function LoginPage(props: LoginPageProps = {}): React.JSX.Element {
   const defaultNavigate = useNavigate();
   const navigate = props.navigate ?? defaultNavigate;
   const location = useLocation();
+  const resolveDestination = props.resolveDestination ?? defaultResolveDestination;
 
-  const destination =
-    (location.state as { from?: { pathname: string } })?.from?.pathname || "/dashboard";
+  const from = (location.state as { from?: { pathname: string } })?.from?.pathname;
+  const sessionDestination = resolveDestination(sessionContext?.user?.role, from);
 
   useEffect(() => {
     if (sessionContext?.isAuthenticated) {
-      void navigate(destination, { replace: true });
+      void navigate(sessionDestination, { replace: true });
     }
-  }, [sessionContext?.isAuthenticated, navigate, destination]);
+  }, [sessionContext?.isAuthenticated, navigate, sessionDestination]);
 
   const presenter = useLoginPresenter({
     ...props,
     onSuccess: (response, rememberMe) => {
       sessionContext?.loginSession(response, rememberMe);
       props.onSuccess?.(response, rememberMe);
-      void navigate(destination, { replace: true });
+      void navigate(resolveDestination(response.user.role, from), { replace: true });
     },
   });
 
