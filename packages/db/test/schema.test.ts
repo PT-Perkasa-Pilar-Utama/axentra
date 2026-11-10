@@ -3,6 +3,8 @@ import { getTableColumns } from "drizzle-orm";
 import { getTableConfig } from "drizzle-orm/pg-core";
 
 import {
+  accountStatusAuditEvents,
+  adminDocumentAuditEvents,
   categories,
   categoryDownloadPermissions,
   categoryPermissionAuditEvents,
@@ -203,5 +205,47 @@ describe("database schema definitions", () => {
       (idx) => idx.config.name === "category_permission_audit_events_changed_at_idx",
     );
     expect(changedAtIdx).toBeDefined();
+  });
+
+  it("defines account_status_audit_events and admin_document_audit_events table columns and indexes", () => {
+    const accountCols = getTableColumns(accountStatusAuditEvents);
+    expect(accountCols.id).toBeDefined();
+    expect(accountCols.userId).toBeDefined();
+    expect(accountCols.actorUserId).toBeDefined();
+    expect(accountCols.changedAt).toBeDefined();
+
+    const docAuditCols = getTableColumns(adminDocumentAuditEvents);
+    expect(docAuditCols.id).toBeDefined();
+    expect(docAuditCols.documentId).toBeDefined();
+    expect(docAuditCols.documentTitle).toBeDefined();
+    expect(docAuditCols.action).toBeDefined();
+    expect(docAuditCols.previousArchivedAt).toBeDefined();
+    expect(docAuditCols.newArchivedAt).toBeDefined();
+    expect(docAuditCols.previousDeletedAt).toBeDefined();
+    expect(docAuditCols.newDeletedAt).toBeDefined();
+    expect(docAuditCols.actorUserId).toBeDefined();
+    expect(docAuditCols.actorName).toBeDefined();
+    expect(docAuditCols.actorEmail).toBeDefined();
+    expect(docAuditCols.changedAt).toBeDefined();
+
+    const docAuditConfig = getTableConfig(adminDocumentAuditEvents);
+    expect(
+      docAuditConfig.indexes.find(
+        (idx) => idx.config.name === "admin_document_audit_events_document_id_idx",
+      ),
+    ).toBeDefined();
+    expect(
+      docAuditConfig.indexes.find(
+        (idx) => idx.config.name === "admin_document_audit_events_actor_user_id_idx",
+      ),
+    ).toBeDefined();
+    expect(
+      docAuditConfig.indexes.find(
+        (idx) => idx.config.name === "admin_document_audit_events_changed_at_idx",
+      ),
+    ).toBeDefined();
+    expect(
+      docAuditConfig.checks.find((chk) => chk.name === "admin_document_audit_events_action_check"),
+    ).toBeDefined();
   });
 });

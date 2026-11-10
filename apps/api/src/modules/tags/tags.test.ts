@@ -1,4 +1,7 @@
 import { describe, expect, it } from "bun:test";
+import type { SQL } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
+import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { createLogger } from "@axentra/observability";
 import {
   apiErrorSchema,
@@ -8,7 +11,7 @@ import {
 } from "@axentra/shared";
 import { createApp } from "../../app";
 import type { TokenVerifier } from "../../middleware/auth";
-import type { TopTagsRepository } from "./tags.repository";
+import { DrizzleTopTagsRepository, type TopTagsRepository } from "./tags.repository";
 import { topTagsQuerySchema } from "./tags.schema";
 import { createTopTagsService } from "./tags.service";
 import type { TopTagsService } from "./tags.service";
@@ -239,5 +242,77 @@ describe("Top Tags service", () => {
 
     expect(await service.listTopTags(query)).toEqual([]);
     expect(repositoryCalled).toBe(false);
+  });
+
+  it("filters out archived and soft-deleted documents in DrizzleTopTagsRepository queries (BE-S4-07, PROP-ADM-AC-03.03)", async () => {
+    const whereClauses: SQL[] = [];
+    const fakeDb = {
+      select() {
+        return {
+          from() {
+            return {
+              innerJoin() {
+                return {
+                  innerJoin() {
+                    return {
+                      where(condition: SQL) {
+                        whereClauses.push(condition);
+                        return {
+                          groupBy() {
+                            return {
+                              orderBy() {
+                                return {
+                                  async limit() {
+                                    return [freshTag];
+                                  },
+                                };
+                              },
+                            };
+                          },
+                        };
+                      },
+                    };
+                  },
+                  where(condition: SQL) {
+                    whereClauses.push(condition);
+                    return {
+                      orderBy() {
+                        return {
+                          async limit() {
+                            return [];
+                          },
+                        };
+                      },
+                    };
+                  },
+                };
+              },
+            };
+          },
+        };
+      },
+    };
+
+    function isPostgresDatabase(value: unknown): value is PostgresJsDatabase {
+      return typeof value === "object" && value !== null && "select" in value;
+    }
+    if (!isPostgresDatabase(fakeDb)) {
+      throw new Error("Expected fake database object");
+    }
+
+    const repo = new DrizzleTopTagsRepository(fakeDb);
+    const query = topTagsQuerySchema.parse({ context: "dashboard", limit: 10 });
+    const popular = await repo.listTopTags(query);
+    const recent = await repo.listMostRecentDocumentTags(query);
+
+    expect(popular).toEqual([freshTag]);
+    expect(recent).toEqual([]);
+    expect(whereClauses).toHaveLength(2);
+    const dialect = new PgDialect();
+    for (const condition of whereClauses) {
+      const compiledSql = dialect.sqlToQuery(condition).sql;
+      expect(compiledSql).toContain('"documents"."deleted_at" is null');
+      expect(compiledSql).toContain('"documents"."archived_at" is null');
+    }
   });
 });

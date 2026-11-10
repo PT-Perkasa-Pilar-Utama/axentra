@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import { documentContentHashes } from "@axentra/db";
+import { documentContentHashes, documents } from "@axentra/db";
 
 export function computeSha256(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
@@ -45,10 +45,13 @@ export class DrizzleDocumentContentHashRepository implements IDocumentContentHas
     const rows = await this.db
       .select({ contentHash: documentContentHashes.contentHash })
       .from(documentContentHashes)
+      .innerJoin(documents, eq(documents.id, documentContentHashes.documentId))
       .where(
         and(
           eq(documentContentHashes.hashAlgorithm, algorithm),
           inArray(documentContentHashes.contentHash, uniqueHashes),
+          isNull(documents.deletedAt),
+          isNull(documents.archivedAt),
         ),
       );
 
@@ -68,10 +71,13 @@ export class DrizzleDocumentContentHashRepository implements IDocumentContentHas
         createdAt: documentContentHashes.createdAt,
       })
       .from(documentContentHashes)
+      .innerJoin(documents, eq(documents.id, documentContentHashes.documentId))
       .where(
         and(
           eq(documentContentHashes.hashAlgorithm, algorithm),
           eq(documentContentHashes.contentHash, contentHash),
+          isNull(documents.deletedAt),
+          isNull(documents.archivedAt),
         ),
       )
       .limit(1);
@@ -106,10 +112,30 @@ export class DrizzleDocumentContentHashRepository implements IDocumentContentHas
 
 export class InMemoryDocumentContentHashRepository implements IDocumentContentHashRepository {
   private readonly hashes = new Map<string, DocumentContentHashRecord>();
+  private readonly inactiveDocumentIds = new Set<string>();
+
+  public constructor(
+    private readonly isDocumentActive?: ((documentId: string) => boolean) | undefined,
+  ) {}
 
   public addHash(record: DocumentContentHashRecord): void {
     const key = `${record.hashAlgorithm}:${record.contentHash}`;
     this.hashes.set(key, record);
+  }
+
+  public setDocumentActive(documentId: string, active: boolean): void {
+    if (active) {
+      this.inactiveDocumentIds.delete(documentId);
+    } else {
+      this.inactiveDocumentIds.add(documentId);
+    }
+  }
+
+  private isRecordActive(record: DocumentContentHashRecord): boolean {
+    if (this.inactiveDocumentIds.has(record.documentId)) {
+      return false;
+    }
+    return this.isDocumentActive ? this.isDocumentActive(record.documentId) : true;
   }
 
   public async findExistingHashes(
@@ -119,7 +145,8 @@ export class InMemoryDocumentContentHashRepository implements IDocumentContentHa
     const existing = new Set<string>();
     for (const h of hashes) {
       const key = `${algorithm}:${h}`;
-      if (this.hashes.has(key)) {
+      const record = this.hashes.get(key);
+      if (record && this.isRecordActive(record)) {
         existing.add(h);
       }
     }
@@ -131,13 +158,18 @@ export class InMemoryDocumentContentHashRepository implements IDocumentContentHa
     algorithm = "sha256",
   ): Promise<DocumentContentHashRecord | null> {
     const key = `${algorithm}:${contentHash}`;
-    return this.hashes.get(key) ?? null;
+    const record = this.hashes.get(key);
+    if (!record || !this.isRecordActive(record)) {
+      return null;
+    }
+    return record;
   }
 
   public async saveContentHash(data: SaveContentHashInput): Promise<DocumentContentHashRecord> {
     const algorithm = data.hashAlgorithm ?? "sha256";
     const key = `${algorithm}:${data.contentHash}`;
-    if (this.hashes.has(key)) {
+    const existing = this.hashes.get(key);
+    if (existing && this.isRecordActive(existing)) {
       throw new Error("Hash konten sudah ada");
     }
     const record: DocumentContentHashRecord = {

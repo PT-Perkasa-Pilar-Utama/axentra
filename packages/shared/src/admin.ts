@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { paginationMetaSchema } from "./api";
+import { pageLimitQueryFields } from "./pagination-query";
 
 export const ADMIN_SUMMARY_UPLOAD_WINDOW_DAYS = 7;
 
@@ -9,34 +10,14 @@ export const ADMIN_LIST_MAX_PAGE = 1_000;
 export const ADMIN_LIST_DEFAULT_LIMIT = 20;
 export const ADMIN_LIST_MAX_LIMIT = 100;
 
-const parsePaginationQueryValue = (value: unknown, fallback: number): unknown => {
-  if (value === undefined || value === "") return fallback;
-  if (typeof value === "boolean") return Number.NaN;
-  return value;
-};
-
-export const adminDocumentsListQuerySchema = z.object({
-  page: z.preprocess(
-    (value) => parsePaginationQueryValue(value, ADMIN_LIST_DEFAULT_PAGE),
-    z.coerce
-      .number({ message: "Halaman harus berupa angka" })
-      .int({ message: "Halaman harus berupa bilangan bulat" })
-      .min(1, { message: "Halaman minimal 1" })
-      .max(ADMIN_LIST_MAX_PAGE, {
-        message: `Halaman maksimal ${ADMIN_LIST_MAX_PAGE}`,
-      }),
-  ),
-  limit: z.preprocess(
-    (value) => parsePaginationQueryValue(value, ADMIN_LIST_DEFAULT_LIMIT),
-    z.coerce
-      .number({ message: "Limit harus berupa angka" })
-      .int({ message: "Limit harus berupa bilangan bulat" })
-      .min(1, { message: "Limit minimal 1" })
-      .max(ADMIN_LIST_MAX_LIMIT, {
-        message: `Limit maksimal ${ADMIN_LIST_MAX_LIMIT}`,
-      }),
-  ),
-});
+export const adminDocumentsListQuerySchema = z.object(
+  pageLimitQueryFields({
+    defaultPage: ADMIN_LIST_DEFAULT_PAGE,
+    defaultLimit: ADMIN_LIST_DEFAULT_LIMIT,
+    maxLimit: ADMIN_LIST_MAX_LIMIT,
+    maxPage: ADMIN_LIST_MAX_PAGE,
+  }),
+);
 
 export type AdminDocumentsListQuery = z.infer<typeof adminDocumentsListQuerySchema>;
 

@@ -85,6 +85,34 @@ export const accountStatusAuditEvents = pgTable(
   ],
 );
 
+// Point-in-time record of an Admin archiving, unarchiving, or soft-deleting a document (BE-S4-07).
+export const adminDocumentAuditEvents = pgTable(
+  "admin_document_audit_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    documentId: uuid("document_id").references(() => documents.id, { onDelete: "set null" }),
+    documentTitle: text("document_title").notNull(),
+    action: text("action", { enum: ["archive", "unarchive", "delete"] }).notNull(),
+    previousArchivedAt: timestamp("previous_archived_at", { withTimezone: true, mode: "date" }),
+    newArchivedAt: timestamp("new_archived_at", { withTimezone: true, mode: "date" }),
+    previousDeletedAt: timestamp("previous_deleted_at", { withTimezone: true, mode: "date" }),
+    newDeletedAt: timestamp("new_deleted_at", { withTimezone: true, mode: "date" }),
+    actorUserId: uuid("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+    actorName: text("actor_name"),
+    actorEmail: text("actor_email"),
+    changedAt: timestamp("changed_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => [
+    check(
+      "admin_document_audit_events_action_check",
+      sql`${table.action} in ('archive', 'unarchive', 'delete')`,
+    ),
+    index("admin_document_audit_events_document_id_idx").on(table.documentId),
+    index("admin_document_audit_events_actor_user_id_idx").on(table.actorUserId),
+    index("admin_document_audit_events_changed_at_idx").on(table.changedAt),
+  ],
+);
+
 export const categoryPermissionAuditEventsRelations = relations(
   categoryPermissionAuditEvents,
   ({ one }) => ({

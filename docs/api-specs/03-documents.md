@@ -35,7 +35,7 @@ An archived document has `documents.archived_at` set (see [06-data-model.md](../
 
 Status: Implemented (BE-S1-06).
 
-Returns documents that have a stored file, newest `created_at` first. Soft-deleted documents are omitted. Archived documents are omitted for `member_team` and `head_of_team` once BE-S4-07 ships (see [Archived Documents](#archived-documents-planned-be-s4-07)). Supports single-tag and multi-tag filtering (AND logic per AC-04.03, AC-04.04).
+Returns documents that have a stored file, newest `created_at` first. Soft-deleted documents are omitted. Archived documents are omitted for `member_team` and `head_of_team` (see [Archived Documents](#archived-documents-implemented-be-s4-07)). Supports single-tag and multi-tag filtering (AND logic per AC-04.03, AC-04.04).
 
 **Authorization:**
 
@@ -101,7 +101,7 @@ Status: Implemented (BE-S1-02).
 - Mixing PDF and DOCX in a single batch is rejected (`400 VALIDATION_ERROR`).
 - Maximum file size: 50 MB per file, 50 MB aggregate per request (`413 PAYLOAD_TOO_LARGE`).
 - Non-empty files only (`400 VALIDATION_ERROR`).
-- Content hash duplicate check: rejects duplicate content with `409 DUPLICATE_DOCUMENT` (`"File ini sudah ada"`).
+- Content hash duplicate check: rejects duplicate content against active (`deleted_at IS NULL` and `archived_at IS NULL`) documents with `409 DUPLICATE_DOCUMENT` (`"File ini sudah ada"`). Re-uploading content whose previous document was archived or soft-deleted succeeds and rebinds the `document_content_hashes` row to the new active document (`BE-S4-07`).
 
 **Success Response (`200 OK`):**
 
@@ -154,8 +154,9 @@ Status: Implemented (BE-S1-04).
 Behavior:
 
 - Compare uploaded content, not only filename.
-- Return duplicate warning `File ini sudah ada`.
-- Prevent duplicate file persistence.
+- Return duplicate warning `File ini sudah ada` when an active (`deleted_at IS NULL` and `archived_at IS NULL`) document has the same content hash.
+- Archived (`archived_at IS NOT NULL`) and soft-deleted (`deleted_at IS NOT NULL`) documents are treated as non-duplicate (`isDuplicate: false` without exposing `existingDocumentId`; `BE-S4-07`).
+- Prevent duplicate file persistence against active documents, while rebinding the `document_content_hashes` row to the new active document when re-uploading content that was previously archived or soft-deleted (`BE-S4-07`).
 - Allow non-duplicate uploads even when another document exists.
 
 ## Detail and Metadata

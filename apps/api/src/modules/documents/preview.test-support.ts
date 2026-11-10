@@ -12,6 +12,7 @@ export const DELETED_DOC_ID = "44444444-4444-4444-8444-444444444444";
 export const MISMATCH_DOC_ID = "55555555-5555-4555-8555-555555555555";
 export const UNSUPPORTED_DOC_ID = "66666666-6666-4666-8666-666666666666";
 export const UNICODE_DOC_ID = "77777777-7777-4777-8777-777777777777";
+export const ARCHIVED_DOC_ID = "88888888-8888-4888-8888-888888888888";
 export const MISSING_DOC_ID = "99999999-9999-4999-8999-999999999999";
 
 export const PDF_STORAGE_KEY = "storage/laporan.pdf";
@@ -163,6 +164,23 @@ function setTargets(previewRepository: InMemoryPreviewRepository): void {
           id: "file-7",
           storageKey: PDF_STORAGE_KEY,
           originalName: "Laporan Keuangan (Final) é.pdf",
+          mimeType: "application/pdf",
+          fileSize: samplePdfBytes.byteLength,
+        },
+      },
+    ],
+    [
+      ARCHIVED_DOC_ID,
+      {
+        document: {
+          id: ARCHIVED_DOC_ID,
+          deletedAt: null,
+          archivedAt: new Date("2026-11-04T03:00:00.000Z"),
+        },
+        file: {
+          id: "file-8",
+          storageKey: PDF_STORAGE_KEY,
+          originalName: "archived.pdf",
           mimeType: "application/pdf",
           fileSize: samplePdfBytes.byteLength,
         },

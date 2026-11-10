@@ -28,6 +28,7 @@ import type { IPermissionCategoriesService } from "./modules/permission-categori
 import { createAdminRoutes } from "./modules/admin/admin.routes";
 import type { AdminService } from "./modules/admin/admin.service";
 import type { AdminAccountService } from "./modules/admin/admin.accounts.service";
+import type { AdminDocumentService } from "./modules/admin/admin.documents.service";
 
 export type AppDependencies = {
   logger: Logger;
@@ -44,6 +45,7 @@ export type AppDependencies = {
   permissionCategoriesService?: IPermissionCategoriesService | undefined;
   adminService?: AdminService | undefined;
   adminAccountService?: AdminAccountService | undefined;
+  adminDocumentService?: AdminDocumentService | undefined;
   enableUploadRoute?: boolean | undefined;
   // The one browser origin allowed to call the API with credentials. Outside production it defaults to the
   // local Web dev server.
@@ -165,13 +167,18 @@ export function createApp(dependencies: AppDependencies): Hono<ApiEnvironment> {
     );
   }
 
-  if (dependencies.adminService) {
+  if (
+    dependencies.adminService ||
+    dependencies.adminAccountService ||
+    dependencies.adminDocumentService
+  ) {
     app.route(
       "/api/v1/admin",
       createAdminRoutes({
         tokenVerifier,
         adminService: dependencies.adminService,
         adminAccountService: dependencies.adminAccountService,
+        adminDocumentService: dependencies.adminDocumentService,
       }),
     );
   }

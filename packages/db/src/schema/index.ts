@@ -23,6 +23,7 @@ export {
 } from "./tags";
 export {
   accountStatusAuditEvents,
+  adminDocumentAuditEvents,
   downloadAuditEvents,
   downloadAuditEventsRelations,
   categoryPermissionAuditEvents,

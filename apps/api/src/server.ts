@@ -35,6 +35,8 @@ import { DrizzleAdminRepository } from "./modules/admin/admin.repository";
 import { createAdminService } from "./modules/admin/admin.service";
 import { DrizzleAdminAccountRepository } from "./modules/admin/admin.accounts.repository";
 import { createAdminAccountService } from "./modules/admin/admin.accounts.service";
+import { DrizzleAdminDocumentRepository } from "./modules/admin/admin.documents.repository";
+import { createAdminDocumentService } from "./modules/admin/admin.documents.service";
 
 const closeResourcesWithinDeadline = async (
   operations: Array<() => Promise<unknown>>,
@@ -126,6 +128,9 @@ async function start(): Promise<void> {
   const adminAccountService = createAdminAccountService(
     new DrizzleAdminAccountRepository(database.db),
   );
+  const adminDocumentService = createAdminDocumentService(
+    new DrizzleAdminDocumentRepository(database.db),
+  );
 
   const app = createApp({
     logger,
@@ -145,6 +150,7 @@ async function start(): Promise<void> {
     permissionCategoriesService,
     adminService,
     adminAccountService,
+    adminDocumentService,
     enableUploadRoute: true,
     webOrigin: config.WEB_ORIGIN,
     appEnvironment: config.APP_ENV,

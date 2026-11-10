@@ -19,8 +19,11 @@ import { readStoredMetadata } from "../documents/documents.metadata.operations";
 import { createInMemoryStorage } from "../documents/documents.service.helpers";
 import { InMemoryDocumentMetadataRepository } from "../documents/metadata.repository";
 import { assertPreviewAllowed } from "../documents/preview.operations";
-import { DrizzleAdminRepository, InMemoryAdminRepository } from "./admin.repository";
-import { createAdminService } from "./admin.service";
+import {
+  DrizzleAdminDocumentRepository,
+  InMemoryAdminDocumentRepository,
+} from "./admin.documents.repository";
+import { createAdminDocumentService } from "./admin.documents.service";
 
 const testLogger = createLogger({
   service: "axentra-api",
@@ -29,11 +32,13 @@ const testLogger = createLogger({
   level: "fatal",
 });
 
+const ADMIN_ACTOR_ID = "11111111-1111-4111-8111-111111111111";
+
 const tokenVerifier: TokenVerifier = {
   verifyToken(token: string) {
     if (token === "valid-admin-token") {
       return {
-        id: "11111111-1111-4111-8111-111111111111",
+        id: ADMIN_ACTOR_ID,
         email: "admin@axentra.local",
         role: "admin",
         name: "Admin User",
@@ -70,23 +75,25 @@ const CATEGORY_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const FIXED_NOW = new Date("2026-11-05T12:00:00.000Z");
 
 function isPostgresDatabase(value: unknown): value is PostgresJsDatabase {
-  return typeof value === "object" && value !== null && ("select" in value || "update" in value);
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    ("select" in value || "update" in value || "insert" in value || "transaction" in value)
+  );
 }
 
 function createFakePostgresDatabase(fakeDb: unknown): PostgresJsDatabase {
   if (!isPostgresDatabase(fakeDb)) {
-    throw new Error("Expected fake database object with select or update method");
+    throw new Error("Expected fake database object");
   }
   return fakeDb;
 }
 
 function createSeededFixture() {
-  const repository = new InMemoryAdminRepository();
+  const repository = new InMemoryAdminDocumentRepository();
   repository.users.set(OWNER_ID, {
     id: OWNER_ID,
-    role: "member_team",
     name: "Rina Pratama",
-    email: "rina@axentra.local",
   });
   repository.categories.set(CATEGORY_ID, {
     id: CATEGORY_ID,
@@ -158,21 +165,58 @@ function createSeededFixture() {
     hasFile: false,
   });
 
-  const adminService = createAdminService(repository, { now: () => FIXED_NOW });
+  const adminDocumentService = createAdminDocumentService(repository, { now: () => FIXED_NOW });
   const app = createApp({
     logger: testLogger,
     version: "0.1.0",
     readinessChecks: [],
     tokenVerifier,
-    adminService,
+    adminDocumentService,
   });
 
-  return { repository, adminService, app };
+  return { repository, adminDocumentService, app };
 }
 
 describe("Admin Document Management API (Task BE-S4-07 / PROP-ADM-AC-03.01 to 03.05)", () => {
+  describe("Authentication and Role Enforcement across all 5 endpoints (F10)", () => {
+    const endpoints: ReadonlyArray<{ method: string; path: string }> = [
+      { method: "GET", path: "/api/v1/admin/documents" },
+      { method: "GET", path: `/api/v1/admin/documents/${DOC_1_ID}` },
+      { method: "POST", path: `/api/v1/admin/documents/${DOC_1_ID}/archive` },
+      { method: "POST", path: `/api/v1/admin/documents/${DOC_1_ID}/unarchive` },
+      { method: "DELETE", path: `/api/v1/admin/documents/${DOC_1_ID}` },
+    ];
+
+    it("rejects unauthenticated requests with 401 UNAUTHORIZED on every endpoint", async () => {
+      const { app, repository } = createSeededFixture();
+
+      for (const endpoint of endpoints) {
+        const res = await app.request(endpoint.path, { method: endpoint.method });
+        expect(res.status).toBe(401);
+        expect(apiErrorSchema.parse(await res.json()).error.code).toBe("UNAUTHORIZED");
+      }
+      expect(repository.auditRecords).toHaveLength(0);
+    });
+
+    it("rejects member_team and head_of_team with 403 FORBIDDEN on every endpoint", async () => {
+      const { app, repository } = createSeededFixture();
+
+      for (const token of ["valid-member-token", "valid-head-token"]) {
+        for (const endpoint of endpoints) {
+          const res = await app.request(endpoint.path, {
+            method: endpoint.method,
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          expect(res.status).toBe(403);
+          expect(apiErrorSchema.parse(await res.json()).error.code).toBe("FORBIDDEN");
+        }
+      }
+      expect(repository.auditRecords).toHaveLength(0);
+    });
+  });
+
   describe("GET /api/v1/admin/documents", () => {
-    it("lists active and archived documents with deterministic created_at DESC, id DESC order and excludes soft-deleted or fileless rows", async () => {
+    it("lists active and archived documents with deterministic created_at DESC, id DESC tie-break order (F11) and excludes soft-deleted or fileless rows", async () => {
       const { app } = createSeededFixture();
 
       const res = await app.request("/api/v1/admin/documents", {
@@ -182,6 +226,8 @@ describe("Admin Document Management API (Task BE-S4-07 / PROP-ADM-AC-03.01 to 03
       expect(res.status).toBe(200);
       const parsed = adminDocumentsListResponseSchema.parse(await res.json());
       expect(parsed.meta).toEqual({ page: 1, limit: 20, total: 3 });
+      // DOC_2_ID (...aaa2) and DOC_1_ID (...aaa1) share the exact same createdAt (2026-04-17T08:00:00.000Z),
+      // so the secondary tie-breaker id DESC orders DOC_2_ID before DOC_1_ID.
       expect(parsed.data.map((d) => d.id)).toEqual([DOC_3_ID, DOC_2_ID, DOC_1_ID]);
 
       expect(parsed.data[0]).toEqual({
@@ -228,23 +274,6 @@ describe("Admin Document Management API (Task BE-S4-07 / PROP-ADM-AC-03.01 to 03
       const err = apiErrorSchema.parse(await res.json());
       expect(err.error.code).toBe("VALIDATION_ERROR");
       expect(err.error.message).toBe("Data tidak valid");
-    });
-
-    it("enforces authentication and admin role on list endpoint", async () => {
-      const { app } = createSeededFixture();
-
-      const unauth = await app.request("/api/v1/admin/documents");
-      expect(unauth.status).toBe(401);
-
-      const member = await app.request("/api/v1/admin/documents", {
-        headers: { Authorization: "Bearer valid-member-token" },
-      });
-      expect(member.status).toBe(403);
-
-      const head = await app.request("/api/v1/admin/documents", {
-        headers: { Authorization: "Bearer valid-head-token" },
-      });
-      expect(head.status).toBe(403);
     });
   });
 
@@ -322,9 +351,9 @@ describe("Admin Document Management API (Task BE-S4-07 / PROP-ADM-AC-03.01 to 03
     });
   });
 
-  describe("POST /api/v1/admin/documents/:id/archive and /unarchive", () => {
-    it("archives an active document and is idempotent when called again", async () => {
-      const { app } = createSeededFixture();
+  describe("POST /api/v1/admin/documents/:id/archive and /unarchive with Audit Trail (F2)", () => {
+    it("archives an active document, writes one audit event in the same transaction, and skips audit on idempotent repeat", async () => {
+      const { app, repository } = createSeededFixture();
 
       const firstRes = await app.request(`/api/v1/admin/documents/${DOC_1_ID}/archive`, {
         method: "POST",
@@ -336,8 +365,24 @@ describe("Admin Document Management API (Task BE-S4-07 / PROP-ADM-AC-03.01 to 03
         id: DOC_1_ID,
         archivedAt: FIXED_NOW.toISOString(),
       });
+      expect(repository.transactionCount).toBe(1);
+      expect(repository.auditRecords).toEqual([
+        {
+          documentId: DOC_1_ID,
+          documentTitle: "Laporan-Q1-2026.pdf",
+          action: "archive",
+          previousArchivedAt: null,
+          newArchivedAt: FIXED_NOW,
+          previousDeletedAt: null,
+          newDeletedAt: null,
+          actorUserId: ADMIN_ACTOR_ID,
+          actorName: "Admin User",
+          actorEmail: "admin@axentra.local",
+          changedAt: FIXED_NOW,
+        },
+      ]);
 
-      // Archiving an already-archived document preserves its existing archivedAt timestamp.
+      // Archiving an already-archived document preserves its existing archivedAt and writes no duplicate audit row.
       const alreadyArchivedRes = await app.request(`/api/v1/admin/documents/${DOC_2_ID}/archive`, {
         method: "POST",
         headers: { Authorization: "Bearer valid-admin-token" },
@@ -350,10 +395,11 @@ describe("Admin Document Management API (Task BE-S4-07 / PROP-ADM-AC-03.01 to 03
         id: DOC_2_ID,
         archivedAt: "2026-11-04T03:00:00.000Z",
       });
+      expect(repository.auditRecords).toHaveLength(1);
     });
 
-    it("unarchives an archived document and is idempotent when already active", async () => {
-      const { app } = createSeededFixture();
+    it("unarchives an archived document, writes one audit event, and skips audit on idempotent repeat", async () => {
+      const { app, repository } = createSeededFixture();
 
       const unarchiveRes = await app.request(`/api/v1/admin/documents/${DOC_2_ID}/unarchive`, {
         method: "POST",
@@ -364,6 +410,21 @@ describe("Admin Document Management API (Task BE-S4-07 / PROP-ADM-AC-03.01 to 03
         id: DOC_2_ID,
         archivedAt: null,
       });
+      expect(repository.auditRecords).toEqual([
+        {
+          documentId: DOC_2_ID,
+          documentTitle: "Dokumen-Arsip.pdf",
+          action: "unarchive",
+          previousArchivedAt: new Date("2026-11-04T03:00:00.000Z"),
+          newArchivedAt: null,
+          previousDeletedAt: null,
+          newDeletedAt: null,
+          actorUserId: ADMIN_ACTOR_ID,
+          actorName: "Admin User",
+          actorEmail: "admin@axentra.local",
+          changedAt: FIXED_NOW,
+        },
+      ]);
 
       const idempotentRes = await app.request(`/api/v1/admin/documents/${DOC_2_ID}/unarchive`, {
         method: "POST",
@@ -374,10 +435,11 @@ describe("Admin Document Management API (Task BE-S4-07 / PROP-ADM-AC-03.01 to 03
         id: DOC_2_ID,
         archivedAt: null,
       });
+      expect(repository.auditRecords).toHaveLength(1);
     });
 
-    it("returns 404 when archiving or unarchiving a missing, soft-deleted, or fileless document", async () => {
-      const { app } = createSeededFixture();
+    it("returns 404 and writes no audit event when archiving or unarchiving a missing, soft-deleted, or fileless document", async () => {
+      const { app, repository } = createSeededFixture();
 
       for (const action of ["archive", "unarchive"]) {
         for (const id of [MISSING_DOC_ID, DOC_DELETED_ID, DOC_FILELESS_ID]) {
@@ -389,11 +451,12 @@ describe("Admin Document Management API (Task BE-S4-07 / PROP-ADM-AC-03.01 to 03
           expect(apiErrorSchema.parse(await res.json()).error.code).toBe("NOT_FOUND");
         }
       }
+      expect(repository.auditRecords).toHaveLength(0);
     });
   });
 
-  describe("DELETE /api/v1/admin/documents/:id", () => {
-    it("soft-deletes a document while retaining the record and hides it from subsequent Admin queries", async () => {
+  describe("DELETE /api/v1/admin/documents/:id with Audit Trail (F2)", () => {
+    it("soft-deletes a document, writes one audit event, retains the record, and hides it from subsequent Admin queries", async () => {
       const { app, repository } = createSeededFixture();
 
       const deleteRes = await app.request(`/api/v1/admin/documents/${DOC_1_ID}`, {
@@ -405,6 +468,21 @@ describe("Admin Document Management API (Task BE-S4-07 / PROP-ADM-AC-03.01 to 03
         id: DOC_1_ID,
         deletedAt: FIXED_NOW.toISOString(),
       });
+      expect(repository.auditRecords).toEqual([
+        {
+          documentId: DOC_1_ID,
+          documentTitle: "Laporan-Q1-2026.pdf",
+          action: "delete",
+          previousArchivedAt: null,
+          newArchivedAt: null,
+          previousDeletedAt: null,
+          newDeletedAt: FIXED_NOW,
+          actorUserId: ADMIN_ACTOR_ID,
+          actorName: "Admin User",
+          actorEmail: "admin@axentra.local",
+          changedAt: FIXED_NOW,
+        },
+      ]);
 
       // Row and metadata remain stored in the repository (soft delete only).
       const storedRecord = repository.documents.get(DOC_1_ID);
@@ -412,7 +490,7 @@ describe("Admin Document Management API (Task BE-S4-07 / PROP-ADM-AC-03.01 to 03
       expect(storedRecord?.deletedAt?.toISOString()).toBe(FIXED_NOW.toISOString());
       expect(storedRecord?.metadata?.author).toBe("Rina Pratama");
 
-      // Subsequent detail, list, and delete calls treat it as soft-deleted.
+      // Subsequent detail, list, and delete calls treat it as soft-deleted and write no additional audit row.
       const detailAfterDelete = await app.request(`/api/v1/admin/documents/${DOC_1_ID}`, {
         headers: { Authorization: "Bearer valid-admin-token" },
       });
@@ -423,6 +501,7 @@ describe("Admin Document Management API (Task BE-S4-07 / PROP-ADM-AC-03.01 to 03
         headers: { Authorization: "Bearer valid-admin-token" },
       });
       expect(secondDelete.status).toBe(404);
+      expect(repository.auditRecords).toHaveLength(1);
 
       const listAfterDelete = await app.request("/api/v1/admin/documents", {
         headers: { Authorization: "Bearer valid-admin-token" },
@@ -433,8 +512,8 @@ describe("Admin Document Management API (Task BE-S4-07 / PROP-ADM-AC-03.01 to 03
     });
   });
 
-  describe("DrizzleAdminRepository document management unit tests", () => {
-    it("maps listDocuments and findDocumentDetailById rows in DrizzleAdminRepository", async () => {
+  describe("DrizzleAdminDocumentRepository unit tests", () => {
+    it("maps listDocuments and findDocumentDetailById rows in DrizzleAdminDocumentRepository", async () => {
       let selectCount = 0;
       const fakeDb = {
         select() {
@@ -472,7 +551,7 @@ describe("Admin Document Management API (Task BE-S4-07 / PROP-ADM-AC-03.01 to 03
                                             title: "Laporan.pdf",
                                             ownerId: OWNER_ID,
                                             ownerName: "Rina Pratama",
-                                            uploadedAt: "2026-04-17T08:00:00.000Z",
+                                            uploadedAt: new Date("2026-04-17T08:00:00.000Z"),
                                             archivedAt: null,
                                           },
                                         ];
@@ -533,7 +612,7 @@ describe("Admin Document Management API (Task BE-S4-07 / PROP-ADM-AC-03.01 to 03
         },
       };
 
-      const repo = new DrizzleAdminRepository(createFakePostgresDatabase(fakeDb));
+      const repo = new DrizzleAdminDocumentRepository(createFakePostgresDatabase(fakeDb));
       const page = await repo.listDocuments({ page: 1, limit: 20 });
       expect(page.total).toBe(1);
       expect(page.items[0]?.ownerName).toBe("Rina Pratama");
@@ -555,28 +634,34 @@ describe("Admin Document Management API (Task BE-S4-07 / PROP-ADM-AC-03.01 to 03
       });
     });
 
-    it("maps archiveDocument, unarchiveDocument, and softDeleteDocument updates in DrizzleAdminRepository", async () => {
-      let updateCall = 0;
+    it("executes findStoredDocumentForUpdate, setArchivedAt, setDeletedAt, and insertDocumentAudit in DrizzleAdminDocumentRepository", async () => {
+      const updates: unknown[] = [];
+      const inserts: unknown[] = [];
       const fakeDb = {
-        update() {
-          updateCall += 1;
-          const current = updateCall;
+        transaction: async <T>(work: (tx: unknown) => Promise<T>) => work(fakeDb),
+        select() {
           return {
-            set() {
+            from() {
               return {
-                where() {
+                innerJoin() {
                   return {
-                    async returning() {
-                      if (current === 1) {
-                        return [{ id: DOC_1_ID, archivedAt: FIXED_NOW }];
-                      }
-                      if (current === 2) {
-                        return [{ id: DOC_1_ID }];
-                      }
-                      if (current === 3) {
-                        return [{ id: DOC_1_ID, deletedAt: FIXED_NOW }];
-                      }
-                      return [];
+                    where() {
+                      return {
+                        limit() {
+                          return {
+                            async for() {
+                              return [
+                                {
+                                  id: DOC_1_ID,
+                                  title: "Laporan.pdf",
+                                  archivedAt: null,
+                                  deletedAt: null,
+                                },
+                              ];
+                            },
+                          };
+                        },
+                      };
                     },
                   };
                 },
@@ -584,22 +669,51 @@ describe("Admin Document Management API (Task BE-S4-07 / PROP-ADM-AC-03.01 to 03
             },
           };
         },
+        update() {
+          return {
+            set(values: unknown) {
+              updates.push(values);
+              return {
+                async where() {
+                  return [];
+                },
+              };
+            },
+          };
+        },
+        insert() {
+          return {
+            async values(record: unknown) {
+              inserts.push(record);
+              return [];
+            },
+          };
+        },
       };
 
-      const repo = new DrizzleAdminRepository(createFakePostgresDatabase(fakeDb));
-      expect(await repo.archiveDocument(DOC_1_ID, FIXED_NOW)).toEqual({
-        id: DOC_1_ID,
-        archivedAt: FIXED_NOW.toISOString(),
+      const repo = new DrizzleAdminDocumentRepository(createFakePostgresDatabase(fakeDb));
+      await repo.runInTransaction(async (tx) => {
+        const doc = await tx.findStoredDocumentForUpdate(DOC_1_ID);
+        expect(doc?.id).toBe(DOC_1_ID);
+        await tx.setArchivedAt(DOC_1_ID, FIXED_NOW, FIXED_NOW);
+        await tx.setDeletedAt(DOC_1_ID, FIXED_NOW, FIXED_NOW);
+        await tx.insertDocumentAudit({
+          documentId: DOC_1_ID,
+          documentTitle: "Laporan.pdf",
+          action: "archive",
+          previousArchivedAt: null,
+          newArchivedAt: FIXED_NOW,
+          previousDeletedAt: null,
+          newDeletedAt: null,
+          actorUserId: ADMIN_ACTOR_ID,
+          actorName: "Admin User",
+          actorEmail: "admin@axentra.local",
+          changedAt: FIXED_NOW,
+        });
       });
-      expect(await repo.unarchiveDocument(DOC_1_ID, FIXED_NOW)).toEqual({
-        id: DOC_1_ID,
-        archivedAt: null,
-      });
-      expect(await repo.softDeleteDocument(DOC_1_ID, FIXED_NOW)).toEqual({
-        id: DOC_1_ID,
-        deletedAt: FIXED_NOW.toISOString(),
-      });
-      expect(await repo.archiveDocument(MISSING_DOC_ID, FIXED_NOW)).toBeNull();
+
+      expect(updates).toHaveLength(2);
+      expect(inserts).toHaveLength(1);
     });
   });
 
