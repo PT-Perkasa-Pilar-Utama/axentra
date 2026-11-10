@@ -81,7 +81,7 @@ export type InMemoryAdminDocumentRecord = {
   id: string;
   createdAt: Date;
   deletedAt?: Date | null | undefined;
-  // Retained for test fixture parity; getSummary includes archived documents per proposed default O7.
+  // Retained for test fixture parity; getSummary includes archived documents per O7 decision.
   archivedAt?: Date | null | undefined;
   hasFile: boolean;
   // Retained for test fixture parity with the document schema across processing states.

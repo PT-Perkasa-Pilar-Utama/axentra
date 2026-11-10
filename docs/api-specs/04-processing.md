@@ -218,7 +218,7 @@ Rules:
 
 - Soft-deleted documents (`deleted_at` is set) and documents without a `document_files` row are not
   recovered.
-- Archived documents are treated as soft-deleted for `member_team` and `head_of_team` once BE-S4-07 ships (Planned; see [03-documents.md](03-documents.md#archived-documents-planned-be-s4-07)).
+- Archived documents are treated as soft-deleted for `member_team` and `head_of_team` (BE-S4-07; see [03-documents.md](03-documents.md#archived-documents-implemented-be-s4-07)).
 - Recovering a `failed` document (enqueue failure) returns it to `queued` and clears `error_message`.
   Recovering a stranded `processing` document keeps its status and restarts the 30-minute clock.
 - **Attempt limit:** `MAX_PROCESSING_RECOVERY_ATTEMPTS` is 3. Each recovery of a `processing` or

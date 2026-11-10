@@ -190,10 +190,29 @@ describe("readDocumentDetail composition", () => {
     expect(documentDetailSchema.safeParse(detail).success).toBe(true);
   });
 
-  test("throws NotFound when the active document or its file record is absent", async () => {
+  test("throws NotFound when the active document or its file record is absent or archived", async () => {
     await expect(
       readDocumentDetail(
         dependenciesWith({ record: null, category: null, tags: [], metadata: null }),
+        DOCUMENT_ID,
+        "member_team",
+      ),
+    ).rejects.toThrow("Dokumen tidak ditemukan");
+
+    const base = recordFixture();
+    const archivedRecord: DocumentDetailRecord = {
+      document: { ...base.document, archivedAt: new Date("2026-11-04T03:00:00.000Z") },
+      file: base.file,
+    };
+
+    await expect(
+      readDocumentDetail(
+        dependenciesWith({
+          record: archivedRecord,
+          category: CATEGORY,
+          tags: [TAG],
+          metadata: null,
+        }),
         DOCUMENT_ID,
         "member_team",
       ),

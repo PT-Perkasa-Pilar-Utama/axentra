@@ -25,6 +25,7 @@ const DELETED_DOC = "77777777-7777-4777-8777-777777777777";
 const NON_EXISTENT_DOC = "88888888-8888-4888-8888-888888888888";
 const TRAVERSAL_DOC = "99999999-9999-4999-8999-999999999999";
 const OVERSIZED_DOC = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const ARCHIVED_DOC = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 
 const testLogger = createLogger({
   service: "axentra-api",
@@ -268,6 +269,27 @@ function createSetup(storage?: StorageAdapter) {
     categoryPermission: { downloadEnabled: true },
   });
 
+  // 10. Doc 10 - archived document (BE-S4-07)
+  downloadRepo.setTarget(ARCHIVED_DOC, {
+    document: {
+      id: ARCHIVED_DOC,
+      title: "Dokumen Diarsipkan",
+      categoryId: "cat-reporting-1",
+      processingStatus: "completed",
+      deletedAt: null,
+      archivedAt: new Date("2026-11-04T03:00:00.000Z"),
+    },
+    file: {
+      id: "file-10",
+      storageKey: "storage/doc1.pdf",
+      originalName: "archived.pdf",
+      mimeType: "application/pdf",
+      fileSize: pdfBytes1.byteLength,
+      fileExtension: "pdf",
+    },
+    categoryPermission: { downloadEnabled: true },
+  });
+
   const documentService = createDocumentService({
     storage: mockStorage,
     downloadRepository: downloadRepo,
@@ -466,6 +488,27 @@ describe("POST /api/v1/documents/bulk-download — BE-S3-03", () => {
       expect(parsed.success).toBe(true);
       expect(parsed.data?.error.code).toBe("NOT_FOUND");
       expect(parsed.data?.error.message).toBe("Dokumen tidak ditemukan");
+    });
+
+    test("returns 404 and records no audit event when one or more documents are archived for member_team and head_of_team (BE-S4-07, PROP-ADM-AC-03.03)", async () => {
+      const { app, downloadRepo } = createSetup();
+
+      for (const token of ["member-token", "head-token"]) {
+        const response = await app.request("/api/v1/documents/bulk-download", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ documentIds: [ENABLED_DOC_1, ARCHIVED_DOC] }),
+        });
+
+        expect(response.status).toBe(404);
+        const parsed = apiErrorSchema.parse(await response.json());
+        expect(parsed.error.code).toBe("NOT_FOUND");
+        expect(parsed.error.message).toBe("Dokumen tidak ditemukan");
+      }
+      expect(downloadRepo.getRecordedAuditEvents()).toHaveLength(0);
     });
 
     test("returns 404 when a document has no stored file record", async () => {

@@ -1,8 +1,8 @@
 import { and, count, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { documentContentHashes, documentFiles, documents } from "@axentra/db";
-import { DOCUMENT_COPY, DOCUMENT_ERROR_CODES, type RelatedDocument } from "@axentra/shared";
-import { ConflictError } from "../../http/errors";
+import type { RelatedDocument } from "@axentra/shared";
+import { saveDocumentBatchInTransaction } from "./documents.batch-save";
 import { listRelatedDocuments as listRelatedDocumentsQuery } from "./documents-related.repository";
 import { listRecentDocumentsWithTagFilter } from "./documents.tag-filter";
 import type {
@@ -22,20 +22,6 @@ export type {
   SavedDocumentRecord,
 } from "./documents.repository.types";
 
-function isUniqueConstraintError(error: unknown): boolean {
-  if (typeof error !== "object" || error === null) return false;
-  const e = error as Record<string, unknown>;
-  if (e.code === "23505") return true;
-  const msg = typeof e.message === "string" ? e.message : "";
-  const matches =
-    msg.includes("document_content_hashes_hash_algo_unique_idx") ||
-    msg.includes("duplicate key value violates unique constraint") ||
-    msg.includes("UNIQUE constraint failed");
-  return (
-    matches || (e.cause !== null && typeof e.cause === "object" && isUniqueConstraintError(e.cause))
-  );
-}
-
 export class DocumentRepository implements IDocumentRepository {
   public constructor(private readonly db: PostgresJsDatabase | DocumentBatchDb) {}
 
@@ -53,10 +39,13 @@ export class DocumentRepository implements IDocumentRepository {
     const rows = await this.sqlDb
       .select({ contentHash: documentContentHashes.contentHash })
       .from(documentContentHashes)
+      .innerJoin(documents, eq(documents.id, documentContentHashes.documentId))
       .where(
         and(
           inArray(documentContentHashes.contentHash, [...hashes]),
           eq(documentContentHashes.hashAlgorithm, algorithm),
+          isNull(documents.deletedAt),
+          isNull(documents.archivedAt),
         ),
       );
 
@@ -73,10 +62,13 @@ export class DocumentRepository implements IDocumentRepository {
         contentHash: documentContentHashes.contentHash,
       })
       .from(documentContentHashes)
+      .innerJoin(documents, eq(documents.id, documentContentHashes.documentId))
       .where(
         and(
           eq(documentContentHashes.contentHash, contentHash),
           eq(documentContentHashes.hashAlgorithm, algorithm),
+          isNull(documents.deletedAt),
+          isNull(documents.archivedAt),
         ),
       )
       .limit(1);
@@ -92,7 +84,7 @@ export class DocumentRepository implements IDocumentRepository {
     if (tags && tags.length > 0) {
       return listRecentDocumentsWithTagFilter(this.sqlDb, page, limit, tags);
     }
-    const whereActive = isNull(documents.deletedAt);
+    const whereActive = and(isNull(documents.deletedAt), isNull(documents.archivedAt));
     const [counted] = await this.sqlDb
       .select({ total: count() })
       .from(documents)
@@ -134,81 +126,7 @@ export class DocumentRepository implements IDocumentRepository {
   public async saveDocumentBatch(
     items: ReadonlyArray<CreateDocumentBatchItem>,
   ): Promise<ReadonlyArray<SavedDocumentRecord>> {
-    if (items.length === 0) {
-      return [];
-    }
-
-    try {
-      return await this.db.transaction(async (tx) => {
-        const hashes = items.map((item) => item.contentHash);
-        const algorithm = items[0]?.hashAlgorithm ?? "sha256";
-        const existingInTx = await tx
-          .select({ contentHash: documentContentHashes.contentHash })
-          .from(documentContentHashes)
-          .where(
-            and(
-              inArray(documentContentHashes.contentHash, hashes),
-              eq(documentContentHashes.hashAlgorithm, algorithm),
-            ),
-          );
-
-        if (existingInTx.length > 0) {
-          throw new ConflictError(
-            DOCUMENT_ERROR_CODES.DUPLICATE_DOCUMENT,
-            DOCUMENT_COPY.DUPLICATE_WARNING,
-          );
-        }
-
-        const saved: Array<SavedDocumentRecord> = [];
-
-        for (const item of items) {
-          await tx.insert(documents).values({
-            id: item.id,
-            title: item.title,
-            processingStatus: "queued",
-            uploadedBy: item.uploadedBy,
-          });
-          await tx.insert(documentFiles).values({
-            id: crypto.randomUUID(),
-            documentId: item.id,
-            storageKey: item.storageKey,
-            originalName: item.originalName,
-            mimeType: item.mimeType,
-            fileSize: item.fileSize,
-            fileExtension: item.fileExtension,
-          });
-          await tx.insert(documentContentHashes).values({
-            id: crypto.randomUUID(),
-            documentId: item.id,
-            hashAlgorithm: item.hashAlgorithm ?? "sha256",
-            contentHash: item.contentHash,
-          });
-
-          saved.push({
-            documentId: item.id,
-            title: item.title,
-            uploadedBy: item.uploadedBy,
-            originalName: item.originalName,
-            storageKey: item.storageKey,
-            mimeType: item.mimeType,
-            fileSize: item.fileSize,
-            fileExtension: item.fileExtension,
-            contentHash: item.contentHash,
-          });
-        }
-
-        return saved;
-      });
-    } catch (error: unknown) {
-      if (error instanceof ConflictError) throw error;
-      if (isUniqueConstraintError(error)) {
-        throw new ConflictError(
-          DOCUMENT_ERROR_CODES.DUPLICATE_DOCUMENT,
-          DOCUMENT_COPY.DUPLICATE_WARNING,
-        );
-      }
-      throw error;
-    }
+    return saveDocumentBatchInTransaction(this.db, items);
   }
 
   public async findDocumentById(id: string): Promise<typeof documents.$inferSelect | null> {

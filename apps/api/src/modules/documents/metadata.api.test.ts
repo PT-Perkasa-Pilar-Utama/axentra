@@ -55,6 +55,7 @@ describe("GET /api/v1/documents/:id/metadata - Task BE-S1-05 (AC-03.01)", () => 
 
   const existingDocId = "11111111-1111-4111-8111-111111111111";
   const docWithoutMetadataId = "22222222-2222-4222-8222-222222222222";
+  const archivedDocId = "88888888-8888-4888-8888-888888888888";
   const nonExistentDocId = "99999999-9999-4999-8999-999999999999";
 
   // Setup test documents in repository
@@ -72,6 +73,22 @@ describe("GET /api/v1/documents/:id/metadata - Task BE-S1-05 (AC-03.01)", () => 
     processingStatus: "processing",
     createdAt: new Date(),
     updatedAt: new Date(),
+  });
+
+  repository.addDocument({
+    id: archivedDocId,
+    title: "Laporan Diarsipkan.pdf",
+    processingStatus: "completed",
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    archivedAt: new Date("2026-11-04T03:00:00.000Z"),
+  });
+
+  repository.saveMetadata({
+    documentId: archivedDocId,
+    author: "Arya Isnaidi",
+    rawMetadata: {},
+    extractedAt: new Date("2026-09-21T05:00:00.000Z"),
   });
 
   // Seed metadata for existingDocId
@@ -186,6 +203,23 @@ describe("GET /api/v1/documents/:id/metadata - Task BE-S1-05 (AC-03.01)", () => 
       expect(json.success).toBe(false);
       expect(json.error.code).toBe("NOT_FOUND");
       expect(json.error.message).toBe("Metadata dokumen tidak ditemukan");
+    });
+
+    it("returns 404 Not Found when document is archived for member_team and head_of_team (BE-S4-07, PROP-ADM-AC-03.03)", async () => {
+      for (const token of ["valid-member-token", "valid-head-token"]) {
+        const response = await app.request(`/api/v1/documents/${archivedDocId}/metadata`, {
+          method: "GET",
+          headers: {
+            authorization: `Bearer ${token}`,
+          },
+        });
+
+        expect(response.status).toBe(404);
+        const json = (await response.json()) as ApiErrorEnvelope;
+        expect(json.success).toBe(false);
+        expect(json.error.code).toBe("NOT_FOUND");
+        expect(json.error.message).toBe("Dokumen tidak ditemukan");
+      }
     });
   });
 

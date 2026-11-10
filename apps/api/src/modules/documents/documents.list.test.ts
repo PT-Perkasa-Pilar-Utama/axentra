@@ -8,6 +8,7 @@ import {
 import { createApp } from "../../app";
 import type { TokenVerifier } from "../../middleware/auth";
 import { createDocumentService } from "./documents.service";
+import { createInMemoryDocumentStore } from "./documents.service.helpers";
 import type { QueueProducer } from "@axentra/queue";
 import type { IDocumentRepository, RecentDocumentPage } from "./documents.repository";
 
@@ -304,6 +305,60 @@ describe("GET /api/v1/documents — BE-S1-06", () => {
       expect(response.status).toBe(400);
       const body = apiErrorSchema.parse(await response.json());
       expect(body.error.code).toBe("VALIDATION_ERROR");
+    });
+
+    test("excludes archived documents from recent list and tag-filtered list for member_team and head_of_team (BE-S4-07, PROP-ADM-AC-03.03)", async () => {
+      const store = createInMemoryDocumentStore();
+      const activeId = "11111111-1111-4111-8111-111111111111";
+      const archivedId = "22222222-2222-4222-8222-222222222222";
+
+      await store.repository.saveDocumentBatch([
+        {
+          id: activeId,
+          title: "aktif.pdf",
+          uploadedBy: "11111111-1111-4111-8111-111111111111",
+          storageKey: "documents/aktif.pdf",
+          originalName: "aktif.pdf",
+          mimeType: "application/pdf",
+          fileSize: 100,
+          fileExtension: "pdf",
+          contentHash: "a".repeat(64),
+        },
+        {
+          id: archivedId,
+          title: "arsip.pdf",
+          uploadedBy: "11111111-1111-4111-8111-111111111111",
+          storageKey: "documents/arsip.pdf",
+          originalName: "arsip.pdf",
+          mimeType: "application/pdf",
+          fileSize: 100,
+          fileExtension: "pdf",
+          contentHash: "b".repeat(64),
+        },
+      ]);
+      store.setDocumentTags(activeId, ["Strategy"]);
+      store.setDocumentTags(archivedId, ["Strategy"]);
+      store.archiveDocument(archivedId, new Date("2026-11-04T03:00:00.000Z"));
+
+      const app = appWith(store.repository);
+
+      for (const token of ["member-token", "head-token"]) {
+        const listRes = await app.request("/api/v1/documents", {
+          headers: { authorization: `Bearer ${token}` },
+        });
+        expect(listRes.status).toBe(200);
+        const listBody = recentDocumentListResponseSchema.parse(await listRes.json());
+        expect(listBody.data.map((d) => d.id)).toEqual([activeId]);
+        expect(listBody.meta.total).toBe(1);
+
+        const tagFilteredRes = await app.request("/api/v1/documents?tags=Strategy", {
+          headers: { authorization: `Bearer ${token}` },
+        });
+        expect(tagFilteredRes.status).toBe(200);
+        const tagFilteredBody = recentDocumentListResponseSchema.parse(await tagFilteredRes.json());
+        expect(tagFilteredBody.data.map((d) => d.id)).toEqual([activeId]);
+        expect(tagFilteredBody.meta.total).toBe(1);
+      }
     });
   });
 });

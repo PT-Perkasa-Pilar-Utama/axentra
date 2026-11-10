@@ -16,7 +16,7 @@ export async function readStoredMetadata(
   documentId: string,
 ): Promise<DocumentMetadataResult> {
   const document = await metadataRepository.findDocumentById(documentId);
-  if (!document) {
+  if (!document || document.deletedAt || document.archivedAt) {
     throw new NotFoundError("Dokumen tidak ditemukan");
   }
 

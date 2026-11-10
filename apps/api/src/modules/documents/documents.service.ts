@@ -150,7 +150,7 @@ export class DocumentService implements IDocumentService {
 
   public async listRelatedDocuments(documentId: string): Promise<ReadonlyArray<RelatedDocument>> {
     const document = await this.repository.findDocumentById(documentId);
-    if (!document || document.deletedAt) {
+    if (!document || document.deletedAt || document.archivedAt) {
       throw new NotFoundError("Dokumen tidak ditemukan");
     }
 

@@ -7,6 +7,7 @@ export type DownloadTargetRecord = {
     categoryId: string | null;
     processingStatus: string;
     deletedAt: Date | null;
+    archivedAt?: Date | null | undefined;
   };
   file: {
     id: string;
@@ -34,6 +35,7 @@ export type DocumentCategoryPermissionStatus = {
   documentId: string;
   categoryId: string | null;
   deletedAt: Date | null;
+  archivedAt?: Date | null | undefined;
   downloadEnabled: boolean | null;
 };
 
@@ -59,6 +61,7 @@ export type DownloadTargetRow = {
   docCategoryId: string | null;
   docProcessingStatus: string;
   docDeletedAt: Date | null;
+  docArchivedAt?: Date | null | undefined;
   fileId: string | null;
   fileStorageKey: string | null;
   fileOriginalName: string | null;
@@ -93,6 +96,7 @@ export function mapRowToDownloadTarget(row: DownloadTargetRow): DownloadTargetRe
       categoryId: row.docCategoryId,
       processingStatus: row.docProcessingStatus,
       deletedAt: row.docDeletedAt,
+      archivedAt: row.docArchivedAt ?? null,
     },
     file,
     categoryPermission:

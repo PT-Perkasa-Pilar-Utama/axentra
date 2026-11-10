@@ -24,7 +24,7 @@ export class DrizzleSearchRepository implements ISearchRepository {
   public constructor(private readonly db: PostgresJsDatabase) {}
 
   public async searchDocuments(query: SearchDocumentsQuery): Promise<SearchQueryResult> {
-    const conditions = [isNull(documents.deletedAt)];
+    const conditions = [isNull(documents.deletedAt), isNull(documents.archivedAt)];
 
     if (query.categoryId) {
       conditions.push(eq(documents.categoryId, query.categoryId));
@@ -125,6 +125,8 @@ export class InMemorySearchRepository implements ISearchRepository {
     title?: string | undefined;
     extractedText?: string | undefined;
     categoryId?: string | undefined;
+    deletedAt?: Date | null | undefined;
+    archivedAt?: Date | null | undefined;
     tags: Set<string>;
   }> = [];
 
@@ -134,6 +136,8 @@ export class InMemorySearchRepository implements ISearchRepository {
       title?: string | undefined;
       extractedText?: string | undefined;
       categoryId?: string | undefined;
+      deletedAt?: Date | null | undefined;
+      archivedAt?: Date | null | undefined;
       tags?: ReadonlyArray<string> | undefined;
     },
   ): void {
@@ -145,6 +149,8 @@ export class InMemorySearchRepository implements ISearchRepository {
       title: options?.title,
       extractedText: options?.extractedText,
       categoryId: options?.categoryId,
+      deletedAt: options?.deletedAt,
+      archivedAt: options?.archivedAt,
       tags: tagSet,
     });
   }
@@ -156,7 +162,11 @@ export class InMemorySearchRepository implements ISearchRepository {
         )
       : [];
 
-    let filtered = this.documents;
+    let filtered = this.documents.filter(
+      (d) =>
+        (d.deletedAt === undefined || d.deletedAt === null) &&
+        (d.archivedAt === undefined || d.archivedAt === null),
+    );
 
     if (query.categoryId) {
       filtered = filtered.filter((d) => d.categoryId === query.categoryId);

@@ -95,25 +95,25 @@ Source: `docs/proposals/admin-role-proposal.md` (PROP-ADM-01, 02, 03, and 05). D
 OK      GET    /admin/summary
 OK      GET    /admin/users
 OK      PATCH  /admin/users/:id/status
-PLANNED GET    /admin/documents
-PLANNED GET    /admin/documents/:id
-PLANNED POST   /admin/documents/:id/archive
-PLANNED POST   /admin/documents/:id/unarchive
-PLANNED DELETE /admin/documents/:id
+OK      GET    /admin/documents
+OK      GET    /admin/documents/:id
+OK      POST   /admin/documents/:id/archive
+OK      POST   /admin/documents/:id/unarchive
+OK      DELETE /admin/documents/:id
 ```
 
 `GET /audit/downloads` also accepts role `admin` (`BE-S4-08`), and the preview and download routes no longer accept it. The second change was decided on 2026-11-04 (proposal questions 7 and 9).
 
 ## Documents
 
-| File                                                         | Purpose                                                                  |
-| ------------------------------------------------------------ | ------------------------------------------------------------------------ |
-| [01-conventions.md](01-conventions.md)                       | API envelope, error, pagination, and naming conventions                  |
-| [02-authentication.md](02-authentication.md)                 | Technical authentication prerequisite                                    |
-| [03-documents.md](03-documents.md)                           | BA document upload, duplicate, preview, download, related docs           |
-| [04-processing.md](04-processing.md)                         | OCR/AI metadata, Smart Tags, and auto-category processing                |
-| [05-search-tags-categories.md](05-search-tags-categories.md) | Search, Top Tags, tag filtering, categories                              |
-| [06-analytics.md](06-analytics.md)                           | Head of Team analytics                                                   |
-| [07-audit-permissions.md](07-audit-permissions.md)           | Download audit trail and category download permission                    |
-| [08-system.md](08-system.md)                                 | Implemented health and readiness endpoints                               |
-| [09-admin.md](09-admin.md)                                   | Admin summary, account management, and document management (In Progress) |
+| File                                                         | Purpose                                                        |
+| ------------------------------------------------------------ | -------------------------------------------------------------- |
+| [01-conventions.md](01-conventions.md)                       | API envelope, error, pagination, and naming conventions        |
+| [02-authentication.md](02-authentication.md)                 | Technical authentication prerequisite                          |
+| [03-documents.md](03-documents.md)                           | BA document upload, duplicate, preview, download, related docs |
+| [04-processing.md](04-processing.md)                         | OCR/AI metadata, Smart Tags, and auto-category processing      |
+| [05-search-tags-categories.md](05-search-tags-categories.md) | Search, Top Tags, tag filtering, categories                    |
+| [06-analytics.md](06-analytics.md)                           | Head of Team analytics                                         |
+| [07-audit-permissions.md](07-audit-permissions.md)           | Download audit trail and category download permission          |
+| [08-system.md](08-system.md)                                 | Implemented health and readiness endpoints                     |
+| [09-admin.md](09-admin.md)                                   | Admin summary, account management, and document management     |

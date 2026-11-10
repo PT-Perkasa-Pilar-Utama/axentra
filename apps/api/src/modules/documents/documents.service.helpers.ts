@@ -82,6 +82,9 @@ export function createDefaultServiceLogger(): Logger {
 export type InMemoryDocumentStore = {
   repository: IDocumentRepository;
   detailRepository: IDocumentDetailRepository;
+  archiveDocument: (documentId: string, archivedAt?: Date) => void;
+  softDeleteDocument: (documentId: string, deletedAt?: Date) => void;
+  setDocumentTags: (documentId: string, tags: ReadonlyArray<string>) => void;
 };
 
 export function createInMemoryRepository(): IDocumentRepository {
@@ -95,17 +98,26 @@ export function createInMemoryDocumentStore(): InMemoryDocumentStore {
   const recentDocuments: RecentDocument[] = [];
   const detailRecords = new Map<string, DocumentDetailRecord>();
   const documentTags = new Map<string, Set<string>>();
+
+  const isHashActive = (contentHash: string): boolean => {
+    const docId = hashToDocId.get(contentHash);
+    if (!docId) return false;
+    const detail = detailRecords.get(docId);
+    if (!detail) return true;
+    return detail.document.deletedAt === null && detail.document.archivedAt === null;
+  };
+
   const repository: IDocumentRepository = {
     findExistingHashes: async (hashes) => {
       const found = new Set<string>();
       for (const h of hashes) {
-        if (existingHashes.has(h)) found.add(h);
+        if (existingHashes.has(h) && isHashActive(h)) found.add(h);
       }
       return found;
     },
     findByContentHash: async (contentHash: string) => {
       const docId = hashToDocId.get(contentHash);
-      if (!docId) return null;
+      if (!docId || !isHashActive(contentHash)) return null;
       return { documentId: docId, contentHash };
     },
     listRecentDocuments: async (
@@ -113,13 +125,17 @@ export function createInMemoryDocumentStore(): InMemoryDocumentStore {
       limit: number,
       tags?: ReadonlyArray<string> | undefined,
     ): Promise<RecentDocumentPage> => {
-      let filtered = recentDocuments;
+      let filtered = recentDocuments.filter((doc) => {
+        const detail = detailRecords.get(doc.id);
+        if (!detail) return true;
+        return detail.document.deletedAt === null && detail.document.archivedAt === null;
+      });
       if (tags && tags.length > 0) {
         const uniqueTags = Array.from(
           new Set(tags.map((t) => t.trim().toLowerCase()).filter((t) => t.length > 0)),
         );
         if (uniqueTags.length > 0) {
-          filtered = recentDocuments.filter((doc) => {
+          filtered = filtered.filter((doc) => {
             const tagsForDoc = documentTags.get(doc.id);
             if (!tagsForDoc) return false;
             return uniqueTags.every((t) => tagsForDoc.has(t));
@@ -135,7 +151,7 @@ export function createInMemoryDocumentStore(): InMemoryDocumentStore {
     listRelatedDocuments: async () => [],
     saveDocumentBatch: async (items) => {
       for (const item of items) {
-        if (existingHashes.has(item.contentHash)) {
+        if (existingHashes.has(item.contentHash) && isHashActive(item.contentHash)) {
           throw new ConflictError(
             DOCUMENT_ERROR_CODES.DUPLICATE_DOCUMENT,
             DOCUMENT_COPY.DUPLICATE_WARNING,
@@ -171,9 +187,45 @@ export function createInMemoryDocumentStore(): InMemoryDocumentStore {
     markProcessingEnqueueFailed: async () => undefined,
   };
   const detailRepository: IDocumentDetailRepository = {
-    findDocumentDetail: async (id) => detailRecords.get(id) ?? null,
+    findDocumentDetail: async (id) => {
+      const record = detailRecords.get(id);
+      if (!record || record.document.deletedAt !== null || record.document.archivedAt !== null) {
+        return null;
+      }
+      return record;
+    },
   };
-  return { repository, detailRepository };
+  const archiveDocument = (documentId: string, archivedAt = new Date()): void => {
+    const record = detailRecords.get(documentId);
+    if (record) {
+      detailRecords.set(documentId, {
+        ...record,
+        document: { ...record.document, archivedAt, updatedAt: archivedAt },
+      });
+    }
+  };
+  const softDeleteDocument = (documentId: string, deletedAt = new Date()): void => {
+    const record = detailRecords.get(documentId);
+    if (record) {
+      detailRecords.set(documentId, {
+        ...record,
+        document: { ...record.document, deletedAt, updatedAt: deletedAt },
+      });
+    }
+  };
+  const setDocumentTags = (documentId: string, tags: ReadonlyArray<string>): void => {
+    documentTags.set(
+      documentId,
+      new Set(tags.map((t) => t.trim().toLowerCase()).filter((t) => t.length > 0)),
+    );
+  };
+  return {
+    repository,
+    detailRepository,
+    archiveDocument,
+    softDeleteDocument,
+    setDocumentTags,
+  };
 }
 
 /**

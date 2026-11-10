@@ -30,7 +30,7 @@ export async function readDocumentDetail(
   role: AuthUser["role"],
 ): Promise<DocumentDetail> {
   const record = await dependencies.repository.findDocumentDetail(documentId);
-  if (!record) {
+  if (!record || record.document.deletedAt !== null || record.document.archivedAt !== null) {
     throw new NotFoundError("Dokumen tidak ditemukan");
   }
 

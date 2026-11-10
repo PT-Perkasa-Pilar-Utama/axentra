@@ -20,7 +20,11 @@ export async function recheckAndRecordBulkAudit(
 
     for (const documentId of documentIds) {
       const perm = permMap.get(documentId);
-      if (!perm || perm.deletedAt !== null) {
+      if (
+        !perm ||
+        perm.deletedAt !== null ||
+        (perm.archivedAt !== undefined && perm.archivedAt !== null)
+      ) {
         throw new NotFoundError("Dokumen tidak ditemukan");
       }
       if (user.role === "member_team" && (!perm.categoryId || perm.downloadEnabled !== true)) {

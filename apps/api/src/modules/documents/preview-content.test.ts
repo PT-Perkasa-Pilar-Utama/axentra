@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { apiErrorSchema } from "@axentra/shared";
 import {
+  ARCHIVED_DOC_ID,
   createMockStorage,
   createPreviewSetup,
   DELETED_DOC_ID,
@@ -98,6 +99,20 @@ describe("GET /api/v1/documents/:id/preview/content — BE-S3-01 byte stream", (
       const body = apiErrorSchema.parse(await response.json());
       expect(body.error.code).toBe("NOT_FOUND");
       expect(body.error.message).toBe("Dokumen tidak ditemukan");
+    });
+
+    test("returns 404 for an archived document for member_team and head_of_team (BE-S4-07, PROP-ADM-AC-03.03)", async () => {
+      const { app } = createPreviewSetup();
+
+      for (const token of ["member-token", "head-token"]) {
+        const response = await app.request(contentUrl(ARCHIVED_DOC_ID), {
+          headers: { authorization: `Bearer ${token}` },
+        });
+        expect(response.status).toBe(404);
+        const body = apiErrorSchema.parse(await response.json());
+        expect(body.error.code).toBe("NOT_FOUND");
+        expect(body.error.message).toBe("Dokumen tidak ditemukan");
+      }
     });
 
     test("returns 404 for a missing document", async () => {
