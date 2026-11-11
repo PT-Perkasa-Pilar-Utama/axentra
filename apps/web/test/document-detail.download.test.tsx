@@ -18,7 +18,6 @@ import { DOWNLOAD_ACCESS_DENIED_MESSAGE, type DocumentDetail } from "@axentra/sh
 import {
   derivePreviewView,
   formatMimeLabel,
-  isSafeDownloadUrl,
 } from "../src/features/document-detail/document-detail.presenter";
 import { DocumentDetailView } from "../src/features/document-detail/document-detail.view";
 import { AuthSessionProvider } from "../src/features/auth/auth-session.context";
@@ -35,7 +34,13 @@ const memberSession: AuthSession = {
   rememberMe: false,
 };
 
-const DOWNLOAD_URL = "http://localhost/files/laporan-rahasia.pdf";
+// Unduhan memakai mode stream API dan blob URL, dengan nama berkas dari judul dokumen.
+const DOWNLOAD_FILENAME = "laporan-rahasia.pdf";
+
+function expectBlobDownload(click: ClickedAnchor | undefined): void {
+  expect(click?.href.startsWith("blob:")).toBe(true);
+  expect(click?.download).toBe(DOWNLOAD_FILENAME);
+}
 
 type ClickedAnchor = { href: string; download: string | null };
 
@@ -64,7 +69,7 @@ function makeQueryClient(): QueryClient {
   });
 }
 
-type DownloadScenario = "success" | "denied" | "error" | "unsafe_url" | "category_disabled";
+type DownloadScenario = "success" | "denied" | "error" | "category_disabled";
 
 // Respons GET /documents/:id; canDownload dikirim server berdasarkan kategori dan peran.
 function detailFixture(canDownload: boolean): DocumentDetail {
@@ -150,19 +155,11 @@ function createFetchMock(scenario: DownloadScenario = "success"): typeof fetch {
         );
       }
 
-      return new Response(
-        JSON.stringify({
-          success: true,
-          data: {
-            downloadUrl: scenario === "unsafe_url" ? "javascript:alert(1)" : DOWNLOAD_URL,
-            filename: "laporan-rahasia.pdf",
-            mimeType: "application/pdf",
-            fileSize: 1024,
-            expiresInSeconds: 300,
-          },
-        }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      );
+      // Mode stream: API mengirim byte berkas, bukan signed URL.
+      return new Response(new Uint8Array([0x25, 0x50, 0x44, 0x46]), {
+        status: 200,
+        headers: { "content-type": "application/pdf" },
+      });
     }
 
     return new Response(JSON.stringify({ success: false }), { status: 404 });
@@ -203,7 +200,15 @@ describe("Document Detail Download Action (FE-S3-02, mocked HTTP)", () => {
   });
 
   test("AC-09.01: Initiates download successfully when permission allows it", async () => {
-    globalThis.fetch = createFetchMock("success");
+    const base = createFetchMock("success");
+    const downloadUrls: string[] = [];
+    globalThis.fetch = Object.assign(
+      async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        if (String(input).includes("/download")) downloadUrls.push(String(input));
+        return base(input, init);
+      },
+      { preconnect: (): void => {} },
+    );
 
     await act(async () => {
       renderDocumentDetail();
@@ -223,14 +228,17 @@ describe("Document Detail Download Action (FE-S3-02, mocked HTTP)", () => {
       });
 
       expect(await screen.findByText("Unduhan dimulai...")).toBeTruthy();
-      expect(anchor.clicks).toEqual([{ href: DOWNLOAD_URL, download: "" }]);
+      expect(downloadUrls).toHaveLength(1);
+      expect(downloadUrls[0]).toContain("/documents/doc-123/download?stream=true");
+      expect(anchor.clicks).toHaveLength(1);
+      expectBlobDownload(anchor.clicks[0]);
       expect(document.querySelector("a[download]")).toBeNull();
     } finally {
       anchor.restore();
     }
   });
 
-  test("AC-09.01: every download click requests a fresh signed URL", async () => {
+  test("AC-09.01: every download click requests the file again through the API", async () => {
     const base = createFetchMock("success");
     let downloadRequests = 0;
     globalThis.fetch = Object.assign(
@@ -305,7 +313,8 @@ describe("Document Detail Download Action (FE-S3-02, mocked HTTP)", () => {
         fireEvent.click(downloadButton);
       });
       expect(await screen.findByText("Unduhan dimulai...")).toBeTruthy();
-      expect(anchor.clicks).toEqual([{ href: DOWNLOAD_URL, download: "" }]);
+      expect(anchor.clicks).toHaveLength(1);
+      expectBlobDownload(anchor.clicks[0]);
       expect(downloadAttempts).toBe(2);
     } finally {
       anchor.restore();
@@ -361,27 +370,6 @@ describe("Document Detail Download Action (FE-S3-02, mocked HTTP)", () => {
       expect(await screen.findByText("Unduhan gagal. Silakan coba lagi.")).toBeTruthy();
       expect(anchor.clicks).toHaveLength(0);
       expect(downloadButton.hasAttribute("disabled")).toBe(false);
-    } finally {
-      anchor.restore();
-    }
-  });
-
-  test("AC-09.01: non-http(s) download URLs are rejected with the generic copy", async () => {
-    globalThis.fetch = createFetchMock("unsafe_url");
-
-    await act(async () => {
-      renderDocumentDetail();
-    });
-
-    const downloadButton = await screen.findByRole("button", { name: "Download" });
-    const anchor = spyOnAnchorClick();
-    try {
-      await act(async () => {
-        fireEvent.click(downloadButton);
-      });
-
-      expect(await screen.findByText("Unduhan gagal. Silakan coba lagi.")).toBeTruthy();
-      expect(anchor.clicks).toHaveLength(0);
     } finally {
       anchor.restore();
     }
@@ -449,13 +437,5 @@ describe("Document detail presenter helpers", () => {
       formatMimeLabel("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
     ).toBe("DOCX");
     expect(formatMimeLabel("application/x-unknown")).toBe("tidak dikenal");
-  });
-
-  test("isSafeDownloadUrl only accepts http and https", () => {
-    expect(isSafeDownloadUrl("https://storage.example/file.pdf")).toBe(true);
-    expect(isSafeDownloadUrl("http://localhost/file.pdf")).toBe(true);
-    expect(isSafeDownloadUrl("javascript:alert(1)")).toBe(false);
-    expect(isSafeDownloadUrl("data:text/html,x")).toBe(false);
-    expect(isSafeDownloadUrl("not a url")).toBe(false);
   });
 });

@@ -4,14 +4,46 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#f5f7f4" />
-    <meta name="description" content="Axentra Document Management System engineering foundation" />
+    <title>Axentra | Document Management System</title>
+    <meta
+      name="description"
+      content="Axentra, sistem manajemen dokumen internal: unggah, cari, dan unduh dokumen tim dengan kategori otomatis dan izin per role."
+    />
+    <!-- Aplikasi internal: jangan diindeks mesin pencari. Preview tautan tetap memakai tag Open Graph. -->
+    <meta name="robots" content="noindex, nofollow" />
+
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/favicon.png" />
+
+    <!-- %APP_ORIGIN% diganti dengan origin dari WEB_ORIGIN saat build (lihat vite.config.ts). -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Axentra" />
+    <meta property="og:locale" content="id_ID" />
+    <meta property="og:title" content="Axentra | Document Management System" />
+    <meta
+      property="og:description"
+      content="Unggah, cari, dan unduh dokumen tim dengan kategori otomatis dan izin per role."
+    />
+    <meta property="og:url" content="%APP_ORIGIN%/" />
+    <meta property="og:image" content="%APP_ORIGIN%/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Axentra Document Management System" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Axentra | Document Management System" />
+    <meta
+      name="twitter:description"
+      content="Unggah, cari, dan unduh dokumen tim dengan kategori otomatis dan izin per role."
+    />
+    <meta name="twitter:image" content="%APP_ORIGIN%/og-image.png" />
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@0,100..900;1,100..900&display=swap"
       rel="stylesheet"
     />
-    <title>Axentra Foundation</title>
   </head>
   <body>
     <div id="root"></div>

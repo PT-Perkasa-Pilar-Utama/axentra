@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-import { defineConfig, loadEnv } from "vite";
+import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
@@ -25,15 +25,25 @@ function publicHostOf(origin: string): string {
   return url.hostname;
 }
 
+// og:url and og:image must be absolute URLs for WhatsApp, Telegram, and other link previews.
+// index.html uses the %APP_ORIGIN% placeholder; it is replaced with the WEB_ORIGIN origin.
+function appOriginInHtml(origin: string): Plugin {
+  return {
+    name: "axentra-app-origin",
+    transformIndexHtml: (html) => html.replaceAll("%APP_ORIGIN%", origin),
+  };
+}
+
 export default defineConfig(({ mode }) => {
   // WEB_ORIGIN is the public origin of this app, the same value the API allows for CORS.
   // `vite preview` accepts that Host header so a reverse proxy in front of it works.
   // Other hostnames still get 403; localhost and IP-literal hosts stay allowed by Vite.
   const webOrigin = loadEnv(mode, envDir, "WEB_ORIGIN").WEB_ORIGIN || DEFAULT_WEB_ORIGIN;
+  const previewHost = publicHostOf(webOrigin);
 
   return {
     envDir,
-    plugins: [react(), tailwindcss()],
+    plugins: [react(), tailwindcss(), appOriginInHtml(new URL(webOrigin).origin)],
     server: {
       port: 5173,
       strictPort: true,
@@ -45,7 +55,7 @@ export default defineConfig(({ mode }) => {
       },
     },
     preview: {
-      allowedHosts: [publicHostOf(webOrigin)],
+      allowedHosts: [previewHost],
     },
   };
 });

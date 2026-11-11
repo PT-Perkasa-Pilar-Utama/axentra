@@ -16,6 +16,7 @@
 | Area        | Detail                                  |
 | ----------- | --------------------------------------- |
 | Web feature | `apps/web/src/features/platform-status` |
+| Route       | `/status` (no login required)           |
 | API call    | `GET /health` through the API client    |
 | Refresh     | TanStack Query refetch every 30 seconds |
 | States      | loading, ready, error                   |

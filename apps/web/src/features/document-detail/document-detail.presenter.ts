@@ -6,7 +6,7 @@ import {
   getDocumentDetail,
   getDocumentPreview,
   getDocumentPreviewContent,
-  getDocumentDownload,
+  getDocumentDownloadFile,
 } from "./document-detail.api";
 import {
   deriveDocumentDetailFields,
@@ -43,14 +43,8 @@ export function formatMimeLabel(mimeType: string): string {
   return MIME_LABELS[mimeType] ?? "tidak dikenal";
 }
 
-export function isSafeDownloadUrl(value: string): boolean {
-  try {
-    const { protocol } = new URL(value);
-    return protocol === "http:" || protocol === "https:";
-  } catch {
-    return false;
-  }
-}
+// Blob URL unduhan dicabut setelah browser sempat memulai unduhan.
+const DOWNLOAD_URL_REVOKE_MS = 60_000;
 
 // Menyembunyikan toolbar bawaan viewer PDF (termasuk tombol simpan) di area preview.
 // Fragment tidak dikirim ke server dan tidak mengubah blob URL lokal.
@@ -159,6 +153,7 @@ export function useDocumentDetailPresenter(
 
   // Hanya nilai true dari server yang mengizinkan unduhan; nilai hilang diperlakukan ditolak.
   const canDownload = docQuery.data?.canDownload === true;
+  const downloadName = docQuery.data?.title ?? "";
 
   const handleDownload = useCallback(async () => {
     if (!documentId || !canDownload) return;
@@ -166,18 +161,16 @@ export function useDocumentDetailPresenter(
     setDownloadStatus("loading");
 
     try {
-      const { downloadUrl } = await getDocumentDownload(documentId);
-      if (!isSafeDownloadUrl(downloadUrl)) {
-        setDownloadStatus("error");
-        return;
-      }
+      const file = await getDocumentDownloadFile(documentId);
+      const objectUrl = URL.createObjectURL(file);
 
       const link = document.createElement("a");
-      link.href = downloadUrl;
-      link.setAttribute("download", "");
+      link.href = objectUrl;
+      link.setAttribute("download", downloadName);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(objectUrl), DOWNLOAD_URL_REVOKE_MS);
 
       setDownloadStatus("success");
       resetTimerRef.current = setTimeout(() => {
@@ -191,7 +184,7 @@ export function useDocumentDetailPresenter(
         setDownloadStatus("error");
       }
     }
-  }, [documentId, canDownload, clearResetTimer]);
+  }, [documentId, canDownload, clearResetTimer, downloadName]);
 
   let status: DocumentDetailPresenter["status"] = "ready";
   if (!documentId) {
