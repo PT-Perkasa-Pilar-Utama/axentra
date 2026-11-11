@@ -1,13 +1,5 @@
-import type {
-  DocumentDetail,
-  DownloadDocumentResponse,
-  PreviewDocumentResponse,
-} from "@axentra/shared";
-import {
-  documentDetailSchema,
-  downloadDocumentResponseSchema,
-  previewDocumentResponseSchema,
-} from "@axentra/shared";
+import type { DocumentDetail, PreviewDocumentResponse } from "@axentra/shared";
+import { documentDetailSchema, previewDocumentResponseSchema } from "@axentra/shared";
 import { apiDownloadRequest, apiRequest } from "../../lib/api-client";
 
 // Satu sumber untuk penulis, tag, kategori, tanggal unggah, dan canDownload.
@@ -25,6 +17,9 @@ export function getDocumentPreviewContent(documentId: string): Promise<Blob> {
   return apiDownloadRequest(`/documents/${documentId}/preview/content`);
 }
 
-export function getDocumentDownload(documentId: string): Promise<DownloadDocumentResponse> {
-  return apiRequest(`/documents/${documentId}/download`, downloadDocumentResponseSchema);
+// Unduhan memakai mode stream: byte berkas lewat API di origin yang sama, lalu dibungkus
+// blob URL. Signed URL storage tidak dipakai karena endpoint storage bisa berupa alamat
+// internal (misalnya MinIO di localhost) yang tidak dapat dijangkau browser.
+export function getDocumentDownloadFile(documentId: string): Promise<Blob> {
+  return apiDownloadRequest(`/documents/${documentId}/download?stream=true`);
 }
