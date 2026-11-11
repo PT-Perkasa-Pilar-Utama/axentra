@@ -15,10 +15,11 @@ import { AdminUsersPage } from "./admin-users.page";
 import { AdminDocumentsPage } from "./admin-documents.page";
 import { ADMIN_DASHBOARD_PATH, ADMIN_DOCUMENTS_PATH, ADMIN_USERS_PATH } from "./app-shell.menu";
 import { resolvePostLoginPath } from "./post-login-path";
+import { RootRedirect } from "./root-redirect";
 
 export const router = createBrowserRouter([
   {
-    path: "/",
+    path: "/status",
     element: <FoundationPage />,
   },
   {
@@ -28,6 +29,10 @@ export const router = createBrowserRouter([
   {
     element: <ProtectedRoute />,
     children: [
+      {
+        path: "/",
+        element: <RootRedirect />,
+      },
       {
         path: "/dashboard",
         element: <MemberTeamDashboardPage />,
