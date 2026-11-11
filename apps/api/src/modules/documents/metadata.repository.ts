@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { z } from "zod";
 import { documentMetadata, documents } from "@axentra/db";
@@ -26,6 +26,8 @@ export type DocumentRecord = {
   processingStatus: string;
   createdAt: Date;
   updatedAt: Date;
+  deletedAt?: Date | null | undefined;
+  archivedAt?: Date | null | undefined;
 };
 
 export type DocumentMetadataRecord = {
@@ -90,7 +92,13 @@ export class DrizzleDocumentMetadataRepository implements IDocumentMetadataRepos
         updatedAt: documents.updatedAt,
       })
       .from(documents)
-      .where(eq(documents.id, documentId))
+      .where(
+        and(
+          eq(documents.id, documentId),
+          isNull(documents.deletedAt),
+          isNull(documents.archivedAt),
+        ),
+      )
       .limit(1);
 
     return rows[0] ?? null;
@@ -164,7 +172,11 @@ export class InMemoryDocumentMetadataRepository implements IDocumentMetadataRepo
   }
 
   public async findDocumentById(documentId: string): Promise<DocumentRecord | null> {
-    return this.documentsMap.get(documentId) ?? null;
+    const doc = this.documentsMap.get(documentId);
+    if (!doc || doc.deletedAt || doc.archivedAt) {
+      return null;
+    }
+    return doc;
   }
 
   public async findMetadataByDocumentId(

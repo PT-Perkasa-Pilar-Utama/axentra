@@ -786,6 +786,7 @@ describe("Task BE-S1-04: Duplicate Detection", () => {
           {
             id: crypto.randomUUID(),
             title: "doc.pdf",
+            uploadedBy: "11111111-1111-4111-8111-111111111111",
             storageKey: "documents/key/doc.pdf",
             originalName: "doc.pdf",
             mimeType: "application/pdf",
@@ -856,14 +857,17 @@ describe("Task BE-S1-04: Duplicate Detection", () => {
 
       const pdfBytes = createPdf("test compensation");
       await expect(
-        service.uploadDocuments([
-          {
-            bytes: pdfBytes,
-            filename: "compensate.pdf",
-            mimeType: "application/pdf",
-            size: pdfBytes.length,
-          },
-        ]),
+        service.uploadDocuments(
+          [
+            {
+              bytes: pdfBytes,
+              filename: "compensate.pdf",
+              mimeType: "application/pdf",
+              size: pdfBytes.length,
+            },
+          ],
+          "11111111-1111-4111-8111-111111111111",
+        ),
       ).rejects.toThrow("File ini sudah ada");
 
       // Verify that putObject actually populated storage before the repository failure
@@ -882,6 +886,117 @@ describe("Task BE-S1-04: Duplicate Detection", () => {
       await expect(trackingStorage.headObject(uploadedKey)).rejects.toThrow(
         "Object not found in storage",
       );
+    });
+
+    test("treats archived and soft-deleted documents as non-duplicate for Member Team and Head of Team and rebinds hash on re-upload (F1, BE-S4-07)", async () => {
+      const { createInMemoryDocumentStore } = await import("./documents.service.helpers");
+      const store = createInMemoryDocumentStore();
+      const service = createDocumentService({
+        repository: store.repository,
+        detailRepository: store.detailRepository,
+        queue: createMockQueue(),
+      });
+      const app = createApp({
+        logger: testLogger,
+        version: "0.1.0",
+        readinessChecks: [],
+        tokenVerifier: testTokenVerifier,
+        documentService: service,
+        enableUploadRoute: true,
+      });
+
+      const pdfBytes = createPdf("archived-and-reupload-content");
+      const contentHash = computeSha256(pdfBytes);
+      const makePdfForm = (filename: string): FormData => {
+        const formData = new FormData();
+        formData.append(
+          "files",
+          new Blob([new Uint8Array(pdfBytes)], { type: "application/pdf" }),
+          filename,
+        );
+        return formData;
+      };
+
+      // 1. Upload initial document as member_team
+      const firstUpload = await app.request("/api/v1/documents/upload", {
+        method: "POST",
+        headers: MEMBER_AUTH,
+        body: makePdfForm("original.pdf"),
+      });
+      expect(firstUpload.status).toBe(200);
+
+      // Verify active document is detected as duplicate
+      const activeCheck = await app.request("/api/v1/documents/check-duplicate", {
+        method: "POST",
+        headers: { ...MEMBER_AUTH, "content-type": "application/json" },
+        body: JSON.stringify({ contentHash }),
+      });
+      expect(activeCheck.status).toBe(200);
+      const activeParsed = checkDuplicateSuccessResponseSchema.parse(await activeCheck.json());
+      expect(activeParsed.data.isDuplicate).toBe(true);
+      const firstDocId = activeParsed.data.existingDocumentId;
+      expect(firstDocId).toBeDefined();
+      if (!firstDocId) throw new Error("Expected firstDocId");
+
+      // 2. Archive the document: check-duplicate must NOT leak existingDocumentId to member_team or head_of_team
+      store.archiveDocument(firstDocId, new Date("2026-11-04T03:00:00.000Z"));
+
+      for (const authHeader of [MEMBER_AUTH, HEAD_AUTH]) {
+        const archivedCheck = await app.request("/api/v1/documents/check-duplicate", {
+          method: "POST",
+          headers: { ...authHeader, "content-type": "application/json" },
+          body: JSON.stringify({ contentHash }),
+        });
+        expect(archivedCheck.status).toBe(200);
+        const archivedParsed = checkDuplicateSuccessResponseSchema.parse(
+          await archivedCheck.json(),
+        );
+        expect(archivedParsed.data.isDuplicate).toBe(false);
+        expect(archivedParsed.data.existingDocumentId).toBeUndefined();
+      }
+
+      // 3. Re-uploading the same content while archived succeeds and rebinds the hash to the new active document
+      const secondUpload = await app.request("/api/v1/documents/upload", {
+        method: "POST",
+        headers: MEMBER_AUTH,
+        body: makePdfForm("reuploaded.pdf"),
+      });
+      expect(secondUpload.status).toBe(200);
+
+      const reuploadCheck = await app.request("/api/v1/documents/check-duplicate", {
+        method: "POST",
+        headers: { ...HEAD_AUTH, "content-type": "application/json" },
+        body: JSON.stringify({ contentHash }),
+      });
+      expect(reuploadCheck.status).toBe(200);
+      const reuploadParsed = checkDuplicateSuccessResponseSchema.parse(await reuploadCheck.json());
+      expect(reuploadParsed.data.isDuplicate).toBe(true);
+      const secondDocId = reuploadParsed.data.existingDocumentId;
+      expect(secondDocId).toBeDefined();
+      expect(secondDocId).not.toBe(firstDocId);
+      if (!secondDocId) throw new Error("Expected secondDocId");
+
+      // 4. Soft-delete the second document: check-duplicate returns false and re-upload succeeds again
+      store.softDeleteDocument(secondDocId, new Date("2026-11-05T03:00:00.000Z"));
+
+      for (const authHeader of [MEMBER_AUTH, HEAD_AUTH]) {
+        const deletedCheck = await app.request("/api/v1/documents/check-duplicate", {
+          method: "POST",
+          headers: { ...authHeader, "content-type": "application/json" },
+          body: JSON.stringify({ contentHash }),
+        });
+        expect(deletedCheck.status).toBe(200);
+        const deletedParsed = checkDuplicateSuccessResponseSchema.parse(await deletedCheck.json());
+        expect(deletedParsed.data.isDuplicate).toBe(false);
+        expect(deletedParsed.data.existingDocumentId).toBeUndefined();
+      }
+
+      const thirdUpload = await app.request("/api/v1/documents/upload", {
+        method: "POST",
+        headers: MEMBER_AUTH,
+        body: makePdfForm("reuploaded-after-delete.pdf"),
+      });
+      expect(thirdUpload.status).toBe(200);
     });
   });
 });

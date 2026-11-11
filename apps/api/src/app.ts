@@ -19,6 +19,16 @@ import { createSearchRoutes } from "./modules/search/search.routes";
 import type { SearchService } from "./modules/search/search.service";
 import { createCategoriesRoutes } from "./modules/categories/categories.routes";
 import type { CategoriesService } from "./modules/categories/categories.service";
+import { createAuditRoutes } from "./modules/audit/audit.routes";
+import type { IAuditService } from "./modules/audit/audit.service";
+import { createAnalyticsRoutes } from "./modules/analytics/analytics.routes";
+import type { AnalyticsService } from "./modules/analytics/analytics.service";
+import { createPermissionCategoriesRoutes } from "./modules/permission-categories/permission-categories.routes";
+import type { IPermissionCategoriesService } from "./modules/permission-categories/permission-categories.service";
+import { createAdminRoutes } from "./modules/admin/admin.routes";
+import type { AdminService } from "./modules/admin/admin.service";
+import type { AdminAccountService } from "./modules/admin/admin.accounts.service";
+import type { AdminDocumentService } from "./modules/admin/admin.documents.service";
 
 export type AppDependencies = {
   logger: Logger;
@@ -30,6 +40,12 @@ export type AppDependencies = {
   topTagsService?: TopTagsService | undefined;
   searchService?: SearchService | undefined;
   categoriesService?: CategoriesService | undefined;
+  auditService?: IAuditService | undefined;
+  analyticsService?: AnalyticsService | undefined;
+  permissionCategoriesService?: IPermissionCategoriesService | undefined;
+  adminService?: AdminService | undefined;
+  adminAccountService?: AdminAccountService | undefined;
+  adminDocumentService?: AdminDocumentService | undefined;
   enableUploadRoute?: boolean | undefined;
   // The one browser origin allowed to call the API with credentials. Outside production it defaults to the
   // local Web dev server.
@@ -117,6 +133,52 @@ export function createApp(dependencies: AppDependencies): Hono<ApiEnvironment> {
       createCategoriesRoutes({
         tokenVerifier,
         categoriesService: dependencies.categoriesService,
+      }),
+    );
+  }
+
+  if (dependencies.auditService) {
+    app.route(
+      "/api/v1/audit",
+      createAuditRoutes({
+        tokenVerifier,
+        auditService: dependencies.auditService,
+      }),
+    );
+  }
+
+  if (dependencies.analyticsService) {
+    app.route(
+      "/api/v1/analytics",
+      createAnalyticsRoutes({
+        tokenVerifier,
+        analyticsService: dependencies.analyticsService,
+      }),
+    );
+  }
+
+  if (dependencies.permissionCategoriesService) {
+    app.route(
+      "/api/v1/permission-categories",
+      createPermissionCategoriesRoutes({
+        tokenVerifier,
+        permissionCategoriesService: dependencies.permissionCategoriesService,
+      }),
+    );
+  }
+
+  if (
+    dependencies.adminService ||
+    dependencies.adminAccountService ||
+    dependencies.adminDocumentService
+  ) {
+    app.route(
+      "/api/v1/admin",
+      createAdminRoutes({
+        tokenVerifier,
+        adminService: dependencies.adminService,
+        adminAccountService: dependencies.adminAccountService,
+        adminDocumentService: dependencies.adminDocumentService,
       }),
     );
   }

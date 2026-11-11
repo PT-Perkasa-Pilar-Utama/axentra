@@ -10,10 +10,26 @@
 > in `docs/DEVELOPMENT_SCENARIO_GUIDE.md`, `docs/E2E_TESTING.md`, and
 > `docs/TROUBLESHOOTING_GUIDE.md`.
 
+## Latest Decisions: Read Before Any Card
+
+Decisions live in the docs, not only in chat. Before you start a card, read the decision records for
+its area, including dated entries newer than the card text:
+
+- Sprint 4 Admin: [docs/proposals/admin-role-proposal.md](docs/proposals/admin-role-proposal.md),
+  section "Keputusan yang sudah diambil" (dated 2026-10-29 to 2026-11-04). Then read
+  [docs/api-specs/09-admin.md](docs/api-specs/09-admin.md) (Open Decisions and Admin Document Access)
+  and [docs/business/textual-design-admin.md](docs/business/textual-design-admin.md).
+- Shell and role menu: [docs/technical-specs/13-app-shell.md](docs/technical-specs/13-app-shell.md).
+- Sprint 4 status and PIC: [docs/TASK_BREAKDOWN.md](docs/TASK_BREAKDOWN.md), section "Sprint 4: Admin".
+
+When a decision changes, update in the same change: the decision section of the proposal, the matching
+row in Open Decisions, and the card in `TASK_BREAKDOWN.md`. If two documents disagree, report the
+conflict and cite both dates. Do not pick one silently.
+
 ## Project Overview
 
 **Axentra** is an internal Document Management System (DMS). The repository currently delivers
-**Foundation v1.0.0**: engineering infrastructure and a platform-status surface. The BA flows
+**Foundation v1.1.0**: engineering infrastructure and a platform-status surface. The BA flows
 US-01 through US-13 are documented and planned; they are not implemented unless an assigned sprint
 card explicitly brings them into scope.
 
@@ -46,6 +62,8 @@ This is an internal delivery team. There is no separate PM or dedicated QA role.
 4. Do not fake persistence, authorization, processing, or audit behavior in the Web UI.
 5. The `QA-...` card prefix means acceptance-verification work, and its PIC is Arya Isnaidi. It does
    not imply a dedicated QA team.
+6. Sprint 4 Admin exception: DB-S4-01, BE-S4-06, and BE-S4-08 are assigned to Arya Isnaidi by Tech Lead
+   decision (FND-12, 2026-10-30; kept 2026-11-04). The Backend row above still applies to every other card.
 
 ## Local Skills and Commands
 
@@ -140,7 +158,7 @@ axentra/
   endpoints, requirements, or third-party provider behavior.
 - OCR/AI and hosted infrastructure integrations remain behind an internal interface until an
   approved provider and card exist.
-- Foundation v1.0.0 contains no business tables or partial mock business workflows.
+- Foundation v1.1.0 contains no business tables or partial mock business workflows.
 
 ### Code Quality
 
@@ -321,10 +339,12 @@ observed result). See [docs/E2E_TESTING.md](docs/E2E_TESTING.md).
 If context is compacted, re-confirm:
 
 - [ ] This is **Axentra**, not another project; use Hono API + React/Vite Web + BullMQ Worker.
-- [ ] Foundation v1.0.0 is infrastructure-first. Do not quietly implement unassigned BA features.
+- [ ] Foundation v1.1.0 is infrastructure-first. Do not quietly implement unassigned BA features.
 - [ ] The authoritative contract is in `docs/`, not an assumed UI, endpoint, role, or schema.
 - [ ] Team allocation is Arya/Sami for Backend and Azis/Aiman for Frontend; no separate PM or QA.
 - [ ] Each card has a PIC; acceptance verification is evidence by the PIC and sign-off by Arya.
 - [ ] Authorization, download permission, audit behavior, and persistence must exist server-side.
 - [ ] Use Bun commands and the repository's `bun run` scripts.
 - [ ] Run the relevant verification before making a completion claim.
+- [ ] Before any Sprint 4 Admin card: Admin sees document metadata only and must not preview or download document content (decided 2026-11-04, PROP-ADM-AC-05.02). Target behavior: `dev` still allows `admin` on the preview and download routes until BE-S4-08 ships.
+- [ ] Sprint 4 PIC: DB-S4-01, BE-S4-06, and BE-S4-08 are Arya's (FND-12, kept 2026-11-04), an exception to the Backend row in the Team table. Check `TASK_BREAKDOWN.md` before assigning.

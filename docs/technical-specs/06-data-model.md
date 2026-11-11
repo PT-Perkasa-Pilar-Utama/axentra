@@ -11,16 +11,16 @@ packages/db/src/schema/index.ts
 
 ## Implemented Database Boundary
 
-| Concern           | Status      | Description                                                                                |
-| ----------------- | ----------- | ------------------------------------------------------------------------------------------ |
-| PostgreSQL client | Implemented | `postgres` connection pool via `createDatabaseClient`                                      |
-| Drizzle boundary  | Implemented | Type-safe schema definitions and relation mappings in `@axentra/db`                        |
-| Migration runner  | Implemented | Standalone runner in `src/migrate.ts` executing committed SQL                              |
-| Health check      | Implemented | Ping query (`SELECT 1`) validating database readiness                                      |
-| Document core     | Implemented | 8 domain tables covering documents, files, metadata, categories, tags (DB-S1-01)           |
-| Identity/Users    | Implemented | `users` table (DB-S1-01) is read by the production authenticator                           |
-| Auth sessions     | Implemented | `auth_sessions`, `auth_rotated_refresh_tokens`, and `auth_login_attempts` (sections 11-13) |
-| Audit trail       | Implemented | `download_audit_events` schema and migration added (BE-S3-02)                              |
+| Concern           | Status      | Description                                                                                                                                                                                         |
+| ----------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PostgreSQL client | Implemented | `postgres` connection pool via `createDatabaseClient`                                                                                                                                               |
+| Drizzle boundary  | Implemented | Type-safe schema definitions and relation mappings in `@axentra/db`                                                                                                                                 |
+| Migration runner  | Implemented | Standalone runner in `src/migrate.ts` executing committed SQL                                                                                                                                       |
+| Health check      | Implemented | Ping query (`SELECT 1`) validating database readiness                                                                                                                                               |
+| Document core     | Implemented | 8 domain tables covering documents, files, metadata, categories, tags (DB-S1-01)                                                                                                                    |
+| Identity/Users    | Implemented | `users` table (DB-S1-01) is read by the production authenticator                                                                                                                                    |
+| Auth sessions     | Implemented | `auth_sessions`, `auth_rotated_refresh_tokens`, and `auth_login_attempts` (sections 11-13)                                                                                                          |
+| Audit trail       | Implemented | `download_audit_events`, `category_permission_audit_events`, `account_status_audit_events`, and `admin_document_audit_events` schemas and migrations added (BE-S3-02, BE-S4-04, BE-S4-06, BE-S4-07) |
 
 ## Table Conventions
 
@@ -52,24 +52,37 @@ documents (1) <--- (1)    document_files
 
 The central business record for an uploaded document.
 
-| Column                         | Type                | Constraints                              | Description                                                                                                                                                    |
-| ------------------------------ | ------------------- | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `id`                           | `uuid`              | Primary Key, default random              | Document identifier                                                                                                                                            |
-| `title`                        | `text`              | NOT NULL                                 | Document title (defaults to filename on upload)                                                                                                                |
-| `category_id`                  | `uuid`              | FK -> `categories.id` ON DELETE SET NULL | Assigned category (null if uncategorized)                                                                                                                      |
-| `processing_status`            | `processing_status` | NOT NULL, DEFAULT `'queued'`             | Current processing status                                                                                                                                      |
-| `error_message`                | `text`              | Nullable                                 | Error message if processing fails                                                                                                                              |
-| `processing_recovery_attempts` | `integer`           | NOT NULL, DEFAULT `0`                    | Recovery attempts counted for this document. After `MAX_PROCESSING_RECOVERY_ATTEMPTS` (3), the document is marked `failed` (see `api-specs/04-processing.md`). |
-| `created_at`                   | `timestamptz`       | NOT NULL, default now()                  | Creation timestamp                                                                                                                                             |
-| `updated_at`                   | `timestamptz`       | NOT NULL, default now()                  | Last modification timestamp                                                                                                                                    |
-| `deleted_at`                   | `timestamptz`       | Nullable                                 | Soft-delete timestamp (null when active)                                                                                                                       |
+| Column                         | Type                | Constraints                                   | Description                                                                                                                                                                                                                                      |
+| ------------------------------ | ------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `id`                           | `uuid`              | Primary Key, default random                   | Document identifier                                                                                                                                                                                                                              |
+| `title`                        | `text`              | NOT NULL                                      | Document title (defaults to filename on upload)                                                                                                                                                                                                  |
+| `category_id`                  | `uuid`              | FK -> `categories.id` ON DELETE SET NULL      | Assigned category (null if uncategorized)                                                                                                                                                                                                        |
+| `processing_status`            | `processing_status` | NOT NULL, DEFAULT `'queued'`                  | Current processing status                                                                                                                                                                                                                        |
+| `error_message`                | `text`              | Nullable                                      | Error message if processing fails                                                                                                                                                                                                                |
+| `processing_recovery_attempts` | `integer`           | NOT NULL, DEFAULT `0`                         | Recovery attempts counted for this document. After `MAX_PROCESSING_RECOVERY_ATTEMPTS` (3), the document is marked `failed` (see `api-specs/04-processing.md`).                                                                                   |
+| `created_at`                   | `timestamptz`       | NOT NULL, default now()                       | Creation timestamp                                                                                                                                                                                                                               |
+| `updated_at`                   | `timestamptz`       | NOT NULL, default now()                       | Last modification timestamp                                                                                                                                                                                                                      |
+| `deleted_at`                   | `timestamptz`       | Nullable                                      | Soft-delete timestamp (null when active)                                                                                                                                                                                                         |
+| `uploaded_by`                  | `uuid`              | Nullable, FK -> `users.id` ON DELETE SET NULL | Uploader (DB-S4-01). The upload handler sets it from the authenticated user on every new document. Legacy rows stay `null`; see the backfill rule below.                                                                                         |
+| `archived_at`                  | `timestamptz`       | Nullable                                      | Archive timestamp (DB-S4-01; set and cleared by BE-S4-07). Null when not archived. Archived documents are hidden from Member Team and Head of Team (see [03-documents.md](../api-specs/03-documents.md#archived-documents-implemented-be-s4-07)) |
 
 **Indexes:**
 
 - `documents_processing_status_idx` on `(processing_status)`
 - `documents_category_id_idx` on `(category_id)`
 - `documents_created_at_idx` on `(created_at)`
+- `documents_uploaded_by_idx` on `(uploaded_by)`. PostgreSQL does not index referencing columns, so this index keeps the `ON DELETE SET NULL` action on `users` from scanning `documents`. It is not used for an owner filter: the Admin list contract has no such filter (see [09-admin.md](../api-specs/09-admin.md)).
 - `documents_title_trgm_idx` GIN on `(title gin_trgm_ops)` for substring search acceleration (BE-S2-05)
+
+No index covers `archived_at`. The archive filter is applied to the `created_at`-ordered list, the same way `deleted_at` is filtered today. Add an index only if BE-S4-07 measurements show it is needed.
+
+**Backfill rule (O8, decided by Tech Lead on 2026-11-05), applied by migration `0006_add_account_status_and_document_ownership`:**
+
+- `users.status`: the column is added as `NOT NULL DEFAULT 'active'`. PostgreSQL gives every existing user `active`, so no separate backfill runs.
+- `documents.uploaded_by`: documents that already exist stay `NULL`. No uploader was recorded for them, and `download_audit_events` records downloads, not uploads, so it cannot identify an owner. Do not guess an owner. The Admin UI shows these rows as "Tidak diketahui" (O8 in [09-admin.md](../api-specs/09-admin.md), decided by Tech Lead on 2026-11-05).
+- `documents.archived_at`: every row starts `NULL` before BE-S4-07; set and cleared by the Admin archive and unarchive endpoints in BE-S4-07.
+
+**Operational impact of migration 0006:** the foreign key on `documents.uploaded_by` and the CHECK on `users` validate existing rows, and the foreign key takes `SHARE ROW EXCLUSIVE` on `documents` and `users` while it runs. The index on `documents.uploaded_by` is built without `CONCURRENTLY` and blocks writes to `documents` for the duration of the build. Drizzle runs all statements of a pending migration in one transaction, so these locks last until the whole migration commits. The migration is sized for the current table volumes; measure the build time on a production-sized copy before a large deployment.
 
 #### 2. `document_files`
 
@@ -206,19 +219,24 @@ Many-to-many association between documents and Smart Tags.
 
 The identity persistence table storing user credentials and role assignments.
 
-| Column          | Type          | Constraints                 | Description                                        |
-| --------------- | ------------- | --------------------------- | -------------------------------------------------- |
-| `id`            | `uuid`        | Primary Key, default random | Unique user identifier                             |
-| `email`         | `text`        | NOT NULL                    | Unique user email address                          |
-| `name`          | `text`        | Nullable                    | Display name (defaults to email if unprovided)     |
-| `password_hash` | `text`        | NOT NULL                    | Argon2id password hash                             |
-| `role`          | `user_role`   | NOT NULL                    | User role (`member_team`, `head_of_team`, `admin`) |
-| `created_at`    | `timestamptz` | NOT NULL, default now()     | Record creation timestamp                          |
-| `updated_at`    | `timestamptz` | NOT NULL, default now()     | Last update timestamp                              |
+| Column          | Type          | Constraints                                                | Description                                                                                                                      |
+| --------------- | ------------- | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `id`            | `uuid`        | Primary Key, default random                                | Unique user identifier                                                                                                           |
+| `email`         | `text`        | NOT NULL                                                   | Unique user email address                                                                                                        |
+| `name`          | `text`        | Nullable                                                   | Display name (defaults to email if unprovided)                                                                                   |
+| `password_hash` | `text`        | NOT NULL                                                   | Argon2id password hash                                                                                                           |
+| `role`          | `user_role`   | NOT NULL                                                   | User role (`member_team`, `head_of_team`, `admin`)                                                                               |
+| `created_at`    | `timestamptz` | NOT NULL, default now()                                    | Record creation timestamp                                                                                                        |
+| `updated_at`    | `timestamptz` | NOT NULL, default now()                                    | Last update timestamp                                                                                                            |
+| `status`        | `text`        | NOT NULL, DEFAULT `'active'`, CHECK `active` or `inactive` | Account status (DB-S4-01). Inactive accounts are rejected at login (BE-S4-06) (see [09-authentication.md](09-authentication.md)) |
 
 **Indexes:**
 
 - `users_email_unique_idx` UNIQUE on `(email)`
+
+**Check constraints:**
+
+- `users_status_check` CHECK `status IN ('active', 'inactive')`
 
 #### 10. `download_audit_events`
 
@@ -308,7 +326,84 @@ attempt in the window sets `locked_until` 15 minutes ahead. A successful login d
 
 - `auth_login_attempts_email_hash_unique_idx` UNIQUE on `(email_hash)` (conflict target of the attempt upsert)
 
+#### 14. `category_permission_audit_events`
+
+Point-in-time facts recording mutations to category download permissions (`AC-13.01`, `BE-S4-04`).
+Created by migration `packages/db/drizzle/0005_add_category_permission_audit_events.sql`.
+
+| Column                      | Type          | Constraints                              | Description                                      |
+| --------------------------- | ------------- | ---------------------------------------- | ------------------------------------------------ |
+| `id`                        | `uuid`        | Primary Key, default random              | Unique event identifier                          |
+| `category_id`               | `uuid`        | Nullable, FK -> `categories.id` SET NULL | Mutated category identifier                      |
+| `category_name`             | `text`        | NOT NULL                                 | Category display name snapshot                   |
+| `user_id`                   | `uuid`        | Nullable, FK -> `users.id` SET NULL      | User identifier who performed the toggle         |
+| `user_name`                 | `text`        | Nullable                                 | User display name snapshot                       |
+| `user_email`                | `text`        | Nullable                                 | User email address snapshot                      |
+| `previous_download_enabled` | `boolean`     | Nullable                                 | Previous download permission state (null if new) |
+| `new_download_enabled`      | `boolean`     | NOT NULL                                 | New download permission state                    |
+| `changed_at`                | `timestamptz` | NOT NULL, default now()                  | Mutation timestamp                               |
+
+**Indexes:**
+
+- `category_permission_audit_events_category_id_idx` on `(category_id)`
+- `category_permission_audit_events_user_id_idx` on `(user_id)`
+- `category_permission_audit_events_changed_at_idx` on `(changed_at)`
+
 ---
+
+#### 15. `account_status_audit_events`
+
+Created by migration `packages/db/drizzle/0007_add_account_status_audit_events.sql`.
+
+Point-in-time record of an Admin changing a Member Team or Head of Team account status (BE-S4-06, O5 decided 2026-11-06). It is written in the same transaction as the status change. The application never updates or deletes these rows.
+
+| Column            | Type          | Constraints                                   | Description                                         |
+| ----------------- | ------------- | --------------------------------------------- | --------------------------------------------------- |
+| `id`              | `uuid`        | Primary Key, default random                   | Event identifier                                    |
+| `user_id`         | `uuid`        | Nullable, FK -> `users.id` ON DELETE SET NULL | Affected account; null after the account is deleted |
+| `user_name`       | `text`        | Nullable                                      | Account name at the time of the change              |
+| `user_email`      | `text`        | Nullable                                      | Account email at the time of the change             |
+| `previous_status` | `text`        | NOT NULL, CHECK `active` or `inactive`        | Status before the change                            |
+| `new_status`      | `text`        | NOT NULL, CHECK `active` or `inactive`        | Status after the change                             |
+| `actor_user_id`   | `uuid`        | Nullable, FK -> `users.id` ON DELETE SET NULL | Admin who made the change                           |
+| `actor_name`      | `text`        | Nullable                                      | Admin name at the time of the change                |
+| `actor_email`     | `text`        | Nullable                                      | Admin email at the time of the change               |
+| `changed_at`      | `timestamptz` | NOT NULL, default now()                       | Change timestamp                                    |
+
+**Indexes:**
+
+- `account_status_audit_events_user_id_idx` on `(user_id)`
+- `account_status_audit_events_actor_user_id_idx` on `(actor_user_id)`
+- `account_status_audit_events_changed_at_idx` on `(changed_at)`
+
+---
+
+#### 16. `admin_document_audit_events`
+
+Created by migration `packages/db/drizzle/0008_add_admin_document_audit_events.sql`.
+
+Point-in-time record of an Admin archiving, unarchiving, or soft-deleting a document (BE-S4-07, O5 decided 2026-11-06). Written in the same transaction as the `documents` mutation. The application never updates or deletes these rows.
+
+| Column          | Type          | Constraints                                         | Description                                              |
+| --------------- | ------------- | --------------------------------------------------- | -------------------------------------------------------- |
+| `id`            | `uuid`        | Primary Key, default random                         | Event identifier                                         |
+| `document_id`   | `uuid`        | Nullable, FK -> `documents.id` ON DELETE SET NULL   | Affected document; null if the document is hard-deleted  |
+| `document_name` | `text`        | NOT NULL                                            | Document title snapshot at the time of the mutation      |
+| `action`        | `text`        | NOT NULL, CHECK `archive`, `unarchive`, or `delete` | Admin document mutation performed                        |
+| `actor_user_id` | `uuid`        | Nullable, FK -> `users.id` ON DELETE SET NULL       | Admin who performed the mutation                         |
+| `actor_name`    | `text`        | Nullable                                            | Admin display name snapshot at the time of the mutation  |
+| `actor_email`   | `text`        | Nullable                                            | Admin email address snapshot at the time of the mutation |
+| `changed_at`    | `timestamptz` | NOT NULL, default now()                             | Mutation timestamp                                       |
+
+**Indexes:**
+
+- `admin_document_audit_events_document_id_idx` on `(document_id)`
+- `admin_document_audit_events_actor_user_id_idx` on `(actor_user_id)`
+- `admin_document_audit_events_changed_at_idx` on `(changed_at)`
+
+**Check constraints:**
+
+- `admin_document_audit_events_action_check` CHECK `action IN ('archive', 'unarchive', 'delete')`
 
 ## Status Vocabularies
 
@@ -322,6 +417,15 @@ Persisted PostgreSQL enum and shared contract:
 | `processing` | Worker has picked up the job and is extracting metadata, tags, category.                               |
 | `completed`  | Terminal success; metadata, files, tags, and category are persisted.                                   |
 | `failed`     | Processing or enqueue failed (`error_message` set). Enqueue failure remains recoverable by the worker. |
+
+### Account Status (`users.status`)
+
+Stored as `text` with the CHECK constraint `users_status_check`, not as a PostgreSQL enum. The TypeScript literal union in `packages/db/src/schema/users.ts` and the CHECK values must match; `account-ownership.constraints.test.ts` asserts this.
+
+| Status     | Meaning                                                           |
+| ---------- | ----------------------------------------------------------------- |
+| `active`   | Default for every account. The account can sign in.               |
+| `inactive` | Set by Admin (BE-S4-06). The account must not be able to sign in. |
 
 ### User Role Enum (`user_role`)
 
@@ -338,6 +442,7 @@ Persisted PostgreSQL enum and shared contract:
 ## Deletion and Cascade Policy
 
 - **Soft Delete on Documents:** `documents.deleted_at` tracks soft deletion. Queries filter by `deleted_at IS NULL`.
+- **Archive on Documents (column from DB-S4-01, implemented in BE-S4-07):** `documents.archived_at` marks an archived document. It is not a delete. Member Team and Head of Team queries filter by `archived_at IS NULL`, while Admin lists and detail routes include archived documents.
 - **Hard Cascade:** If a `documents` row is deleted, foreign keys with `ON DELETE CASCADE` automatically clean up:
   - `document_files`
   - `document_content_hashes`

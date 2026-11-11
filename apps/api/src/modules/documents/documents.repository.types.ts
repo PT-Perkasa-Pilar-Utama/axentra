@@ -4,6 +4,7 @@ import type { PaginationMeta, RecentDocument, RelatedDocument } from "@axentra/s
 export type CreateDocumentBatchItem = {
   id: string;
   title: string;
+  uploadedBy: string;
   storageKey: string;
   originalName: string;
   mimeType: string;

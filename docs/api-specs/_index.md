@@ -71,21 +71,38 @@ OK GET /categories
 ### Analytics (Sprint 4)
 
 ```text
-PLANNED GET /analytics/summary
+OK GET /analytics/summary
 ```
 
 ### Audit (Sprint 4)
 
 ```text
-PLANNED GET /audit/downloads
+OK      GET /audit/downloads
 ```
 
 ### Permission Category (Sprint 4)
 
 ```text
-PLANNED GET   /permission-categories
-PLANNED PATCH /permission-categories/:categoryId
+OK      GET   /permission-categories
+OK      PATCH /permission-categories/:categoryId
 ```
+
+### Admin (Sprint 4)
+
+Source: `docs/proposals/admin-role-proposal.md` (PROP-ADM-01, 02, 03, and 05). Details and open decisions are in [09-admin.md](09-admin.md).
+
+```text
+OK      GET    /admin/summary
+OK      GET    /admin/users
+OK      PATCH  /admin/users/:id/status
+OK      GET    /admin/documents
+OK      GET    /admin/documents/:id
+OK      POST   /admin/documents/:id/archive
+OK      POST   /admin/documents/:id/unarchive
+OK      DELETE /admin/documents/:id
+```
+
+`GET /audit/downloads` also accepts role `admin` (`BE-S4-08`), and the preview and download routes no longer accept it. The second change was decided on 2026-11-04 (proposal questions 7 and 9).
 
 ## Documents
 
@@ -99,3 +116,4 @@ PLANNED PATCH /permission-categories/:categoryId
 | [06-analytics.md](06-analytics.md)                           | Head of Team analytics                                         |
 | [07-audit-permissions.md](07-audit-permissions.md)           | Download audit trail and category download permission          |
 | [08-system.md](08-system.md)                                 | Implemented health and readiness endpoints                     |
+| [09-admin.md](09-admin.md)                                   | Admin summary, account management, and document management     |

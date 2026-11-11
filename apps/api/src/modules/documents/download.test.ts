@@ -17,6 +17,7 @@ const DISABLED_CAT_DOC_ID = "44444444-4444-4444-8444-444444444444";
 const ENABLED_CAT_DOC_ID = "55555555-5555-4555-8555-555555555555";
 const DELETED_DOC_ID = "66666666-6666-4666-8666-666666666666";
 const NON_ASCII_DOC_ID = "77777777-7777-4777-8777-777777777777";
+const ARCHIVED_DOC_ID = "88888888-8888-4888-8888-888888888888";
 
 const testLogger = createLogger({
   service: "axentra-api",
@@ -206,6 +207,29 @@ function createSetup(storage?: StorageAdapter) {
     },
   });
 
+  // 7. Archived doc (BE-S4-07)
+  downloadRepo.setTarget(ARCHIVED_DOC_ID, {
+    document: {
+      id: ARCHIVED_DOC_ID,
+      title: "Dokumen Diarsipkan",
+      categoryId: "cat-reporting-1",
+      processingStatus: "completed",
+      deletedAt: null,
+      archivedAt: new Date("2026-11-04T03:00:00.000Z"),
+    },
+    file: {
+      id: "file-7",
+      storageKey: "storage/laporan.pdf",
+      originalName: "archived.pdf",
+      mimeType: "application/pdf",
+      fileSize: samplePdfBytes.byteLength,
+      fileExtension: "pdf",
+    },
+    categoryPermission: {
+      downloadEnabled: true,
+    },
+  });
+
   const documentService = createDocumentService({
     downloadRepository: downloadRepo,
     storage: mockStorage,
@@ -313,6 +337,24 @@ describe("GET /api/v1/documents/:id/download — BE-S3-02", () => {
       expect(downloadRepo.getRecordedAuditEvents().length).toBe(0);
     });
 
+    test("returns 404 when document is archived for member_team and head_of_team in both signed URL and stream modes (BE-S4-07, PROP-ADM-AC-03.03)", async () => {
+      const { app, downloadRepo } = createSetup();
+
+      for (const token of ["member-token", "head-token"]) {
+        for (const query of ["", "?stream=true"]) {
+          const response = await app.request(
+            `/api/v1/documents/${ARCHIVED_DOC_ID}/download${query}`,
+            { headers: { authorization: `Bearer ${token}` } },
+          );
+          expect(response.status).toBe(404);
+          const body = apiErrorSchema.parse(await response.json());
+          expect(body.error.code).toBe("NOT_FOUND");
+          expect(body.error.message).toBe("Dokumen tidak ditemukan");
+        }
+      }
+      expect(downloadRepo.getRecordedAuditEvents().length).toBe(0);
+    });
+
     test("returns 404 when document has no stored file record", async () => {
       const { app, downloadRepo } = createSetup();
       const response = await app.request(`/api/v1/documents/${NO_FILE_DOC_ID}/download`, {
@@ -391,20 +433,32 @@ describe("GET /api/v1/documents/:id/download — BE-S3-02", () => {
       expect(auditEvents[0]?.documentId).toBe(DISABLED_CAT_DOC_ID);
     });
 
-    test("allows admin to download even if category download permission is disabled", async () => {
+    test("rejects admin with 403 and writes no audit event (BE-S4-08, PROP-ADM-AC-05.02)", async () => {
       const { app, downloadRepo } = createSetup();
       const response = await app.request(`/api/v1/documents/${DISABLED_CAT_DOC_ID}/download`, {
         headers: { authorization: "Bearer admin-token" },
       });
 
-      expect(response.status).toBe(200);
-      const body = downloadDocumentSuccessResponseSchema.parse(await response.json());
-      expect(body.data.filename).toBe("rahasia.pdf");
+      expect(response.status).toBe(403);
+      const body = apiErrorSchema.parse(await response.json());
+      expect(body.error.code).toBe("FORBIDDEN");
+      expect(body.error.message).toBe("Anda tidak memiliki akses untuk tindakan ini");
+      expect(downloadRepo.getRecordedAuditEvents().length).toBe(0);
+    });
 
-      const auditEvents = downloadRepo.getRecordedAuditEvents();
-      expect(auditEvents.length).toBe(1);
-      expect(auditEvents[0]?.userId).toBe("usr-admin-1");
-      expect(auditEvents[0]?.userName).toBe("Admin User");
+    test("rejects admin with 403 even when the document does not exist (BE-S4-08)", async () => {
+      const { app, downloadRepo } = createSetup();
+      const response = await app.request(
+        `/api/v1/documents/99999999-9999-4999-8999-999999999999/download`,
+        { headers: { authorization: "Bearer admin-token" } },
+      );
+
+      // The role check runs before any document lookup, so the response does
+      // not reveal whether the document exists.
+      expect(response.status).toBe(403);
+      const body = apiErrorSchema.parse(await response.json());
+      expect(body.error.code).toBe("FORBIDDEN");
+      expect(downloadRepo.getRecordedAuditEvents().length).toBe(0);
     });
   });
 

@@ -23,6 +23,7 @@ implemented platform boundary and the planned shape for future DMS modules.
 10. [Integration Points](10-integration-points.md)
 11. [Environment Configuration](11-environment-configuration.md)
 12. [Autocomplete Strategy](12-autocomplete-strategy.md)
+13. [App Shell](13-app-shell.md)
 
 ## Companion Documents
 

@@ -2,7 +2,7 @@
 
 Source: BA user stories US-01, US-02, US-03, US-07, US-08, US-09, US-10.
 
-Status: every route below is implemented on `dev` (Sprint 1-3). Foundation v1.0.0 contains only the health endpoints (`/api/v1/health` and `/api/v1/health/ready`); see [README.md](../../README.md).
+Status: every route below is implemented on `dev` (Sprint 1-3). Foundation v1.1.0 contains only the health endpoints (`/api/v1/health` and `/api/v1/health/ready`); see [README.md](../../README.md).
 
 ## Endpoints
 
@@ -21,13 +21,21 @@ GET  /api/v1/documents/:id/download       Implemented (BE-S3-02)
 POST /api/v1/documents/bulk-download      Implemented (BE-S3-03)
 ```
 
+## Archived Documents (Implemented, BE-S4-07)
+
+An archived document has `documents.archived_at` set (see [06-data-model.md](../technical-specs/06-data-model.md)). Archiving is an Admin action defined in [09-admin.md](09-admin.md).
+
+- For `member_team` and `head_of_team`, every route in this file treats an archived document as soft-deleted: it is omitted from lists and search, and direct access returns `404 NOT_FOUND`. This is the proposed default (see O6 in [09-admin.md](09-admin.md)).
+- `admin` does not use these routes for lists or detail. Admin reads documents through `/api/v1/admin/documents`.
+- Decided 2026-11-04 (proposal questions 7 and 9) and implemented by `BE-S4-08`: `admin` is removed from the preview, preview content, download, and bulk-download routes in this file. See [Admin Document Access](09-admin.md#admin-document-access).
+
 ## Recent Document List
 
 ### `GET /api/v1/documents`
 
 Status: Implemented (BE-S1-06).
 
-Returns documents that have a stored file, newest `created_at` first. Soft-deleted documents are omitted. Supports single-tag and multi-tag filtering (AND logic per AC-04.03, AC-04.04).
+Returns documents that have a stored file, newest `created_at` first. Soft-deleted documents are omitted. Archived documents are omitted for `member_team` and `head_of_team` (see [Archived Documents](#archived-documents-implemented-be-s4-07)). Supports single-tag and multi-tag filtering (AND logic per AC-04.03, AC-04.04).
 
 **Authorization:**
 
@@ -93,7 +101,7 @@ Status: Implemented (BE-S1-02).
 - Mixing PDF and DOCX in a single batch is rejected (`400 VALIDATION_ERROR`).
 - Maximum file size: 50 MB per file, 50 MB aggregate per request (`413 PAYLOAD_TOO_LARGE`).
 - Non-empty files only (`400 VALIDATION_ERROR`).
-- Content hash duplicate check: rejects duplicate content with `409 DUPLICATE_DOCUMENT` (`"File ini sudah ada"`).
+- Content hash duplicate check: rejects duplicate content against active (`deleted_at IS NULL` and `archived_at IS NULL`) documents with `409 DUPLICATE_DOCUMENT` (`"File ini sudah ada"`). Re-uploading content whose previous document was archived or soft-deleted succeeds and rebinds the `document_content_hashes` row to the new active document (`BE-S4-07`).
 
 **Success Response (`200 OK`):**
 
@@ -146,8 +154,9 @@ Status: Implemented (BE-S1-04).
 Behavior:
 
 - Compare uploaded content, not only filename.
-- Return duplicate warning `File ini sudah ada`.
-- Prevent duplicate file persistence.
+- Return duplicate warning `File ini sudah ada` when an active (`deleted_at IS NULL` and `archived_at IS NULL`) document has the same content hash.
+- Archived (`archived_at IS NOT NULL`) and soft-deleted (`deleted_at IS NOT NULL`) documents are treated as non-duplicate (`isDuplicate: false` without exposing `existingDocumentId`; `BE-S4-07`).
+- Prevent duplicate file persistence against active documents, while rebinding the `document_content_hashes` row to the new active document when re-uploading content that was previously archived or soft-deleted (`BE-S4-07`).
 - Allow non-duplicate uploads even when another document exists.
 
 ## Detail and Metadata
@@ -158,7 +167,7 @@ Status: Implemented. Authorization: `member_team` and `head_of_team`, the same a
 
 **Success Response (`200 OK`):** `data` contains `id`, `title`, `processingStatus`, `category` (or `null`), `tags` (Smart Tags), `file` (`originalName`, `mimeType`, `fileSize`, `fileExtension`, `createdAt`), `metadata` (`author`, `extractedAt`, or `null` when no metadata is stored), `errorMessage`, `canDownload`, `createdAt`, and `updatedAt`.
 
-- `canDownload` is `true` for `head_of_team` and `admin`. For `member_team` it is `true` only when the document's category has download permission enabled (AC-13.01).
+- `canDownload` is `true` for `head_of_team`. `admin` cannot call this route (`403`). `resolveCanDownload` returns `false` for `admin` (`BE-S4-08`; see [09-admin.md](09-admin.md#admin-document-access)). For `member_team` it is `true` only when the document's category has download permission enabled (AC-13.01).
 
 **Error Responses:**
 
@@ -178,7 +187,7 @@ The file bytes are fetched from `GET /api/v1/documents/:id/preview/content`.
 **Authorization:**
 
 - Requires authenticated session (`Bearer <token>`).
-- Allowed roles: `member_team`, `head_of_team`, `admin`.
+- Allowed roles: `member_team`, `head_of_team`. `admin` was removed by `BE-S4-08` (decided 2026-11-04).
 - Preview is not gated by category download permission; that permission controls
   `GET /documents/:id/download` only.
 
@@ -219,7 +228,7 @@ to render or fall back.
 **Authorization:**
 
 - Requires authenticated session (`Bearer <token>`).
-- Allowed roles: `member_team`, `head_of_team`, `admin`.
+- Allowed roles: `member_team`, `head_of_team`. `admin` was removed by `BE-S4-08` (decided 2026-11-04).
 - Same rules as the metadata route: soft-deleted documents and documents without a stored file record
   are not found. Category download permission does not apply.
 
@@ -262,10 +271,10 @@ Downloads original file format when the current user has permission. Supports is
 **Authorization:**
 
 - Requires authenticated session (`Bearer <token>`).
-- Allowed roles: `member_team`, `head_of_team`, `admin`.
+- Allowed roles: `member_team`, `head_of_team`. `admin` was removed by `BE-S4-08` (decided 2026-11-04).
 - **Category Permission Recheck:**
   - `member_team`: Can download only when the document belongs to a category with `download_enabled = true`. Returns `403 FORBIDDEN` if uncategorized or permission is disabled.
-  - `head_of_team` & `admin`: Download is permitted.
+  - `head_of_team`: Download is permitted.
 - **Audit Logging:** Every successful download records a point-in-time fact in `download_audit_events` (`userId`, `userName`, `userEmail`, `documentId`, `documentName`, `downloadedAt`). Denied or failed requests do not write audit records.
 
 **Parameters:**
@@ -318,10 +327,10 @@ Accepts selected document IDs, validates existence, enforces category download p
 **Authorization:**
 
 - Requires authenticated session (`Bearer <token>`).
-- Allowed roles: `member_team`, `head_of_team`, `admin`.
+- Allowed roles: `member_team`, `head_of_team`. `admin` was removed by `BE-S4-08` (decided 2026-11-04).
 - **Category Permission Recheck per Document:**
   - `member_team`: Every requested document must belong to a category with `download_enabled = true`. Returns `403 FORBIDDEN` (`"Akses unduh tidak diizinkan untuk kategori dokumen ini"`) if any document is uncategorized or its category download permission is disabled.
-  - `head_of_team` & `admin`: Download is permitted.
+  - `head_of_team`: Download is permitted.
 - **Audit Logging:** Every successful bulk download records a point-in-time fact in `download_audit_events` for each document (`userId`, `userName`, `userEmail`, `documentId`, `documentName`, `downloadedAt`). Denied or failed requests do not write audit records.
 
 **Request (`application/json`):**
@@ -405,7 +414,7 @@ Success response:
 
 ## Authorization Rules
 
-- Preview is available to Member Team, Head of Team, and Admin for active documents; it is not
+- Preview is available to Member Team and Head of Team for active documents; `admin` was removed by `BE-S4-08` (decided 2026-11-04). It is not
   gated by category download permission.
 - Member Team can download only when category permission allows it.
 - Newly auto-created categories start without download permission.

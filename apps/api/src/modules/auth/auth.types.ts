@@ -1,4 +1,4 @@
-import type { AuthUser } from "@axentra/shared";
+import type { AccountStatus, AuthUser } from "@axentra/shared";
 import type { LoginAttemptDecision } from "./auth.policy";
 
 export type AuthSessionRecord = {
@@ -39,7 +39,8 @@ export type RotateAuthSessionInput = {
 };
 
 export type AuthSessionStore = {
-  createSession(input: CreateAuthSessionInput): Promise<AuthSessionRecord>;
+  // Null when the account is no longer active. The caller then rejects the login.
+  createSession(input: CreateAuthSessionInput): Promise<AuthSessionRecord | null>;
   findByAccessTokenHash(accessTokenHash: string): Promise<AuthSessionRecord | null>;
   findByRefreshTokenHash(refreshTokenHash: string): Promise<RefreshTokenMatch | null>;
   // Compare-and-swap: succeeds only while the presented refresh token is still the session's current one
@@ -57,8 +58,11 @@ export type LoginAttemptStore = {
 export type AuthCredentials = {
   user: AuthUser;
   passwordHash: string;
+  status: AccountStatus;
 };
 
 export type AuthUserRepository = {
   findCredentialsByEmail(email: string): Promise<AuthCredentials | null>;
+  // Null when no users row has this id. The development path treats that as a rejected login.
+  findStatusById(userId: string): Promise<AccountStatus | null>;
 };

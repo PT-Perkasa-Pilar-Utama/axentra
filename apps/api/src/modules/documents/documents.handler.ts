@@ -8,6 +8,7 @@ import {
 import type { ApiEnvironment } from "../../environment";
 import { PayloadTooLargeError, ValidationError } from "../../http/errors";
 import { jsonSuccess } from "../../http/responses";
+import { getAuthenticatedUser } from "../../middleware/auth";
 import type { RawUploadFile } from "./documents.schema";
 import type { DocumentService } from "./documents.service";
 import { createBoundedStream } from "./documents.service.helpers";
@@ -110,7 +111,8 @@ export function createDocumentUploadHandler(
       throw new ValidationError(DOCUMENT_COPY.NO_FILES);
     }
 
-    const result = await dependencies.documentService.uploadDocuments(rawFiles);
+    const user = getAuthenticatedUser(context);
+    const result = await dependencies.documentService.uploadDocuments(rawFiles, user.id);
     return jsonSuccess(context, result, 200);
   };
 }

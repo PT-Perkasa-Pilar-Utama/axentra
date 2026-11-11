@@ -66,6 +66,8 @@ function recordFixture(): DocumentDetailRecord {
       createdAt: CREATED_AT,
       updatedAt: CREATED_AT,
       deletedAt: null,
+      uploadedBy: null,
+      archivedAt: null,
     },
     file: {
       id: "44444444-4444-4444-8444-444444444444",
@@ -117,12 +119,19 @@ describe("canDownload rule for document detail (AC-13.01)", () => {
     expect(resolveCanDownload("member_team", CATEGORY)).toBe(true);
   });
 
-  test("head_of_team and admin are not gated by the category permission", () => {
+  test("head_of_team is not gated by the category permission", () => {
     const disabled = { ...CATEGORY, downloadEnabled: false };
 
     expect(resolveCanDownload("head_of_team", null)).toBe(true);
     expect(resolveCanDownload("head_of_team", disabled)).toBe(true);
-    expect(resolveCanDownload("admin", null)).toBe(true);
+  });
+
+  test("admin can never download, whatever the category (BE-S4-08, PROP-ADM-AC-05.02)", () => {
+    const disabled = { ...CATEGORY, downloadEnabled: false };
+
+    expect(resolveCanDownload("admin", null)).toBe(false);
+    expect(resolveCanDownload("admin", disabled)).toBe(false);
+    expect(resolveCanDownload("admin", CATEGORY)).toBe(false);
   });
 });
 
@@ -181,10 +190,29 @@ describe("readDocumentDetail composition", () => {
     expect(documentDetailSchema.safeParse(detail).success).toBe(true);
   });
 
-  test("throws NotFound when the active document or its file record is absent", async () => {
+  test("throws NotFound when the active document or its file record is absent or archived", async () => {
     await expect(
       readDocumentDetail(
         dependenciesWith({ record: null, category: null, tags: [], metadata: null }),
+        DOCUMENT_ID,
+        "member_team",
+      ),
+    ).rejects.toThrow("Dokumen tidak ditemukan");
+
+    const base = recordFixture();
+    const archivedRecord: DocumentDetailRecord = {
+      document: { ...base.document, archivedAt: new Date("2026-11-04T03:00:00.000Z") },
+      file: base.file,
+    };
+
+    await expect(
+      readDocumentDetail(
+        dependenciesWith({
+          record: archivedRecord,
+          category: CATEGORY,
+          tags: [TAG],
+          metadata: null,
+        }),
         DOCUMENT_ID,
         "member_team",
       ),
@@ -213,9 +241,10 @@ describe("GET /api/v1/documents/:id", () => {
       }),
       upload: async () => {
         const bytes = new TextEncoder().encode(`%PDF-1.4\n% ${filename}\n`);
-        await service.uploadDocuments([
-          { filename, mimeType: "application/pdf", size: bytes.byteLength, bytes },
-        ]);
+        await service.uploadDocuments(
+          [{ filename, mimeType: "application/pdf", size: bytes.byteLength, bytes }],
+          "11111111-1111-4111-8111-111111111111",
+        );
         const listed = await service.listRecentDocuments(1, 20);
         return listed.items.find((item) => item.filename === filename)?.id ?? "";
       },

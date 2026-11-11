@@ -106,6 +106,9 @@ describe("Auto-Category Assignment Real Queue & Storage Integration (Task BE-S2-
       await db.checkDatabase(database);
     }
 
+    const { ensureUploaderUser } = await import("./helpers/uploader-fixture");
+    await ensureUploaderUser(database, "11111111-1111-4111-8111-111111111111", "member_team");
+
     redis = queue.createRedisProbe(config.REDIS_URL, config.REDIS_HEALTH_TIMEOUT_MS);
     storage = storageAdapter.createS3StorageAdapter(config);
 
@@ -701,34 +704,29 @@ describe("Auto-Category Assignment Real Queue & Storage Integration (Task BE-S2-
       const testCatId = crypto.randomUUID();
       const foreignDocId = crypto.randomUUID();
 
-      await database.db.insert(categories).values({
-        id: testCatId,
-        name: "Temporary Shared Test Cat",
-        slug: `temp-shared-${Date.now()}`,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-      await database.db.insert(categoryDownloadPermissions).values({
-        categoryId: testCatId,
-        downloadEnabled: false,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-
-      await database.db.insert(documents).values({
-        id: foreignDocId,
-        title: "Foreign Document",
-        fileType: "application/pdf",
-        fileSize: 1024,
-        storageKey: `foreign/${foreignDocId}.pdf`,
-        processingStatus: "completed",
-        categoryId: testCatId,
-        uploadedBy: "foreign-user",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-
       try {
+        await database.db.insert(categories).values({
+          id: testCatId,
+          name: "Temporary Shared Test Cat",
+          slug: `temp-shared-${Date.now()}`,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+        await database.db.insert(categoryDownloadPermissions).values({
+          categoryId: testCatId,
+          downloadEnabled: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+        await database.db.insert(documents).values({
+          id: foreignDocId,
+          title: "Foreign Document",
+          processingStatus: "completed",
+          categoryId: testCatId,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
         const cleanupResult = await safeCleanupTestCategories(database, [testCatId], {
           preExistingCategoryIds,
           databaseUrl,

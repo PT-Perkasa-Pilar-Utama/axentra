@@ -1,0 +1,254 @@
+@import "./admin-documents-dialogs.css";
+
+.admin-documents {
+  color: #252930;
+  font-family: "Exo 2", sans-serif;
+}
+
+.admin-documents__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.admin-documents__title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #252930;
+  margin: 0;
+  line-height: 1.25;
+}
+
+.admin-documents__subtitle {
+  margin: 0.25rem 0 0;
+  color: #727988;
+  font-size: 0.875rem;
+}
+
+.admin-documents__search {
+  position: relative;
+  width: 18rem;
+  flex-shrink: 0;
+}
+
+.admin-documents__search input {
+  width: 100%;
+  padding: 0.5rem 1rem 0.5rem 2.25rem;
+  background: #fff;
+  border: 1px solid #e0e2e5;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  color: #252930;
+}
+
+.admin-documents__search input:focus {
+  outline: 2px solid #65a448;
+  outline-offset: -1px;
+}
+
+.admin-documents__search-icon {
+  position: absolute;
+  left: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1rem;
+  height: 1rem;
+  color: #98a2b3;
+  pointer-events: none;
+}
+
+.admin-documents__scope {
+  margin: -0.75rem 0 1rem;
+  color: #727988;
+  font-size: 0.75rem;
+}
+
+.admin-documents__tabs {
+  display: flex;
+  gap: 1.5rem;
+  border-bottom: 1px solid #e0e2e5;
+  margin-bottom: 1.5rem;
+}
+
+.admin-documents__tab {
+  padding: 0.5rem 0.25rem 0.75rem;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #727988;
+  cursor: pointer;
+  margin-bottom: -1px;
+}
+
+.admin-documents__tab.is-active {
+  color: #252930;
+  font-weight: 700;
+  border-bottom-color: #65a448;
+}
+
+.admin-documents__table-container {
+  overflow: hidden;
+  border: 1px solid #e0e2e5;
+  border-radius: 1rem;
+  background: #fff;
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.05);
+}
+
+.admin-documents__table-scroll {
+  overflow-x: auto;
+}
+
+.admin-documents table {
+  width: 100%;
+  min-width: 45rem;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.admin-documents th {
+  background: #f7f8fa;
+  color: #727988;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.875rem 1.5rem;
+  border-bottom: 1px solid #f0f2f4;
+}
+
+.admin-documents td {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #f0f2f4;
+  color: #5b626b;
+  font-size: 0.875rem;
+}
+
+.admin-documents td strong {
+  display: block;
+  color: #252930;
+  font-weight: 600;
+}
+
+.admin-documents td .admin-documents__file-meta {
+  font-size: 0.75rem;
+  color: #727988;
+  margin-top: 0.15rem;
+}
+
+.admin-documents td:last-child {
+  text-align: right;
+}
+
+.admin-documents__actions {
+  display: inline-flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.admin-documents__status {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid;
+  border-radius: 999px;
+  padding: 0.15rem 0.65rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.admin-documents__status--active {
+  border-color: #a3e9ce;
+  background: #ebfbf4;
+  color: #116b52;
+}
+
+.admin-documents__status--archived {
+  border-color: #e0e2e5;
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+.admin-documents button.admin-documents__btn {
+  cursor: pointer;
+  border: 1px solid #d9dde0;
+  border-radius: 0.5rem;
+  background: #fff;
+  padding: 0.45rem 0.75rem;
+  color: #344054;
+  font-size: 0.75rem;
+  font-weight: 600;
+  transition: all 0.15s ease;
+}
+
+.admin-documents button.admin-documents__btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.admin-documents button.admin-documents__btn--delete {
+  border-color: #f4cbd3;
+  background: #fff1f3;
+  color: #b31c3f;
+}
+
+.admin-documents button.admin-documents__btn--delete:hover:not(:disabled) {
+  background: #ffe5e9;
+}
+
+.admin-documents__pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  color: #727988;
+  font-size: 0.75rem;
+  border-top: 1px solid #f0f2f4;
+}
+
+.admin-documents__pagination div {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.admin-documents__pagination button {
+  cursor: pointer;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid #d0d5dd;
+  border-radius: 0.5rem;
+  background: #fff;
+  color: #344054;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.admin-documents__pagination button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.admin-documents__empty {
+  padding: 3rem 1.5rem;
+  text-align: center;
+  color: #727988;
+  font-size: 0.875rem;
+}
+
+.admin-documents__title-btn {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: #252930;
+  font-weight: 600;
+  font-size: 0.875rem;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  transition: text-decoration-color 0.15s ease;
+}
+
+.admin-documents__title-btn:hover {
+  text-decoration-color: #252930;
+}

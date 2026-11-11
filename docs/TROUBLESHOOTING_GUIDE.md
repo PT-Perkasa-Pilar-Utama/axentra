@@ -784,7 +784,7 @@ Resolution:
 
 Resolution:
 
-- Mark it as `Planned`, `Deferred`, or `Foundation v1.0.0 excludes this`.
+- Mark it as `Planned`, `Deferred`, or `Foundation v1.1.0 excludes this`.
 - Do not imply business APIs exist until code, tests, and verification prove they exist.
 
 ---

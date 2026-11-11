@@ -25,6 +25,7 @@ const DELETED_DOC = "77777777-7777-4777-8777-777777777777";
 const NON_EXISTENT_DOC = "88888888-8888-4888-8888-888888888888";
 const TRAVERSAL_DOC = "99999999-9999-4999-8999-999999999999";
 const OVERSIZED_DOC = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const ARCHIVED_DOC = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 
 const testLogger = createLogger({
   service: "axentra-api",
@@ -268,6 +269,27 @@ function createSetup(storage?: StorageAdapter) {
     categoryPermission: { downloadEnabled: true },
   });
 
+  // 10. Doc 10 - archived document (BE-S4-07)
+  downloadRepo.setTarget(ARCHIVED_DOC, {
+    document: {
+      id: ARCHIVED_DOC,
+      title: "Dokumen Diarsipkan",
+      categoryId: "cat-reporting-1",
+      processingStatus: "completed",
+      deletedAt: null,
+      archivedAt: new Date("2026-11-04T03:00:00.000Z"),
+    },
+    file: {
+      id: "file-10",
+      storageKey: "storage/doc1.pdf",
+      originalName: "archived.pdf",
+      mimeType: "application/pdf",
+      fileSize: pdfBytes1.byteLength,
+      fileExtension: "pdf",
+    },
+    categoryPermission: { downloadEnabled: true },
+  });
+
   const documentService = createDocumentService({
     storage: mockStorage,
     downloadRepository: downloadRepo,
@@ -468,6 +490,27 @@ describe("POST /api/v1/documents/bulk-download — BE-S3-03", () => {
       expect(parsed.data?.error.message).toBe("Dokumen tidak ditemukan");
     });
 
+    test("returns 404 and records no audit event when one or more documents are archived for member_team and head_of_team (BE-S4-07, PROP-ADM-AC-03.03)", async () => {
+      const { app, downloadRepo } = createSetup();
+
+      for (const token of ["member-token", "head-token"]) {
+        const response = await app.request("/api/v1/documents/bulk-download", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ documentIds: [ENABLED_DOC_1, ARCHIVED_DOC] }),
+        });
+
+        expect(response.status).toBe(404);
+        const parsed = apiErrorSchema.parse(await response.json());
+        expect(parsed.error.code).toBe("NOT_FOUND");
+        expect(parsed.error.message).toBe("Dokumen tidak ditemukan");
+      }
+      expect(downloadRepo.getRecordedAuditEvents()).toHaveLength(0);
+    });
+
     test("returns 404 when a document has no stored file record", async () => {
       const { app } = createSetup();
       const response = await app.request("/api/v1/documents/bulk-download", {
@@ -581,7 +624,7 @@ describe("POST /api/v1/documents/bulk-download — BE-S3-03", () => {
       expect(auditEvents[0]?.userName).toBe("Head User");
     });
 
-    test("allows admin to download documents even if category permission is disabled", async () => {
+    test("rejects admin with 403 and writes no audit event (BE-S4-08, PROP-ADM-AC-05.02)", async () => {
       const { app, downloadRepo } = createSetup();
       const response = await app.request("/api/v1/documents/bulk-download", {
         method: "POST",
@@ -592,12 +635,31 @@ describe("POST /api/v1/documents/bulk-download — BE-S3-03", () => {
         body: JSON.stringify({ documentIds: [DISABLED_DOC] }),
       });
 
-      expect(response.status).toBe(200);
-      const buffer = await response.arrayBuffer();
-      expect(buffer.byteLength).toBeGreaterThan(0);
-      const auditEvents = downloadRepo.getRecordedAuditEvents();
-      expect(auditEvents).toHaveLength(1);
-      expect(auditEvents[0]?.userEmail).toBe("admin@axentra.local");
+      expect(response.status).toBe(403);
+      const body = apiErrorSchema.parse(await response.json());
+      expect(body.error.code).toBe("FORBIDDEN");
+      expect(body.error.message).toBe("Anda tidak memiliki akses untuk tindakan ini");
+      expect(downloadRepo.getRecordedAuditEvents()).toHaveLength(0);
+    });
+
+    test("rejects admin with 403 even when the document does not exist (BE-S4-08)", async () => {
+      const { app, downloadRepo } = createSetup();
+      const response = await app.request("/api/v1/documents/bulk-download", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer admin-token",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ documentIds: [NON_EXISTENT_DOC] }),
+      });
+
+      // The role check runs before any document lookup, so the response does
+      // not reveal whether the document exists.
+      expect(response.status).toBe(403);
+      const body = apiErrorSchema.parse(await response.json());
+      expect(body.error.code).toBe("FORBIDDEN");
+      expect(body.error.message).toBe("Anda tidak memiliki akses untuk tindakan ini");
+      expect(downloadRepo.getRecordedAuditEvents()).toHaveLength(0);
     });
   });
 

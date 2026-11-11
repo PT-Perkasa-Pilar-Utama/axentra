@@ -1,0 +1,16 @@
+export {
+  PERMISSION_CATEGORIES_DEFAULT_LIMIT,
+  PERMISSION_CATEGORIES_MAX_LIMIT,
+  permissionCategoriesQuerySchema,
+  permissionCategoriesResponseSchema,
+  permissionCategoryIdParamSchema,
+  permissionCategorySchema,
+  updatePermissionCategoryRequestSchema,
+  updatePermissionCategoryResponseSchema,
+  type PermissionCategoriesQuery,
+  type PermissionCategoriesResponse,
+  type PermissionCategory,
+  type PermissionCategoryIdParam,
+  type UpdatePermissionCategoryRequest,
+  type UpdatePermissionCategoryResponse,
+} from "@axentra/shared";

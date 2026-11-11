@@ -17,7 +17,7 @@ export function FoundationPage(): React.JSX.Element {
         </a>
         <div className="flex items-center gap-4">
           <UserSessionBadge />
-          <span>Foundation v1.0.0</span>
+          <span>Foundation v1.1.0</span>
         </div>
       </header>
 

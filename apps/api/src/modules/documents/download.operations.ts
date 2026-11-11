@@ -54,7 +54,11 @@ function assertDownloadAllowed(
   target: DownloadTargetRecord | null,
   user: AuthUser,
 ): DownloadableFile {
-  if (!target || target.document.deletedAt !== null) {
+  if (
+    !target ||
+    target.document.deletedAt !== null ||
+    (target.document.archivedAt !== undefined && target.document.archivedAt !== null)
+  ) {
     throw new NotFoundError("Dokumen tidak ditemukan");
   }
 
@@ -75,12 +79,16 @@ function assertDownloadAllowed(
   return target.file;
 }
 
-// Used under the row lock, so a revoke or soft-delete committed during storage I/O is caught here.
+// Used under the row lock, so a revoke, archive, or soft-delete committed during storage I/O is caught here.
 function assertLockedDownloadAllowed(
   status: DocumentCategoryPermissionStatus | undefined,
   user: AuthUser,
 ): void {
-  if (!status || status.deletedAt !== null) {
+  if (
+    !status ||
+    status.deletedAt !== null ||
+    (status.archivedAt !== undefined && status.archivedAt !== null)
+  ) {
     throw new NotFoundError("Dokumen tidak ditemukan");
   }
 

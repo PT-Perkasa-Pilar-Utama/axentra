@@ -125,9 +125,13 @@
 
 @media (min-width: 768px) {
   .dashboard-sidebar {
+    position: sticky;
+    top: 0;
+    align-self: start;
     display: flex;
-    min-height: 100dvh;
+    height: 100dvh;
     flex-direction: column;
+    justify-content: space-between;
     align-items: stretch;
     gap: 24px;
     padding: 24px 16px;

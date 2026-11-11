@@ -39,7 +39,7 @@
 
 ## Implemented Sprint 1-3 BA Modules (on `dev`)
 
-These modules are implemented on `dev`. They are not part of Foundation v1.0.0.
+These modules are implemented on `dev`. They are not part of Foundation v1.1.0.
 
 | Module               | Status                             | Location                                            | Notes                                                                                                                                                                   |
 | -------------------- | ---------------------------------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -48,21 +48,24 @@ These modules are implemented on `dev`. They are not part of Foundation v1.0.0.
 | Duplicate detection  | Implemented                        | `apps/api/src/modules/documents`                    | `POST /documents/check-duplicate` and the upload path check the SHA-256 content hash.                                                                                   |
 | Processing           | Implemented, no OCR or AI provider | `apps/worker/src/processors`                        | Author metadata for PDF and DOCX, Smart Tags, auto category, and recovery of stalled documents. Extraction is deterministic.                                            |
 | Search and discovery | Implemented                        | `apps/api/src/modules/search`, `tags`, `categories` | Keyword search, Top Tags, and categories. Related documents are served by the Documents module.                                                                         |
+| Audit                | Implemented (API)                  | `apps/api/src/modules/audit`, `/api/v1/audit/*`     | Download audit trail (`GET /api/v1/audit/downloads`) for `head_of_team`, reading `download_audit_events` with pagination and user snapshot fallback.                    |
 
 ## Planned BA Business Modules
 
 These modules are Sprint 4 scope. They need approved sprint scope before code or tables are added.
 The Audit and Permission category rows note the parts that already exist.
 
-| Module              | Planned Responsibility                                                                                                                                                                                     |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Analytics           | Head of Team summary metrics for total documents and uploads in last 7 days. Planned endpoint: `GET /analytics/summary`.                                                                                   |
-| Audit               | Download log showing who downloaded which document and when. Downloads already write `download_audit_events`; the audit endpoint (`GET /audit/downloads`) and its screen are planned.                      |
-| Permission category | Head of Team controls Member Team download permission per category. Download gating is already enforced; the permission endpoints (`GET` and `PATCH /permission-categories`) and their screen are planned. |
+| Module              | Planned Responsibility                                                                                                                                                                                                                                                                                                                 |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Analytics           | Implemented (BE-S4-01): Head of Team summary metrics for total documents and uploads in the last 7 days via `GET /api/v1/analytics/summary` (`apps/api/src/modules/analytics`).                                                                                                                                                        |
+| Audit               | Download log showing who downloaded which document and when. `download_audit_events` writes, `GET /api/v1/audit/downloads` (`BE-S4-02`), and `admin` access (`BE-S4-08`) are implemented; the Web screen remains planned.                                                                                                              |
+| Permission category | Head of Team controls Member Team download permission per category. Download gating, `GET /api/v1/permission-categories` (`BE-S4-03`), and `PATCH /api/v1/permission-categories/:categoryId` (`BE-S4-04`) are implemented in `apps/api/src/modules/permission-categories`; the Web screen remains planned.                             |
+| Admin               | Implemented (BE-S4-05, BE-S4-06, BE-S4-07, BE-S4-08): Admin dashboard summary (`GET /api/v1/admin/summary`), account management (`GET /api/v1/admin/users`, `PATCH /api/v1/admin/users/:id/status`), and document management (`GET /api/v1/admin/documents`, detail, archive, unarchive, soft-delete) in `apps/api/src/modules/admin`. |
 
 ## Personas
 
-| Persona      | Planned Responsibility                                           |
-| ------------ | ---------------------------------------------------------------- |
-| Member Team  | Upload, search, preview, and download allowed documents          |
-| Head of Team | View analytics, audit downloads, and manage category permissions |
+| Persona      | Planned Responsibility                                                                            |
+| ------------ | ------------------------------------------------------------------------------------------------- |
+| Member Team  | Upload, search, preview, and download allowed documents                                           |
+| Head of Team | View analytics, audit downloads, and manage category permissions                                  |
+| Admin        | Manage user accounts, manage documents (archive/delete), and view system dashboard and audit logs |

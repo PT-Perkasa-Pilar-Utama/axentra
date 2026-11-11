@@ -60,7 +60,7 @@ Authenticates credentials and creates a durable session.
   }
   ```
   The response also sets the `axentra_refresh` cookie described below. The refresh token is never returned in the body.
-- **Errors:** `400 VALIDATION_ERROR` for an invalid body. `401 UNAUTHORIZED` (`Email atau kata sandi salah`) for an unknown email, a wrong password, or a user without a valid password hash. `429 TOO_MANY_REQUESTS` while the email is locked out (see Login Rate Limit).
+- **Errors:** `400 VALIDATION_ERROR` for an invalid body. `401 UNAUTHORIZED` (`Email atau kata sandi salah`) for an unknown email, a wrong password, or a user without a valid password hash. A deactivated account (`users.status = inactive`, implemented in `BE-S4-06`) returns the same `401` response (default for O2 in [09-admin.md](09-admin.md), Tech Lead confirmation pending). `429 TOO_MANY_REQUESTS` while the email is locked out (see Login Rate Limit).
 - **Identity source:** When `APP_ENV` is `development` or `test`, login verifies against `AUTH_LOCAL_IDENTITY_DIRECTORY`, a base64 JSON array of `{ id, email, role, name?, passwordHash }` with Argon2id hashes. When `APP_ENV` is `production`, login verifies against the `users` table and takes the role from that row. Both paths use the same Argon2id verifier. A malformed or placeholder hash, such as `dummy-hash`, fails the login with 401. Sessions reference `users.id`, so a development or test identity must be seeded (`bun run db:seed`) before it can log in. Malformed directory contents fail startup only in development and test. Plaintext passwords stay out of tracked code.
 
 ### 3. `POST /api/v1/auth/refresh`

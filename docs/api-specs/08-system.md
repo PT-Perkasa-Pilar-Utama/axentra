@@ -1,6 +1,6 @@
 # System API
 
-System endpoints are implemented in Foundation v1.0.0.
+System endpoints are implemented in Foundation v1.1.0.
 
 ## GET `/api/v1/health`
 
@@ -63,5 +63,5 @@ Checks PostgreSQL, Redis, and Storage.
 
 - Readiness dependency checks are bounded.
 - Liveness intentionally avoids dependency checks.
-- These endpoints are the Foundation v1.0.0 system routes.
+- These endpoints are the Foundation v1.1.0 system routes.
 - Business route status is tracked in [\_index.md](_index.md).
