@@ -1,6 +1,6 @@
 # Environment Configuration
 
-Configuration is owned by `packages/config`.
+Configuration is owned by `packages/config`. The one exception is `apps/web/vite.config.ts`, which reads `WEB_ORIGIN` for `vite preview`.
 
 ## Local Environment
 
@@ -31,7 +31,7 @@ ignores the directory, but the environment variable must still be non-empty.
 | `API_PORT`                      | API                    | Bun server port                                                                               |
 | `API_SHUTDOWN_TIMEOUT_MS`       | API                    | Resource cleanup deadline on shutdown                                                         |
 | `AUTH_LOCAL_IDENTITY_DIRECTORY` | API                    | Development/test identity directory; production uses `users`                                  |
-| `WEB_ORIGIN`                    | API                    | Only browser origin allowed to call the API with credentials; default `http://localhost:5173` |
+| `WEB_ORIGIN`                    | API, Web               | Web origin for API credentialed CORS & `vite preview` Host (default `http://localhost:5173`). |
 | `DATABASE_URL`                  | API, Worker, DB CLI    | PostgreSQL connection                                                                         |
 | `REDIS_URL`                     | API, Worker            | Redis connection                                                                              |
 | `QUEUE_NAME`                    | Worker, queue producer | BullMQ queue name                                                                             |

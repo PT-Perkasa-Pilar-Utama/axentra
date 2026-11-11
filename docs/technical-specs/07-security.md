@@ -2,8 +2,8 @@
 
 ## Foundation Controls
 
-- Environment variables are parsed through `@axentra/config`.
-- Web receives only `VITE_*` browser-safe values.
+- Environment variables are parsed through `@axentra/config`. The one exception is the Vite config, which reads `WEB_ORIGIN` for `vite preview`.
+- Web receives only `VITE_*` browser-safe values. The `WEB_ORIGIN` read stays server-side and is not exposed to the browser.
 - Structured logs redact credentials, authorization headers, signed URLs, and document content.
 - Storage object keys are validated before access.
 - Production S3 bucket creation is not performed by application code.
