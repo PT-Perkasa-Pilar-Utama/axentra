@@ -94,7 +94,7 @@ Key points:
 - API and Worker are separate processes and must be deployed independently.
 - API and Worker must run the same `APP_VERSION`.
 - Worker must not accept jobs until PostgreSQL, Redis, and Storage are healthy.
-- Web receives only `VITE_*` browser-safe configuration.
+- Web receives only `VITE_*` browser-safe configuration. The Vite config also reads `WEB_ORIGIN` to set the Host that `vite preview` accepts.
 - Production credentials must be supplied by secure infrastructure configuration.
 - Production bucket creation is not performed by application code.
 

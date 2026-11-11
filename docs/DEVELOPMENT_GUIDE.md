@@ -29,8 +29,9 @@ merge is preferred, and direct pushes to protected branches are prohibited.
 
 ## Environment Responsibility
 
-Web receives only `VITE_*` browser-safe values. API and Worker load validated server
-configuration. Do not read environment variables in feature or business modules.
+Web receives only `VITE_*` browser-safe values. The Vite config also reads `WEB_ORIGIN` for
+`vite preview`. API and Worker load validated server configuration. Do not read environment
+variables in feature or business modules.
 
 ## Migration Workflow
 
