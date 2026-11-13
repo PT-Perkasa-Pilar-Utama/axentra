@@ -51,8 +51,9 @@
   color: #727988;
   font-size: 0.75rem;
 }
+.admin-users th:last-child,
 .admin-users td:last-child {
-  text-align: right;
+  text-align: center;
 }
 .admin-users__status {
   border: 1px solid;

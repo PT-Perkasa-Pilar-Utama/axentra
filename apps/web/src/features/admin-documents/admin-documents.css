@@ -137,14 +137,15 @@
   margin-top: 0.15rem;
 }
 
+.admin-documents th:last-child,
 .admin-documents td:last-child {
-  text-align: right;
+  text-align: center;
 }
 
 .admin-documents__actions {
   display: inline-flex;
   gap: 0.5rem;
-  justify-content: flex-end;
+  justify-content: center;
 }
 
 .admin-documents__status {
